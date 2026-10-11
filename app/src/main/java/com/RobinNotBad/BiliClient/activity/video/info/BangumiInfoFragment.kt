@@ -18,7 +18,7 @@ import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
 import com.RobinNotBad.BiliClient.activity.settings.SettingPlayerChooseActivity
 import com.RobinNotBad.BiliClient.activity.video.JumpToPlayerActivity
-import com.RobinNotBad.BiliClient.adapter.video.MediaEpisodeAdapter
+import com.RobinNotBad.BiliClient.adapter.video.EpisodeCardAdapter
 import com.RobinNotBad.BiliClient.api.BangumiApi
 import com.RobinNotBad.BiliClient.model.Bangumi
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
@@ -250,7 +250,7 @@ class BangumiInfoFragment : Fragment() {
             record.visibility = View.GONE
         }
 
-        val adapter = MediaEpisodeAdapter()
+        val adapter = EpisodeCardAdapter()
 
         adapter.setOnItemClickListener { index ->
             selectedEpisode = index
@@ -462,7 +462,7 @@ class BangumiInfoFragment : Fragment() {
             refreshReplies()
             val section = bangumi!!.sectionList[which]
             sectionChoose!!.text = section.title + " 点击切换"
-            val adapter = episodeRecyclerView!!.adapter as MediaEpisodeAdapter
+            val adapter = episodeRecyclerView!!.adapter as EpisodeCardAdapter
             adapter.setData(bangumi!!.sectionList[which].episodeList)
             episodeRecyclerView!!.scrollToPosition(0)
             episodeChoose!!.setOnClickListener { getEposideChooseDialog().show() }
@@ -494,7 +494,7 @@ class BangumiInfoFragment : Fragment() {
             selectedEpisode = which
             refreshReplies()
 
-            val adapter = episodeRecyclerView!!.adapter as MediaEpisodeAdapter
+            val adapter = episodeRecyclerView!!.adapter as EpisodeCardAdapter
             adapter.selectedItemIndex = which
             episodeRecyclerView!!.scrollToPosition(which)
             dialog?.dismiss()

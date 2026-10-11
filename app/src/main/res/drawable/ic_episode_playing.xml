@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 番剧选集卡上"正在看这一集"的三根音量柱。默认取 @color/text_primary，
+     实际颜色在 EpisodeCardAdapter 里用 ColorScheme 的强调色覆盖。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp"
+    android:height="12dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="@color/text_primary">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,9.5h3v5h-3z M10.5,5h3v14h-3z M18,9.5h3v5h-3z" />
+</vector>

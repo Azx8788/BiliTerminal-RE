@@ -284,7 +284,7 @@
                     android:orientation="horizontal"
 
                     app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-                    tools:listitem="@layout/cell_episode" />
+                    tools:listitem="@layout/cell_episode_card" />
 
             </androidx.constraintlayout.widget.ConstraintLayout>
         </com.google.android.material.card.MaterialCardView>
