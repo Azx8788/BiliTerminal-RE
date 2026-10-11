@@ -20,6 +20,8 @@ public class Bangumi {
         public String type_name;
         public String area_name;
         public String indexShow;
+        /** 更新状态文案（new_ep.desc，如"已完结，全12话"），可能为空 */
+        public String newEpDesc;
 
         // 新增字段
         public String evaluate; // 简介
@@ -65,6 +67,15 @@ public class Bangumi {
         public String season_title;
         public String cover;
         public String badge;
+
+        /**
+         * 季类型（心跳上报的 sub_type），由 {@code BangumiApi.getSeasonDetail} 在切季时回填；
+         * 0 表示没取到，上报侧要回退 {@link Info#type}。
+         */
+        public int seasonType;
+
+        /** 该季的选集状态文案（new_ep.desc），由 {@code BangumiApi.getSeasonDetail} 回填，可能为空 */
+        public String statusDesc;
     }
 
     public static class Section {

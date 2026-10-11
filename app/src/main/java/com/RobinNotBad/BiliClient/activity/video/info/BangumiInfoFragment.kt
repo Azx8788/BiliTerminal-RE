@@ -19,6 +19,7 @@ import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
 import com.RobinNotBad.BiliClient.activity.settings.SettingPlayerChooseActivity
 import com.RobinNotBad.BiliClient.activity.video.JumpToPlayerActivity
 import com.RobinNotBad.BiliClient.adapter.video.EpisodeCardAdapter
+import com.RobinNotBad.BiliClient.adapter.video.SeasonTabAdapter
 import com.RobinNotBad.BiliClient.api.BangumiApi
 import com.RobinNotBad.BiliClient.model.Bangumi
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
@@ -43,13 +44,35 @@ class BangumiInfoFragment : Fragment() {
     private var dialog: Dialog? = null
     private var rootView: View? = null
     private var episodeRecyclerView: RecyclerView? = null
-    private var sectionChoose: Button? = null
+    private var seasonTabsRecyclerView: RecyclerView? = null
+    private var seasonTabAdapter: SeasonTabAdapter? = null
     private var episodeChoose: TextView? = null
     private var followButton: Button? = null
 
     /** 追番按钮的当前状态；点击时按「取反」发请求，成功后原地翻转 */
     private var followed = false
     private var bangumi: Bangumi? = null
+
+    /** 当前展示的季；首屏是 info.season_id，页内切季后会变，播放上报必须用它 */
+    private var currentSeasonId: Long = 0
+
+    /** 当前展示的季类型（心跳上报的 sub_type）；info.type 只对首屏那一季有效 */
+    private var currentSeasonType: Int = 0
+
+    /**
+     * 当前展示的季的分区列表。首屏是 `bangumi.sectionList`，切季后整体替换。
+     * 所有按下标取剧集的地方都必须读它（而不是 bangumi.sectionList），否则切季后下标会错位。
+     */
+    private var sections: List<Bangumi.Section> = emptyList()
+
+    /** 切季缓存：season_id → 该季数据（切走再切回不用重新请求） */
+    private val seasonCache = HashMap<Long, BangumiApi.SeasonMeta>()
+
+    /** 各季「上次离开时选中的集」记忆：(分区下标, 集下标)，切回来时恢复 */
+    private val seasonSelection = HashMap<Long, IntArray>()
+
+    /** 切季请求进行中：期间忽略重复点击，避免两个响应交错把页面切成半更新状态 */
+    private var switchingSeason = false
 
     companion object {
         @JvmStatic
@@ -134,7 +157,7 @@ class BangumiInfoFragment : Fragment() {
         val staffArrow = rootView!!.findViewById<ImageView>(R.id.icon_staff_arrow)
         val staff = rootView!!.findViewById<TextView>(R.id.text_staff)
         val record = rootView!!.findViewById<TextView>(R.id.text_record)
-        sectionChoose = rootView!!.findViewById(R.id.section_choose)
+        seasonTabsRecyclerView = rootView!!.findViewById(R.id.rv_season_tabs)
         episodeChoose = rootView!!.findViewById(R.id.episode_choose)
         followButton = rootView!!.findViewById(R.id.btn_follow)
         selectedSection = 0
@@ -250,26 +273,31 @@ class BangumiInfoFragment : Fragment() {
             record.visibility = View.GONE
         }
 
-        val adapter = EpisodeCardAdapter()
-
-        adapter.setOnItemClickListener { index ->
-            selectedEpisode = index
-            refreshReplies()
-        }
-
         val indexShow = rootView!!.findViewById<TextView>(R.id.indexShow)
         indexShow.text = bangumi!!.info.indexShow
 
         // 追番按钮要在"有没有剧集"的分支之前接线：还没开播的番（敬请期待）恰恰是最需要点追番的时候
         setupFollowButton()
 
+        // 首屏这一季就是 info 里那一季；把它的数据放进缓存，切走再切回时无需重新请求
+        currentSeasonId = bangumi!!.info.season_id
+        currentSeasonType = bangumi!!.info.type
+        sections = bangumi!!.sectionList ?: emptyList()
+        seasonCache[currentSeasonId] = BangumiApi.SeasonMeta().apply {
+            sectionList = ArrayList(sections)
+            seasonType = currentSeasonType
+            statusDesc = bangumi!!.info.newEpDesc ?: ""
+        }
+
         // 首个"有剧集"的季才是可用的起始季：番剧数据里第一项常常是空的 PV/预告季，
         // 直接用它会让选集区空白，而且后面按下标取剧集时必然越界
         val firstSection = firstSectionWithEpisodes()
         if (firstSection < 0) {
-            sectionChoose!!.text = "敬请期待"
+            // 还没上线的番剧：没有季可切也没有集可选，选集区只留一行状态文案
+            episodeChoose!!.text = "敬请期待"
+            seasonTabsRecyclerView!!.visibility = View.GONE
+            episodeRecyclerView!!.visibility = View.GONE
             playButton.visibility = View.GONE
-            rootView!!.findViewById<View>(R.id.episodes).visibility = View.GONE
             val activity = requireActivity()
             if (activity is VideoInfoActivity) {
                 activity.replyFragment?.setRefreshing(false)
@@ -285,11 +313,18 @@ class BangumiInfoFragment : Fragment() {
             MsgUtil.showMsg("已定位到上次观看的「" + (currentEpisode()?.title ?: "") + "」")
         }
 
-        sectionChoose!!.text = bangumi!!.sectionList[selectedSection].title + " 点击切换"
-        sectionChoose!!.setOnClickListener { getSectionChooseDialog().show() }
+        setupSeasonTabs()
+
         episodeChoose!!.setOnClickListener { getEposideChooseDialog().show() }
 
-        adapter.setData(bangumi!!.sectionList[selectedSection].episodeList)
+        val adapter = EpisodeCardAdapter()
+
+        adapter.setOnItemClickListener { index ->
+            selectedEpisode = index
+            refreshReplies()
+        }
+
+        adapter.setData(sections[selectedSection].episodeList)
         episodeRecyclerView!!.layoutManager = CustomLinearManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         episodeRecyclerView!!.adapter = adapter
         // setData 会把高亮重置到第 0 项；定位成功时要把高亮和滚动位置一起挪到目标集
@@ -302,8 +337,10 @@ class BangumiInfoFragment : Fragment() {
             Glide.get(requireContext()).clearMemory()
             val intent = Intent(it.context, JumpToPlayerActivity::class.java)
             // 必须带上 season_id 与季类型：番剧的观看进度要走心跳接口上报，
-            // 只有 epid 而没有 sid/sub_type 时服务端不会把它记成番剧记录
-            val data = episode.toPlayerData(bangumi!!.info.season_id, bangumi!!.info.type)
+            // 只有 epid 而没有 sid/sub_type 时服务端不会把它记成番剧记录。
+            // 用 currentSeasonId/currentSeasonType（页内切季后的那一季）而不是 info 上的值，
+            // 否则从第二季点播放会上报成第一季的记录
+            val data = episode.toPlayerData(currentSeasonId, currentSeasonType)
             // 历史来源的进度单位是秒，PlayerData.progress 要毫秒；
             // 只有当前这一集就是历史里记的那一集时才带，避免把别集的进度套到这一集上
             if (episode.id == targetEpid && targetProgressSec > 0) {
@@ -318,6 +355,139 @@ class BangumiInfoFragment : Fragment() {
             true
         }
         onFinishLoad()
+
+        refreshReplies()
+    }
+
+    /**
+     * 初始化季 tab：数据源是 `info.seasons`（同系列所有季，与官方客户端的选集 tab 同源）。
+     *
+     * 个别番剧的 seasons 里不含当前季，这时把当前季补成第一个 tab（标题「正片」）。
+     * **只有 tab 数 > 1 才显示整行**（对齐 PiliPlus EpisodePanel 的规则）：
+     * 只有一季的番剧给一行 tab 没有任何信息量，还白占手表屏首屏高度。
+     */
+    private fun setupSeasonTabs() {
+        val tabs = ArrayList<Bangumi.Season>()
+        bangumi?.info?.seasons?.let { tabs.addAll(it) }
+
+        var currentIndex = tabs.indexOfFirst { it.season_id == currentSeasonId }
+        if (currentIndex < 0) {
+            val current = Bangumi.Season()
+            current.season_id = currentSeasonId
+            current.season_title = "正片"
+            current.seasonType = currentSeasonType
+            current.statusDesc = bangumi?.info?.newEpDesc
+            tabs.add(0, current)
+            currentIndex = 0
+        }
+
+        // 当前季的元数据回填到 tab 上：切走再切回时要能看到这一季的状态文案与季类型
+        tabs[currentIndex].let { tab ->
+            if (tab.seasonType == 0) tab.seasonType = currentSeasonType
+            if (tab.statusDesc.isNullOrEmpty()) tab.statusDesc = bangumi?.info?.newEpDesc
+        }
+
+        val recyclerView = seasonTabsRecyclerView ?: return
+        if (tabs.size <= 1) {
+            recyclerView.visibility = View.GONE
+            return
+        }
+
+        val adapter = SeasonTabAdapter(tabs)
+        adapter.selectedIndex = currentIndex
+        adapter.setOnTabClickListener { switchSeason(it) }
+        recyclerView.layoutManager = CustomLinearManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        recyclerView.adapter = adapter
+        recyclerView.visibility = View.VISIBLE
+        seasonTabAdapter = adapter
+    }
+
+    /**
+     * 切季：缓存命中直接应用，否则后台拉取 `getSeasonDetail`（一次带回该季分区/季类型/状态文案）。
+     *
+     * 目标季**至少要有一个非空分区**才允许切换：空季一旦应用，会留下 tab 高亮/列表/选中下标
+     * 半更新的状态，用户再点集卡片就会按下标越界崩溃。
+     */
+    private fun switchSeason(tabIndex: Int) {
+        if (switchingSeason) return
+        val adapter = seasonTabAdapter ?: return
+        val target = adapter.getItem(tabIndex) ?: return
+        if (target.season_id == currentSeasonId) return
+
+        val cached = seasonCache[target.season_id]
+        if (cached != null && cached.sectionList.isNotEmpty()) {
+            applySeason(tabIndex, target, cached)
+            return
+        }
+
+        switchingSeason = true
+        CenterThreadPool.run {
+            try {
+                val meta = BangumiApi.getSeasonDetail(target.season_id)
+                if (meta.sectionList.none { !it.episodeList.isNullOrEmpty() }) {
+                    CenterThreadPool.runOnUiThread {
+                        switchingSeason = false
+                        if (isAdded) MsgUtil.showMsg("该季暂无内容")
+                    }
+                    return@run
+                }
+                seasonCache[target.season_id] = meta
+                CenterThreadPool.runOnUiThread {
+                    switchingSeason = false
+                    if (!isAdded) return@runOnUiThread
+                    applySeason(tabIndex, target, meta)
+                }
+            } catch (e: Exception) {
+                MsgUtil.err("番剧切季：", e)
+                CenterThreadPool.runOnUiThread {
+                    switchingSeason = false
+                    if (isAdded) MsgUtil.showMsg("切换失败，请稍后重试")
+                }
+            }
+        }
+    }
+
+    /**
+     * 应用切季结果（主线程）：记住离开那一季的选中位置 → 换掉分区列表 → 恢复目标季的选中位置。
+     *
+     * 选中位置优先级：上次离开这一季时记下的下标 → 首个非空分区的第 1 集。
+     * 这里不做「上次看到第几集」的网络定位（那是另一个功能的口径），所以不会有额外请求。
+     */
+    private fun applySeason(tabIndex: Int, tab: Bangumi.Season, meta: BangumiApi.SeasonMeta) {
+        seasonSelection[currentSeasonId] = intArrayOf(selectedSection, selectedEpisode)
+
+        currentSeasonId = tab.season_id
+        currentSeasonType = if (meta.seasonType != 0) meta.seasonType else (bangumi?.info?.type ?: 0)
+        tab.seasonType = currentSeasonType
+        tab.statusDesc = meta.statusDesc
+
+        sections = meta.sectionList
+
+        // 越界兜底：服务端数据随时可能变，记忆里的下标不能直接信
+        val remembered = seasonSelection[currentSeasonId] ?: IntArray(2)
+        var sectionIndex = remembered[0].coerceIn(0, maxOf(sections.size - 1, 0))
+        var section = sections.getOrNull(sectionIndex)
+        if (section == null || section.episodeList.isNullOrEmpty()) {
+            sectionIndex = firstSectionWithEpisodes()
+            section = sections.getOrNull(sectionIndex)
+        }
+        if (section == null || section.episodeList.isNullOrEmpty()) {
+            // 理论到不了（switchSeason 已经挡掉空季）；真出现就保持现状，不要把下标改坏
+            return
+        }
+        // 记忆的分区已经变空、回落到别的分区时，集下标就不再适用了，从第 1 集开始
+        var episodeIndex = if (remembered[0] == sectionIndex) remembered[1] else 0
+        episodeIndex = episodeIndex.coerceIn(0, section.episodeList.size - 1)
+
+        selectedSection = sectionIndex
+        selectedEpisode = episodeIndex
+
+        seasonTabAdapter?.selectedIndex = tabIndex
+
+        val adapter = episodeRecyclerView?.adapter as? EpisodeCardAdapter
+        adapter?.setData(section.episodeList)
+        adapter?.selectedItemIndex = episodeIndex
+        episodeRecyclerView?.scrollToPosition(episodeIndex)
 
         refreshReplies()
     }
@@ -394,9 +564,8 @@ class BangumiInfoFragment : Fragment() {
         }
     }
 
-    /** sectionList 里第一个真正含有剧集的季的下标；全都为空（或没有季）时返回 -1。 */
+    /** 当前季的分区列表里第一个真正含有剧集的分区下标；全都为空（或没有分区）时返回 -1。 */
     private fun firstSectionWithEpisodes(): Int {
-        val sections = bangumi?.sectionList ?: return -1
         for (i in sections.indices) {
             if (!sections[i].episodeList.isNullOrEmpty()) return i
         }
@@ -404,16 +573,15 @@ class BangumiInfoFragment : Fragment() {
     }
 
     /**
-     * 在全部季里找 epid 对应的一集并选中。
+     * 在当前季的分区里找 epid 对应的一集并选中。
      *
      * 只改 selectedSection / selectedEpisode 这两个下标，最终取集仍然走 currentEpisode()，
-     * 这样即使数据里有空季也不会选中一个取不出剧集的季（P19 修的越界崩溃就是这么来的）。
-     * 找不到（epid 为 0、不在任何季里、或取出来是 null）时不动下标并返回 false，
+     * 这样即使数据里有空分区也不会选中一个取不出剧集的季（P19 修的越界崩溃就是这么来的）。
+     * 找不到（epid 为 0、不在当前季里、或取出来是 null）时不动下标并返回 false，
      * 调用方保持第 1 集即可。
      */
     private fun locateEpisodeByEpid(epid: Long): Boolean {
         if (epid <= 0L) return false
-        val sections = bangumi?.sectionList ?: return false
         for (s in sections.indices) {
             val episodes = sections[s].episodeList ?: continue
             for (e in episodes.indices) {
@@ -429,51 +597,18 @@ class BangumiInfoFragment : Fragment() {
     }
 
     /**
-     * 当前选中的剧集；选中季为空或下标越界时返回 null。
-     * 所有需要按下标取剧集的地方都必须走这里，否则空季数据会直接抛 IndexOutOfBoundsException。
+     * 当前选中的剧集；选中分区为空或下标越界时返回 null。
+     * 所有需要按下标取剧集的地方都必须走这里，否则空分区数据会直接抛 IndexOutOfBoundsException。
      */
     private fun currentEpisode(): Bangumi.Episode? {
-        val sections = bangumi?.sectionList ?: return null
         if (selectedSection !in sections.indices) return null
         val episodes = sections[selectedSection].episodeList ?: return null
         if (selectedEpisode !in episodes.indices) return null
         return episodes[selectedEpisode]
     }
 
-    @SuppressLint("SetTextI18n")
-    private fun getSectionChooseDialog(): Dialog {
-        val choices = bangumi!!.sectionList.map { it.title }
-
-        // 终端列表方案：选中态由条目左侧的引导符 + 主色文字表示，不自动关闭
-        dialog = TerminalDialog.singleChoice(
-            context = requireContext(),
-            title = "选择季度",
-            items = choices,
-            checked = selectedSection
-        ) { _, which ->
-            // 允许切到空季会让选集区/playButton 随后在空列表上取下标而崩溃，这里直接拒绝切换并提示
-            if (bangumi!!.sectionList[which].episodeList.isNullOrEmpty()) {
-                MsgUtil.showMsg("该季暂无剧集")
-                return@singleChoice
-            }
-            selectedSection = which
-            selectedEpisode = 0
-
-            refreshReplies()
-            val section = bangumi!!.sectionList[which]
-            sectionChoose!!.text = section.title + " 点击切换"
-            val adapter = episodeRecyclerView!!.adapter as EpisodeCardAdapter
-            adapter.setData(bangumi!!.sectionList[which].episodeList)
-            episodeRecyclerView!!.scrollToPosition(0)
-            episodeChoose!!.setOnClickListener { getEposideChooseDialog().show() }
-            dialog?.dismiss()
-        }
-
-        return dialog!!
-    }
-
     private fun getEposideChooseDialog(): Dialog {
-        val episodeList = bangumi?.sectionList?.getOrNull(selectedSection)?.episodeList
+        val episodeList = sections.getOrNull(selectedSection)?.episodeList
 
         // 双保险：数据刷新后仍可能落到空季上，空列表既不能建下标也不能建选择项
         if (episodeList.isNullOrEmpty()) {

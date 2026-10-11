@@ -236,22 +236,25 @@
             app:layout_constraintTop_toBottomOf="@+id/text_staff"
             tools:text="备案号：xxxxxxxxx" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/section_choose"
-            android:layout_width="match_parent"
+        <!-- 季 tab 行（页内切季）：数据源 info.seasons，只有一季时整行隐藏 -->
+        <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView
+            android:id="@+id/rv_season_tabs"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="正片 点击切换"
+            android:orientation="horizontal"
+            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/text_record" />
+            app:layout_constraintTop_toBottomOf="@+id/text_record"
+            tools:listitem="@layout/cell_season_tab" />
 
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/episodes"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             android:layout_marginTop="4dp"
-            app:layout_constraintTop_toBottomOf="@id/section_choose"
+            app:layout_constraintTop_toBottomOf="@id/rv_season_tabs"
             android:layout_width="0dp"
             android:layout_height="wrap_content">
 

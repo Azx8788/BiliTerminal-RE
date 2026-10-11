@@ -126,4 +126,52 @@ class BangumiApiTest {
         // -101 未登录：显示"追番"比误显示"已追番"安全（点一下会被告知未登录）
         assertTrue(!BangumiApi.parseFollowStatus(JSONObject("""{"code":-101,"message":"账号未登录"}""")))
     }
+
+    // ---------- 季详情解析（详情页页内切季） ----------
+
+    private fun episodeJson(id: Long, title: String = "第1话", longTitle: String = "启程"): String =
+        """{"id":$id,"aid":${id + 100},"cid":${id + 200},"cover":"http://x/$id.jpg","badge":"","title":"$title","long_title":"$longTitle"}"""
+
+    @Test
+    fun parseSeasonDetail_正片补齐为第一个分区_附加分区排其后() {
+        val meta = BangumiApi.parseSeasonDetail(
+            JSONObject(
+                """{"type":1,"new_ep":{"desc":"已完结，全2话"},""" +
+                        """"episodes":[${episodeJson(1)},${episodeJson(2)}],""" +
+                        """"section":[{"id":9,"title":"预告花絮","type":1,"episodes":[${episodeJson(3, "PV", "正式预告")}]}]}"""
+            )
+        )
+
+        assertEquals(1, meta.seasonType)
+        assertEquals("已完结，全2话", meta.statusDesc)
+        assertEquals(2, meta.sectionList.size)
+        // 正片（episodes 平铺数组）必须补成第一个分区，否则切季后的默认选中集无从谈起
+        assertEquals("正片", meta.sectionList[0].title)
+        assertEquals(2, meta.sectionList[0].episodeList.size)
+        assertEquals(1L, meta.sectionList[0].episodeList[0].id)
+        assertEquals("预告花絮", meta.sectionList[1].title)
+        assertEquals("正式预告", meta.sectionList[1].episodeList[0].title_long)
+    }
+
+    @Test
+    fun parseSeasonDetail_没有正片集_不补空的正片分区() {
+        // 空分区会让切季判断"该季暂无内容"失效，所以正片为空时宁可不补
+        val meta = BangumiApi.parseSeasonDetail(
+            JSONObject("""{"type":4,"section":[{"id":9,"title":"预告花絮","type":1,"episodes":[${episodeJson(3)}]}]}""")
+        )
+
+        assertEquals(1, meta.sectionList.size)
+        assertEquals("预告花絮", meta.sectionList[0].title)
+        assertEquals(4, meta.seasonType)
+        assertEquals("", meta.statusDesc)
+    }
+
+    @Test
+    fun parseSeasonDetail_空数据_得到空季数据而不是崩溃() {
+        val meta = BangumiApi.parseSeasonDetail(JSONObject("{}"))
+
+        assertEquals(0, meta.sectionList.size)
+        assertEquals(0, meta.seasonType)
+        assertEquals("", meta.statusDesc)
+    }
 }

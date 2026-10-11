@@ -207,6 +207,7 @@ public class BangumiApi {
         JSONObject new_ep = media.optJSONObject("new_ep");
         if (new_ep != null) {
             info.indexShow = new_ep.optString("index_show", "敬请期待");
+            info.newEpDesc = new_ep.optString("desc", "");
         }
 
         JSONObject rating = media.optJSONObject("rating");
@@ -237,6 +238,14 @@ public class BangumiApi {
             info.staff = result.optString("staff", "");
             info.record = result.optString("record", "");
             info.subtitle = result.optString("subtitle", "");
+
+            // 更新状态文案（"已完结，全12话"这种）优先用季详情页的 new_ep.desc：
+            // review/user 里的 new_ep 只有 index_show，desc 常常是空的
+            JSONObject seasonNewEp = result.optJSONObject("new_ep");
+            if (seasonNewEp != null) {
+                String desc = seasonNewEp.optString("desc", "");
+                if (!desc.isEmpty()) info.newEpDesc = desc;
+            }
 
             // 发布时间信息
             JSONObject publish = result.optJSONObject("publish");
@@ -302,6 +311,73 @@ public class BangumiApi {
         }
 
         return info;
+    }
+
+    /**
+     * 某一季的剧集数据，供番剧详情页的"季 tab"页内切季使用。
+     *
+     * <p>季与季之间的集列表/类型/状态文案都不同，所以三者要作为一个整体传递，
+     * 别让调用方自己去拼（拼出来的半更新状态最容易让选集下标越界）。
+     */
+    public static class SeasonMeta {
+        public ArrayList<Bangumi.Section> sectionList = new ArrayList<>();
+        /** 季类型（心跳上报的 sub_type）；0 表示没取到，调用方要回退 {@link Bangumi.Info#type} */
+        public int seasonType;
+        /** 该季的选集状态文案（new_ep.desc，如"已完结，全12话"），可能为空 */
+        public String statusDesc = "";
+    }
+
+    /**
+     * 拉取任意一季的剧集数据（番剧详情页切季用）。
+     *
+     * <p>走 {@code pgc/view/web/season} 而不是轻量的 {@code pgc/web/season/section}：
+     * 同一个请求就同时带回正片集列表（{@code result.episodes}）、附加分区（{@code result.section}）、
+     * 季类型（{@code result.type}）与状态文案（{@code new_ep.desc}）。
+     */
+    public static SeasonMeta getSeasonDetail(long seasonId) throws IOException, JSONException {
+        String url = "https://api.bilibili.com/pgc/view/web/season?season_id=" + seasonId;
+        JSONObject all = NetWorkUtil.getJson(url);
+        int code = all.optInt("code", -1);
+        if (code != 0) throw new JSONException("错误码：" + code);
+        return parseSeasonDetail(all.getJSONObject("result"));
+    }
+
+    /**
+     * 纯解析：把 {@code pgc/view/web/season} 的 {@code result} 转成 {@link SeasonMeta}
+     * （抽出来是为了能被 JVM 单测覆盖，参照 {@code HotSearchApi.parseHotSearch} 的做法）。
+     *
+     * <p>正片（{@code episodes}）在这个响应里是平铺数组、没有 section 外壳，
+     * 这里补一个标题为"正片"的分区，让详情页能用统一的"分区列表"结构消费。
+     */
+    public static SeasonMeta parseSeasonDetail(JSONObject result) throws JSONException {
+        SeasonMeta meta = new SeasonMeta();
+        if (result == null) return meta;
+
+        meta.seasonType = result.optInt("type", 0);
+        JSONObject newEp = result.optJSONObject("new_ep");
+        if (newEp != null) meta.statusDesc = newEp.optString("desc", "");
+
+        JSONArray episodes = result.optJSONArray("episodes");
+        if (episodes != null && episodes.length() > 0) {
+            Bangumi.Section main = new Bangumi.Section();
+            main.title = "正片";
+            main.episodeList = new ArrayList<>();
+            for (int i = 0; i < episodes.length(); i++) {
+                JSONObject episode = episodes.optJSONObject(i);
+                if (episode != null) main.episodeList.add(analyzeEpisode(episode));
+            }
+            meta.sectionList.add(main);
+        }
+
+        JSONArray sections = result.optJSONArray("section");
+        if (sections != null) {
+            for (int i = 0; i < sections.length(); i++) {
+                JSONObject section = sections.optJSONObject(i);
+                if (section != null) meta.sectionList.add(analyzeSection(section));
+            }
+        }
+
+        return meta;
     }
 
     public static ArrayList<Bangumi.Section> getSections(long season_id) throws IOException, JSONException {
