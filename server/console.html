@@ -110,6 +110,10 @@
   .pill.off{color:var(--fg3)}
   .time{font-size:12px;color:var(--fg3);margin-left:auto}
 
+  .filterbar{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;padding:10px 16px;margin-bottom:14px}
+  .filterbar label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2);cursor:pointer}
+  .item .acts{display:flex;align-items:center;gap:8px;margin-top:11px;flex-wrap:wrap}
+
   details.stack{margin-top:8px}
   details.stack summary{cursor:pointer;font-size:12px;color:var(--accent);outline:none}
   details.stack pre{margin:8px 0 0;padding:11px;background:var(--bg);border:1px solid var(--line);
@@ -175,8 +179,22 @@
     <div id="ann-list"></div>
   </section>
 
-  <section id="tab-fb" hidden><div id="fb-list"></div></section>
-  <section id="tab-crash" hidden><div id="crash-list"></div></section>
+  <section id="tab-fb" hidden>
+    <div class="filterbar panel">
+      <label class="chk"><input type="checkbox" id="fb-pending" checked> 只看未处理</label>
+      <span class="hint" id="fb-hint"></span>
+      <span class="hint">「标记已处理」只是后台的阅读状态：不删数据、不影响客户端。</span>
+    </div>
+    <div id="fb-list"></div>
+  </section>
+  <section id="tab-crash" hidden>
+    <div class="filterbar panel">
+      <label class="chk"><input type="checkbox" id="crash-pending" checked> 只看未处理</label>
+      <span class="hint" id="crash-hint"></span>
+      <span class="hint">「标记已处理」只是后台的阅读状态：不删数据、不影响客户端。</span>
+    </div>
+    <div id="crash-list"></div>
+  </section>
 </main>
 
 <div id="toast"></div>
@@ -239,8 +257,8 @@ function renderCards(d) {
   }).join("");
   $("updated").textContent = "数据截至 " + ts(d.server_time);
   $("c-ann").textContent = d.announcements;
-  $("c-fb").textContent = d.feedback;
-  $("c-crash").textContent = d.crash;
+  $("c-fb").textContent = d.feedback_pending + "/" + d.feedback;
+  $("c-crash").textContent = d.crash_pending + "/" + d.crash;
 }
 function renderChart(daily) {
   var host = $("chart");
@@ -371,12 +389,27 @@ $("compose").addEventListener("submit", async function (ev) {
 
 /* ---------------- 反馈 / 崩溃 ---------------- */
 var CATEGORY_LABEL = { bug: "BUG", suggestion: "建议", content: "内容", performance: "性能", other: "其他" };
+function handledPill(h) {
+  return '<span class="pill ' + (h ? "off" : "on") + '">' + (h ? "已处理" : "待处理") + "</span>";
+}
+function handledAction(kind, r) {
+  return '<button class="btn mini" data-act="handled" data-kind="' + esc(kind) + '" data-id="' + esc(r.id)
+    + '" data-val="' + (r.handled ? 0 : 1) + '">' + (r.handled ? "重新打开" : "标记已处理") + "</button>";
+}
+function filterHint(el, label, shown) {
+  $(el).textContent = label + " · 显示 " + shown + " 条";
+}
 async function loadFeedback() {
-  var res = await api("/admin/api/feedback?limit=200");
+  var onlyPending = $("fb-pending").checked;
+  var res = await api("/admin/api/feedback?limit=200" + (onlyPending ? "&pending=1" : ""));
   if (!res) return;
   var rows = res.data || [];
   var host = $("fb-list");
-  if (!rows.length) { host.innerHTML = '<p class="empty">还没有反馈</p>'; return; }
+  filterHint("fb-hint", onlyPending ? "只看未处理" : "全部", rows.length);
+  if (!rows.length) {
+    host.innerHTML = '<p class="empty">' + (onlyPending ? "没有未处理的反馈" : "还没有反馈") + "</p>";
+    return;
+  }
   host.innerHTML = rows.map(function (r) {
     var cat = CATEGORY_LABEL[r.category] || r.category || "其他";
     var meta = [];
@@ -384,32 +417,60 @@ async function loadFeedback() {
     if (r.mid) meta.push("账号 mid：" + r.mid);
     meta.push((r.version_name || "?") + " / " + (r.brand || "?") + " " + (r.device || ""));
     return '<div class="item"><div class="top"><span class="tag ' + esc(r.category) + '">' + esc(cat) + "</span>"
+      + handledPill(r.handled)
       + '<span class="tag">#' + esc(r.id) + "</span>"
       + '<span class="time">' + ts(r.ctime) + "</span></div>"
       + '<div class="content">' + esc(r.content) + "</div>"
-      + '<div class="meta">' + esc(meta.join("　·　")) + "</div></div>";
+      + '<div class="meta">' + esc(meta.join("　·　")) + "</div>"
+      + '<div class="acts">' + handledAction("feedback", r) + "</div></div>";
   }).join("");
 }
 async function loadCrash() {
-  var res = await api("/admin/api/crash?limit=100");
+  var onlyPending = $("crash-pending").checked;
+  var res = await api("/admin/api/crash?limit=100" + (onlyPending ? "&pending=1" : ""));
   if (!res) return;
   var rows = res.data || [];
   var host = $("crash-list");
-  if (!rows.length) { host.innerHTML = '<p class="empty">还没有崩溃报告</p>'; return; }
+  filterHint("crash-hint", onlyPending ? "只看未处理" : "全部", rows.length);
+  if (!rows.length) {
+    host.innerHTML = '<p class="empty">' + (onlyPending ? "没有未处理的崩溃报告" : "还没有崩溃报告") + "</p>";
+    return;
+  }
   host.innerHTML = rows.map(function (r) {
     var ram = (r.ram_total ? Math.round(r.ram_total / 1048576) : "?") + "MB / "
       + (r.ram_avail ? Math.round(r.ram_avail / 1048576) : "?") + "MB";
     return '<div class="item"><div class="top"><span class="tag bug">' + esc(r.exception || "异常") + "</span>"
+      + handledPill(r.handled)
       + '<span class="tag">#' + esc(r.id) + "</span>"
       + '<span class="time">' + ts(r.ctime) + "</span></div>"
       + '<div class="content">' + esc(r.message) + "</div>"
       + '<div class="meta">' + esc((r.version_name || "?") + " / " + (r.brand || "") + " " + (r.device || "")
         + " " + (r.model || "") + "　·　SDK " + (r.sdk || "?") + "　·　内存 " + ram
         + "　·　线程 " + (r.thread || "?")) + "</div>"
+      + '<div class="acts">' + handledAction("crash", r) + "</div>"
       + (r.stack ? '<details class="stack"><summary>查看堆栈</summary><pre>' + esc(r.stack) + "</pre></details>" : "")
       + "</div>";
   }).join("");
 }
+async function setHandled(kind, id, handled) {
+  if (!await api("/admin/api/" + kind + "/handled", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: id, handled: handled })
+  })) return;
+  toast((handled ? "已标记为已处理 #" : "已重新打开 #") + id);
+  if (kind === "feedback") loadFeedback(); else loadCrash();
+  loadStats();
+}
+["fb", "crash"].forEach(function (kind) {
+  $(kind + "-list").addEventListener("click", function (ev) {
+    var btn = ev.target.closest ? ev.target.closest('button[data-act="handled"]') : null;
+    if (!btn) return;
+    setHandled(btn.dataset.kind, Number(btn.dataset.id), Number(btn.dataset.val) === 1);
+  });
+  $(kind + "-pending").addEventListener("change", function () {
+    if (kind === "fb") loadFeedback(); else loadCrash();
+  });
+});
 
 /* ---------------- 交互 ---------------- */
 document.querySelectorAll(".tabs button").forEach(function (btn) {

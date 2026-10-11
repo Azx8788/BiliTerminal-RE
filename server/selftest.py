@@ -3,6 +3,10 @@
 
 用法（在 server/ 目录下）：
     python selftest.py
+
+依赖 httpx（TestClient 需要）。服务器上没装、也不该为它动系统 python，用临时目录即可：
+    pip3 install --target=/tmp/selftest-deps httpx
+    PYTHONPATH=/tmp/selftest-deps python3 selftest.py
 """
 import os
 import sys
@@ -114,8 +118,45 @@ r = client.post("/terminal/upload/stack", json={"install_id": "selftest-install-
 check("崩溃 code=0 且有 id", r.json()["code"] == 0 and r.json().get("id"), r.text[:200])
 r = client.get("/admin/api/feedback")
 check("反馈列表能读到", r.json()["data"][0]["content"] == "本地自测反馈", r.json())
+fb_id = r.json()["data"][0]["id"]
+check("反馈默认未处理", r.json()["data"][0]["handled"] == 0, r.json())
 r = client.get("/admin/api/crash")
 check("崩溃列表能读到", r.json()["data"][0]["exception"].endswith("NullPointerException"), r.json())
+crash_id = r.json()["data"][0]["id"]
+check("崩溃默认未处理", r.json()["data"][0]["handled"] == 0, r.json())
+r = client.get("/admin/api/stats")
+d = r.json()["data"]
+check("待处理计数 = 1 / 1", d["feedback_pending"] == 1 and d["crash_pending"] == 1, d)
+
+print("== 9.1 已处理开关 ==")
+r = client.post("/admin/api/feedback/handled", json={"id": fb_id})
+check("反馈标记已处理 code=0", r.status_code == 200 and r.json()["code"] == 0, r.text[:200])
+r = client.get("/admin/api/feedback", params={"pending": 1})
+check("只看未处理 -> 空", r.json()["data"] == [], r.json())
+r = client.get("/admin/api/feedback")
+check("全部列表里 handled=1", r.json()["data"][0]["handled"] == 1, r.json())
+r = client.post("/admin/api/feedback/handled", json={"id": fb_id, "handled": False})
+check("重新打开 code=0", r.json()["code"] == 0, r.text[:200])
+r = client.get("/admin/api/feedback", params={"pending": 1})
+check("重新打开后回到未处理列表", len(r.json()["data"]) == 1, r.json())
+r = client.post("/admin/api/feedback/handled", json={"id": fb_id})
+check("再次标记已处理 code=0", r.json()["code"] == 0, r.text[:200])
+r = client.post("/admin/api/crash/handled", json={"id": crash_id})
+check("崩溃标记已处理 code=0", r.json()["code"] == 0, r.text[:200])
+r = client.get("/admin/api/crash", params={"pending": 1})
+check("崩溃只看未处理 -> 空", r.json()["data"] == [], r.json())
+r = client.get("/admin/api/stats")
+d = r.json()["data"]
+check("标记后待处理计数归零", d["feedback_pending"] == 0 and d["crash_pending"] == 0, d)
+r = client.post("/admin/api/crash/handled", json={"id": 999999})
+check("不存在的 id 404", r.status_code == 404, r.status_code)
+r = client.post("/admin/api/crash/handled", json={})
+check("缺 id 400", r.status_code == 400, r.status_code)
+r = client.post("/admin/api/crash/handled", data={"id": crash_id})
+check("表单 Content-Type 被拒 415", r.status_code == 415, r.status_code)
+anon = TestClient(api.app)
+r = anon.post("/admin/api/crash/handled", json={"id": crash_id})
+check("无凭据 403", r.status_code == 403, r.status_code)
 
 print("== 10. 退出 ==")
 r = client.get("/console/logout", follow_redirects=False)

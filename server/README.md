@@ -35,8 +35,10 @@
 | POST | `/console/login` | 表单提交口令，下发会话 Cookie |
 | GET | `/console/logout` | 清除会话 |
 | GET | `/admin/api/stats` | 看板指标 + 近 60 天活跃/新增 + 版本 / 品牌分布 |
-| GET | `/admin/api/feedback[?limit=]` | 反馈列表 |
-| GET | `/admin/api/crash[?limit=]` | 崩溃列表 |
+| GET | `/admin/api/feedback[?limit=&pending=1]` | 反馈列表，带 `handled`；`pending=1` 只给未处理的 |
+| GET | `/admin/api/crash[?limit=&pending=1]` | 崩溃列表，带 `handled`；`pending=1` 只给未处理的 |
+| POST | `/admin/api/feedback/handled` | 反馈标已处理 / 重新打开 `{id, handled?}` |
+| POST | `/admin/api/crash/handled` | 崩溃标已处理 / 重新打开 `{id, handled?}` |
 | GET | `/admin/api/announcements` | 公告列表（返回**内部 id**，要回传给 update/delete） |
 | POST | `/admin/api/announcement` | 发布公告 `{title, content, pinned}` |
 | POST | `/admin/api/announcement/update` | `{id, pinned?, active?}` |
@@ -113,6 +115,9 @@
   urlencoded / plain，因此必须先过 CORS 预检）。
 * **会话失效**：任何 `/admin/api/*` 返回 403 时前端直接 `location.reload()` 回登录页。
 * 旧口令路径（`/admin?token=…`、`X-Admin-Token`）**保留可用**，作为 WebUI 出问题时的兜底入口。
+* **反馈 / 崩溃的「已处理」**：列表默认只显示未处理（勾选框可切「全部」），每条带状态标签与
+  「标记已处理 / 重新打开」按钮，走 `POST /admin/api/{feedback,crash}/handled`。
+  它只是后台的阅读状态：不删数据、不影响客户端上报，页面上一并写了这句提示。
 
 前端里所有服务端文本都过 `esc()`，公告正文允许换行但绝不 `innerHTML` 原始串。
 
@@ -182,14 +187,19 @@ HTTP-01 直接能签。注意泛域名证书才需要 DNS-01，本方案是逐�
 ## 自测
 
 `selftest.py` 用临时 sqlite + 临时口令跑一遍登录、会话伪造、CSRF、公告增删改、
-遥测去重、反馈/崩溃入库等 39 项断言，**不会碰生产数据**：
+遥测去重、反馈/崩溃入库与「已处理」开关等 56 项断言，**不会碰生产数据**：
 
 ```bash
 cd /opt/rebiliterminal-api && python3 selftest.py
 ```
 
-它依赖 starlette 的测试客户端（`starlette.testclient`，starlette 1.x 需要 `pip install httpx2`）。
-生产服务器上没有装这个包，属正常 —— 服务器上请直接用 `curl` 打公网地址验证。
+它依赖 starlette 的测试客户端（`starlette.testclient` 需要 `httpx`）。生产服务器上没有装这个包，
+也不必为它动系统 python —— 装进临时目录即可：
+
+```bash
+pip3 install --target=/tmp/selftest-deps httpx
+PYTHONPATH=/tmp/selftest-deps python3 selftest.py     # 2026-10-11 实测：56 项全通过
+```
 
 ## 数据
 

@@ -408,6 +408,9 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   前端零外部依赖、手写内联 SVG 图表）、旧的 `GET /admin?token=<REBILITERMINAL_ADMIN_TOKEN>` 纯 HTML 看板、
   或 `X-Admin-Token` 头。**WebUI 的 CSRF 防线**是 `SameSite=strict` + 状态变更接口强制
   `Content-Type: application/json`（两道互相独立）。
+- 反馈 / 崩溃带「已处理」开关（26.10.11 加）：`GET /admin/api/feedback|crash[?pending=1]` 多回一个
+  `handled`，`POST /admin/api/{feedback,crash}/handled` ← `{id, handled?}`。
+  **它只是后台的阅读状态**——不删数据、不影响客户端上报（`handled` 列一直存在，此前无接口可改）。
 - 接口（成功一律 `code=0`，HTTP 恒 2xx）：
   - `GET /terminal/health`
   - `GET /terminal/announcement/get_list[?from=<id>]` → `{code:0,data:[{id,ctime,title,content}]}`。

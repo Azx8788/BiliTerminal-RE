@@ -19,6 +19,8 @@ RE:哔哩终端 自建后端（公告 / 匿名遥测 / 反馈 / 崩溃报告）�
   POST /console/login                     提交口令 -> 下发 HttpOnly 会话 Cookie
   GET  /console/logout                    清除会话
   GET  /admin/api/stats|feedback|crash    看板 JSON
+  POST /admin/api/feedback/handled        标记反馈已处理 / 重新打开 {id, handled?}
+  POST /admin/api/crash/handled           标记崩溃已处理 / 重新打开 {id, handled?}
   GET  /admin/api/announcements           公告列表（内部 id，不带偏移）
   POST /admin/api/announcement            发布公告 {title, content, pinned}
   POST /admin/api/announcement/update     置顶 / 停用 {id, pinned?, active?}
@@ -306,6 +308,30 @@ def _db_crash(row: tuple) -> int:
         return cur.lastrowid
     finally:
         conn.close()
+
+
+def _db_set_handled(table: str, row_id: int, handled: bool) -> bool:
+    """把 feedback / crash 的一条标成已处理（或重新打开），返回是否命中。
+
+    [table] 只允许调用方写死的 'feedback' / 'crash'，不接用户输入。
+    """
+    conn = connect()
+    try:
+        cur = conn.execute(
+            f"UPDATE {table} SET handled=? WHERE id=?", (1 if handled else 0, row_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _db_feedback_set_handled(fid: int, handled: bool) -> bool:
+    return _db_set_handled("feedback", fid, handled)
+
+
+def _db_crash_set_handled(cid: int, handled: bool) -> bool:
+    return _db_set_handled("crash", cid, handled)
 
 
 def _db_announcement_list(raw_from) -> list:
@@ -873,14 +899,17 @@ def admin_stats(request: Request, token: str | None = None) -> JSONResponse:
 
 
 @app.get("/admin/api/feedback")
-def admin_feedback(request: Request, token: str | None = None, limit: int = 200) -> JSONResponse:
+def admin_feedback(
+    request: Request, token: str | None = None, limit: int = 200, pending: int = 0
+) -> JSONResponse:
+    """反馈列表。[pending]=1 时只返回未处理的（WebUI 的「只看未处理」）。"""
     if not _check_token(request, token):
         return JSONResponse({"code": 403, "msg": "forbidden"}, status_code=403)
     conn = connect()
     try:
         rows = conn.execute(
-            "SELECT id, category, content, contact, mid, version_name, brand, device, ctime"
-            " FROM feedback ORDER BY id DESC LIMIT ?",
+            "SELECT id, category, content, contact, mid, version_name, brand, device, ctime, handled"
+            " FROM feedback" + (" WHERE handled=0" if pending else "") + " ORDER BY id DESC LIMIT ?",
             (max(1, min(limit, 1000)),),
         ).fetchall()
     finally:
@@ -889,19 +918,60 @@ def admin_feedback(request: Request, token: str | None = None, limit: int = 200)
 
 
 @app.get("/admin/api/crash")
-def admin_crash(request: Request, token: str | None = None, limit: int = 100) -> JSONResponse:
+def admin_crash(
+    request: Request, token: str | None = None, limit: int = 100, pending: int = 0
+) -> JSONResponse:
+    """崩溃列表。[pending]=1 时只返回未处理的。"""
     if not _check_token(request, token):
         return JSONResponse({"code": 403, "msg": "forbidden"}, status_code=403)
     conn = connect()
     try:
         rows = conn.execute(
             "SELECT id, exception, message, thread, stack, version_name, brand, device, model, sdk,"
-            " ram_total, ram_avail, uptime_sec, ctime FROM crash ORDER BY id DESC LIMIT ?",
+            " ram_total, ram_avail, uptime_sec, ctime, handled FROM crash"
+            + (" WHERE handled=0" if pending else "") + " ORDER BY id DESC LIMIT ?",
             (max(1, min(limit, 500)),),
         ).fetchall()
     finally:
         conn.close()
     return ok(data=[dict(r) for r in rows])
+
+
+# --- 反馈 / 崩溃的「已处理」开关 ------------------------------------------------ #
+#
+# 这两张表一直有 handled 列，但以前只有数据库层面能改：WebUI 没有按钮、也没有接口。
+# 关掉一条 = handled=1，只是后台的阅读状态，不影响客户端任何行为、也不删数据。
+
+@app.post("/admin/api/feedback/handled")
+async def admin_feedback_handled(request: Request) -> JSONResponse:
+    if not _check_token(request, None):
+        return JSONResponse({"code": 403, "msg": "forbidden"}, status_code=403)
+    if not _wants_json(request):
+        return JSONResponse({"code": 415, "msg": "content-type must be application/json"}, status_code=415)
+    data = await read_json(request)
+    fid = as_int(data.get("id"), 0)
+    if fid <= 0:
+        return JSONResponse({"code": 400, "msg": "id required"}, status_code=400)
+    handled = bool(data.get("handled", True))
+    if not await run_in_threadpool(_db_feedback_set_handled, fid, handled):
+        return JSONResponse({"code": 404, "msg": "反馈不存在"}, status_code=404)
+    return ok(handled=handled)
+
+
+@app.post("/admin/api/crash/handled")
+async def admin_crash_handled(request: Request) -> JSONResponse:
+    if not _check_token(request, None):
+        return JSONResponse({"code": 403, "msg": "forbidden"}, status_code=403)
+    if not _wants_json(request):
+        return JSONResponse({"code": 415, "msg": "content-type must be application/json"}, status_code=415)
+    data = await read_json(request)
+    cid = as_int(data.get("id"), 0)
+    if cid <= 0:
+        return JSONResponse({"code": 400, "msg": "id required"}, status_code=400)
+    handled = bool(data.get("handled", True))
+    if not await run_in_threadpool(_db_crash_set_handled, cid, handled):
+        return JSONResponse({"code": 404, "msg": "崩溃报告不存在"}, status_code=404)
+    return ok(handled=handled)
 
 
 # --- 公告管理（WebUI 用） ------------------------------------------------------ #
