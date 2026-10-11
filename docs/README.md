@@ -15,6 +15,7 @@
 | 补真机 / 联网联调 | [`review/device-test-plan.md`](review/device-test-plan.md) | T0–T15 + D0–D8，**88 条全部未执行**，是待执行计划 |
 | 写新功能 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能 backlog（含实测过的接口地址、判据与仍未落地项） |
 | 改播放器 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并 S1–S3 已完成，**S4/S5/S6 未做** |
+| 优化播放器弱网 / 直播 / 长视频 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 同类产品与官方做法调研（ijkplayer 选项语义、FLV vs HLS、Media3 参数）+ P0–P2 建议清单，**尚未实施** |
 | 改教程系统 | [`tutorial-system-redesign.md`](tutorial-system-redesign.md) | 重做进行中，旧链路未删完——**动之前先读它** |
 | 看用户能用到什么 | [`FEATURES.md`](FEATURES.md) | 用户视角功能总表（对应用户文档，不含实现细节） |
 | 查 B 站接口字段 | [`../bilibili-API/`](../bilibili-API/) | 上游接口文档快照（**注意上游已关停，见 `bilibili-api-notes.md` §1 的合规风险**） |
@@ -32,6 +33,7 @@
 | [`review/device-test-plan.md`](review/device-test-plan.md) | 待执行的真机/联网测试计划（T/D 两组） | 执行时勾选 |
 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能路线图 + 从各报告回迁的仍未落地项 | 排期 / 落地后 |
 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并设计与 S4/S5/S6 待做项 | 动播放器时 |
+| [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 播放器弱网 / 直播 / 长视频：同类产品与官方做法调研 + P0–P2 建议清单（§2.4 是本仓库 `.so` 的选项存在性实测） | 动播放器网络 / 缓冲参数时 |
 | [`tutorial-system-redesign.md`](tutorial-system-redesign.md) | 教程系统重做（含 §五 待办 4 项） | 动教程时 |
 | [`archive/README.md`](archive/README.md) | 归档索引：每份归档文档的内容与「为什么归档」 | 归档新文档时 |
 

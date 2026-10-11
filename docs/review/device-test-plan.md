@@ -94,7 +94,11 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 
 - 一台 Android 手表（圆形屏优先，本项目 `resConfigs 'zh'`、`screenOrientation="locked"`）
 - **至少一台 Android 14（API 34）设备** —— 前台服务类型强制校验是从 14 开始的，这是 F1 的最高风险点
-- 如果可以，另外准备一台 **Android 7~10（API 24~29）** —— 用于验 P34 那类"高版本平台 API 在低版本 `NoSuchMethodError`"
+- 如果可以，另外准备一台 **Android 4.4~10（API 19~29）** —— minSdk 已于 26.10.10 下调到 19（Android 4.4），
+  这台机器要同时验三类低版本问题：P34 那类"高版本平台 API 在低版本 `NoSuchMethodError`"、
+  minSdk 21 阶段为清 `java.util.function` / `Map.getOrDefault` 而改的写法、
+  以及降到 19 后又清掉的 API 21 调用点（`TextClock` 的 `TextView` 4 参构造、`Build.SUPPORTED_ABIS`、
+  `View.setBackgroundTintList`、`res/drawable-v21` 缺省兜底色——详见 T12 与 `docs/architecture-map.md` §1.1）
 - 手表上先装好正式版并**保持登录态**（很多用例依赖已登录；未登录时进度上报会被前置检查拦掉）
 
 > **待补**：手表型号与系统版本尚未确定。确定后回来把本节写实 —— T2（前台服务）与 T12（平台 API 兼容）的参数最依赖它。
@@ -183,7 +187,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
       & $adb shell dumpsys package com.RobinNotBad.BiliClient | Select-String -Pattern "READ_PHONE_STATE|ACCESS_WIFI_STATE|SYSTEM_ALERT_WINDOW"
       ```
       预期：**零命中**（这三条已在 D 组从主清单删除，`SYSTEM_ALERT_WINDOW` 只留在 debug 清单）
-- [ ] 保留项确认（**有意保留，不要报为多余**）：`REQUEST_INSTALL_PACKAGES`（应用内更新）、`READ_EXTERNAL_STORAGE`（minSdk 24 读已下载文件）
+- [ ] 保留项确认（**有意保留，不要报为多余**）：`REQUEST_INSTALL_PACKAGES`（应用内更新）、`READ_EXTERNAL_STORAGE`（minSdk 19 读已下载文件）
 
 ---
 
@@ -401,6 +405,11 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 | D3-8 | 直播：进一个**已下播/不存在**的直播间 | **30 秒内**给出失败提示，不无限转圈（`fetchLiveInfo` 已加 30s 超时） |
 | D3-9 | 直播：网络很慢时进直播间 | 30s 超时后返回失败，不 ANR |
 | D3-10 | 动态详情页 → 返回 / 直播间详情 → 返回 | 不崩溃（两页的 `onDestroy()` 覆写与 `leaveDetailPage()` 已删除） |
+| **D3-11** | 播放中**切到别的软件再回来**（§四十四 修的 bug#1） | 回来后**位置不往回跳**、画面正常恢复；连着切 5 次以上也不累积偏移。判据埋点：`adb logcat -s "PlayerActivity>onPrepared"`（消息里带「进度跳转」）；反例立刻反馈 |
+| **D3-12** | 播放中触发系统回收（开发者选项「不保留活动」或后台放足够久）后回来 | 回到**切走前的位置**（不是回到进入页面那一刻），且**不再弹**「已从上次的位置播放」。`adb logcat -s "PlayerActivity>onCreate" "PlayerActivity>onPrepared"` 能看到「恢复位置」+「进度跳转」 |
+| D3-13 | 直播：网络很差（限速 / 飞行模式开关一次）下持续观看 | 20s 无进展时能自动**切换线路**（toast「网络不佳，正在切换线路」）或原地重连后继续播；最多重试 3 次，之后提示「网络似乎已断开，可稍后手动重试」而不是永久黑屏。`adb logcat -s "PlayerActivity>checkStall" "PlayerActivity>switchLiveCandidate"` |
+| D3-14 | 直播：候选线路与 HLS 兜底 | `adb logcat -s "PlayerActivity>getExtras"` 里「直播候选」至少 1 条、含 `isHls` 的排在 FLV 之后；同一直播间多线路时「路线N」列表与候选顺序一致 |
+| D3-15 | 弱网下点播长视频（限速到 100KB/s 量级） | 卡住时 30s 内自行重建播放器并续播（不走 stall 看门狗则说明 `rw_timeout` 未生效，需反馈） |
 
 ### D4 下载与文件 ★数据安全
 
@@ -464,11 +473,28 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 
 ## 五、顺带复验（P2：不专门排时间，走到就测）
 
-### T12 平台 API 兼容（Android 7~10 设备）
+### T12 平台 API 兼容（Android 4.4~10 / API 19~29 设备）
+
+> **26.10.10 起 minSdk = 19（Android 4.4）**，本节的低版本范围从 API 24 一路拓宽到 **19**。
+> 清单与逐项结论见 `docs/architecture-map.md` §1.1；本机既没有 `emulator` 也没有 `system-images`，**只能靠真机补这一课**。
 
 - [ ] 打开**用户信息页**（`UserInfoApi` 路径，曾误用 `List.of`）
 - [ ] 打开任意**动态**（`DynamicApi` 路径）
-- 判定：不出现 `NoSuchMethodError: No static method of(...)`
+- [ ] 判定：不出现 `NoSuchMethodError: No static method of(...)`
+- [ ] **API 19~23 专属**：进入任意含 `TextClock` 的页面（全工程 43 个布局都有它，
+      它 4.4 上原本会因 `@JvmOverloads` 生成的主构造调 4 参 `TextView` 构造而直接崩）→ 判定：正常渲染
+- [ ] **API 19~23 专属**：进入任意列表页（走 `BaseActivity.kt:435` 的 `AsyncLayoutInflaterX.fadeIn`）后再返回，
+      判定：不出现 `NoSuchMethodError` / `NoClassDefFoundError: java.util.function.BooleanSupplier`
+- [ ] **API 19~23 专属**：触发一次会写 SharedPreferences 的操作（登录态刷新、设置项开关），
+      判定：不出现 `java.util.function.Consumer` 相关崩溃
+- [ ] **API 19~23 专属**：发一条评论或回复（`WriteReplyActivity.kt:177` 的 `msgMap` 取值路径）
+- [ ] **API 19~23 专属**：打开设置页各分组（图标走 `res/drawable-v21` 之外那份固定色兜底，
+      判定：图标颜色可接受、不出现 `Resources$NotFoundException`）
+- [ ] **API 19 专属**：崩溃上报一次（`CrashReporter` 取 ABI 走 `TerminalApi.firstAbi()`，
+      4.4 上没有 `Build.SUPPORTED_ABIS`，判定：不出现 `NoSuchFieldError` 且 ABI 字段非空）
+- [ ] **API 19~23 专属**：检查通知（`DownloadNotifier` / `MsgNotifier` / `PlaybackService` 的
+      `NotificationChannel` 分支都有 `SDK_INT >= O` 闸，判定：低版本不发通知但也不崩）
+- [ ] **API 19 专属**：进入播放页（`PlayerActivity` 的 `MediaSession` 有 `SDK_INT < LOLLIPOP` 早退）→ 判定：正常播放、不回退崩溃
 
 ### T13 播放失败重试与端点续播
 

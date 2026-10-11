@@ -19,14 +19,25 @@
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
 - **单测（静态计数）**：**49 个测试类 / 460 个用例**，对 395 个源文件。计数方式：`app/src/test/` 下 49 个 `*Test.kt|java`，`app/build/test-results/testDebugUnitTest/*.xml` 的 `<testcase>` 求和为 460。
-- **⚠️ 这是静态计数，不是本轮跑通的结果**：本机最近一次 test-results 时间戳为 `2026-10-09T12:24:26`，早于 26.10.10 补丁，属陈旧结果。发版前必须跑一次 `:app:testDebugUnitTest`（必要时 `--rerun-tasks`，防 build cache 回放）确认全绿。
+- **本轮已跑通**：26.10.10 的 `minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → `testDebugUnitTest`」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。单测 `app/build/test-results/testDebugUnitTest/*.xml` 汇总 **49 suites / 460 tests / 0 failures / 0 errors / 0 skipped**，最新 XML 时间 `2026-10-09T22:59:04`（晚于本轮 APK 出包时间 22:56:58，覆盖了本轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **用例数一律以机器产出为准**：读 `app/build/test-results/`，队友口述数字不进入文档。
 - **本轮紧急撤回**：「自动跳过片头片尾」处于**撤回状态**（26.10.10 用户明确要求，非缺陷）——设置入口已隐藏、运行期恒不生效，代码与存档保留。恢复清单 6 步见 §2.2 第一条与 §3.3 末尾。
+- **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
+  - **24 → 21**：代码侧清掉**四处** API 24 才有的调用：`util/AsyncLayoutInflaterX.java` 的 `java.util.function.BooleanSupplier` → 工程内 `CancelledChecker`；`util/SharedPreferencesUtil.java:167` 的 `java.util.function.Consumer` → 工程内 `EditorAction`；`activity/reply/WriteReplyActivity.kt:177` 的 `Map.getOrDefault` → `msgMap[k] ?: 默认值`；`util/VideoPreloadManager.kt:12` 的 `ConcurrentHashMap.newKeySet<Int>()` → `Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())`（**这一处是会真崩的**：类一初始化就 `NoSuchMethodError`，且已确认留在 release dex 里）。两个调用点（`activity/base/BaseActivity.kt:435`、`util/AccountManager.java:202`）走 SAM 转换，未改。
+  - **21 → 19**：依赖必须降两处——`androidx.appcompat:appcompat` 1.7.0 → **1.6.1**、`androidx.fragment:fragment-ktx` 1.8.0 → **1.6.2**（只有这两代 AAR 自己还声明 minSdk 14；1.7.0 / 1.8.0 声明的是 21，`checkReleaseAarMetadata` 会硬失败），并**恢复** `androidx.multidex:multidex:2.0.1` + `BiliTerminal.kt` 的 `attachBaseContext()` 里 `MultiDex.install(this)`——26.09.10 那次「minSdk 21 下是死代码」的删除被整体回滚。改回 21 时这三件事要一起撤。
+  - **21 → 19 又清掉一批 API 21 调用点**（按 `:app:lintRelease` 的 `NewApi`，`current min is 19`）：`Build.SUPPORTED_ABIS` 三处（**静态数组字段**，低版本一执行即 `NoSuchFieldError`，而它是 `Error`，`catch (Exception)` 兜不住）统一改走 `api/TerminalApi.java` 新增的 `firstAbi()` / `supportedAbis()`（`SDK_INT >= LOLLIPOP` 闸 + 回落 `Build.CPU_ABI`）；`ui/widget/TextClock.kt` 的 `@JvmOverloads` 主构造会经 4 参 `TextView` 构造（API 21），而全工程 **43 个布局**都 inflate 它 → 改成三个显式次构造；`activity/settings/TutorialManagerActivity.kt:195/199` 的 `View.setBackgroundTintList` → `ViewCompat.setBackgroundTintList`；7 个矢量图（`icon_announcement`/`icon_download`/`icon_home`/`icon_nav_dynamic`/`icon_nav_media`/`icon_nav_trending`/`icon_update`）的 `android:tint="?android:attr/…"`（pre-21 解析不了）→ `res/drawable/` 改固定色，**带 `?attr` 的正本原样挪到 `res/drawable-v21/`（两份必须一起改）**。
+  - **依赖侧一处真改动（24 → 21 阶段）**：`org.jsoup:jsoup:1.17.2` → **`1.16.1`**。1.16.2 起 jsoup 的 `StringUtil` 在**静态初始化块**里调 API 24 才有的 `ThreadLocal.withInitial(java.util.function.Supplier)`，而 `Jsoup.parse()` 必然用到它，minSdk 19/21 上会 `NoSuchMethodError`。**这不是推测**：把出包的 `classes.dex` 反汇编后确认 1.17.2 的 `withInitial` 就在 `<clinit>` 里，降到 1.16.1 后 dex 中 `java/util/function/` 与 `withInitial` 归零。**jsoup 不要再往上升**。
+  - **验证方式**：不只看源码，还把**出包的 `app-universal-release.apk` 的 `classes.dex` 反汇编**逐条归属到类（判据与工具坑见 `docs/architecture-map.md` §1.1 末尾）。定稿包的 dex 实测：`newKeySet` / `KeySetView` / `java/util/function/` / `withInitial` **全为 0**，`newSetFromMap` 为 1；残余 `java/util/stream/` 1 与 `java/time/` 2 已追溯到「只被带 `SDK_INT` 闸或 `@IgnoreJRERequirement` 重载调用」的位置。
+  - `:app:lintRelease` 另外两类输出**不改**：`InlinedApi`（常量已内联进字节码，旧系统只是忽略，如 `FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS` / `MotionEvent.AXIS_SCROLL`）与 `ObsoleteSdkInt`（现在恒真的 `SDK_INT` 分支）。`activity/player/PlayerActivity.kt:1981` 的 `MediaSession.Callback` 是 **lint 假阳性**——所在 `private fun initMediaSession()` 第一行就是 `if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return`。
+  - **只对 release 包负责**：`jvmTarget 17` 下 Kotlin 会给 21 个数据类的 `hashCode()` 生成 `java/lang/Long.hashCode(J)` 之类的 API 24 调用，release 里被 R8 全部消除（dex 零命中），**debug 包才有**。本分支只发 release，故不动；要发 debug 包必须先处理这一条。
+  - **完整兼容清单（含「再往下调会硬失败」的依赖下限、dex 级审计出的第三方库 API 24 引用与为什么可以不管）见 `docs/architecture-map.md` §1.1**，本文件不复述。
+
 
 ## 2. 未完成待办
 
 ### 2.1 真机未验证（无设备 / 无登录态）
 
+- [ ] **后台播放前台服务崩溃修复（§3.6）真机未复现**：代码已过两 flavor 构建 + 各 478 例单测，但未在低内存手表上跑过。触发用例：起后台播放后 5 秒内切回前台、快速进出播放页，反复若干次，观察是否再出 `RemoteServiceException: Context.startForegroundService() did not then call Service.startForeground()`。
 - [ ] **评论带图 12066**：`img_size` 小数截断是已确证的确定性缺陷，但**与 12066 的因果关系未建立**。
   - 12066 在本地快照与上游 collector 均无文档（`bilibili-API/docs/comment/action.md` 错误码表只到 12001-12052）。
   - 验证方法：真机在 `ReplyApi.sendReply` 失败分支打印**完整响应体**取回 `message` 原文。§二十九(第二处) / §36.5
@@ -41,6 +52,13 @@
   - 临时诊断埋点在 `activity/user/favorite/FavoriteVideoListActivity.kt` 的 `setupSortBar()` 末尾，倾向保留。§二十二 / §36.5
 - [ ] **关注分组移动成员未真机验证**：`FollowGroupAdapter.getUserOwnerGroup(position)` 的位置算术只做过静态复核。§三十六 / §36.5
 - [ ] **片头片尾跳过**：跳过逻辑本身（`player/ViewPointSkip.kt`）一行未动，行为改变全在默认值 / 引导判据上；真机清单第 199/200 条未跑（且 §四十三 已整体撤回）。§三十三 / §36.5
+- [ ] **内置播放器「切后台回来视频位置出错」代码已修，真机只跑到「未复现」**（26.10.11 用户报告；同日已在 vivo 手机上真机跑过，见下方「真机记录」——本机触发条件不成立，**不等于修复已被证实**）。
+  - 机制①（**已修**）：`activity/player/PlayerActivity.kt` 原本**没有** `onSaveInstanceState`/`onRestoreInstanceState`，Activity 被系统回收后重建只能回退到**进入页面那一刻**的 Intent `progress`（`:372` 读、`:3553-3560` `seekTo(progress_history)`）。现加状态保存/恢复（`STATE_POSITION` + `restoredFromSaveState`；恢复的那次不再弹「已从上次的位置播放」）。
+  - 机制②（**已修**）：`:2138` 的默认显示方式为 SurfaceView（`player_display` 默认 `SDK_INT < 26`，手表多为 API≥26），切后台回来 Surface 必被销毁重建 → `:2127-2133` 的 `onSurfaceReattached` 用**UI 进度条的值** `seekTo(seekbar_progress.progress)`；叠加 `enable-accurate-seek` 默认 0（不精确 seek）⇒ **每次回前台往回跳一个关键帧间隔**（数秒），反复切会累积。现改为 `seekTo(video_now)` 并加 `!isLiveMode` 守卫，点播开启 `enable-accurate-seek=1`；直播下该进度条恒为 0（`:1190` 只在非 live 分支赋值）的问题随之消失。
+  - **遗留未修**：链路页 `activity/video/JumpToPlayerActivity.kt` 的 `onCreate` 仍无 `savedInstanceState` 守卫，系统回收后会重新取流并再 `launch` 一次（不直接造成位置错，但会白跑一次取流）。
+  - 真机判据（埋点已在代码里，无需另加）：`adb logcat -s "PlayerActivity>onCreate" "PlayerActivity>onPrepared"` 应看到「恢复位置」+「进度跳转」；`PlayerActivity>checkStall` / `PlayerActivity>switchLiveCandidate` / `PlayerActivity>getExtras`（「直播候选」）对应看门狗与线路轮换。用例见 `docs/review/device-test-plan.md` D3-11~D3-15。
+  - **真机记录（26.10.11，设备 vivo `V2229A` / PD2229，Android 16 / SDK 36，arm64-v8a，1080×2520，序列号 `10AC9S2M4L000QL`）**：`adb` 深链 `bilibili://video/170001` → 详情页 → 播放 → 分 P → `PlayerActivity` 正常起播（画面 + 弹幕 + 进度文本，例 `00:12/03:19`）。① 熄屏再亮屏：`00:56 → 00:58`，无回跳；② 把详情页压到播放器之上再返回：无回跳。**但同样的两次操作在修复前的旧 release 包上也复现不出回跳**，说明这台手机上原始触发条件不成立——熄屏不销毁 SurfaceView 的 surface，按 HOME 切走后 vivo 会把任务冻结/回收（再回来落在首页而不是播放器）。⚠️ 装的都是 **release 包**，而 `Logu` 的开关默认只在 `BuildConfig.DEBUG` 打开（`BiliTerminal.kt:228-230`），所以本机 logcat 里**看不到任何 `PlayerActivity>` 埋点**——上面的 logcat 判据必须在 debug 包上执行。
+  - 调研与修法见 `docs/superpowers/specs/2026-10-11-player-network-resilience.md` P1-1 / P1-2。§四十四
 - [ ] **评论侧「长按双弹窗」未复现**（`res/layout/cell_reply_list.xml` 兄弟节点分析证明布局层面不可能）。§30.2 / §30.4
 - [ ] **`MANAGE_DEDUP_MS = 400L` 去重未真机验证**：`app/build.gradle` 只有 junit 与 org.json，**无 Robolectric**，`SystemClock` 无法进 JVM 单测。§30.3 / §30.4
 - [ ] **300×300 表盘上弹窗实际可点性未在真机确认**。§30.4
@@ -58,12 +76,20 @@
   - ③ 故意崩溃一次，崩溃页显示「报错ID」且服务端 `/admin/api/crash` 可见；
   - ④ 公告页在上游接口挂掉时仍能显示自建公告（反向也要成立）。§41.7
 - [ ] **隐私同意闸门未真机验证**（条目已补进回归清单第 228~231、236 条，**尚未执行**）：全新安装 / 清数据后首次启动必须弹一次；点「不同意」能正常进主界面且抓包无请求。§41.8
+- [ ] **minSdk 19 未在 API 19~23 上做过任何运行验证** —— 本机 `D:\Program Files\android-sdk` 下**既无 `emulator` 也无 `system-images`**，本轮 `minSdk 24 → 19` 的结论全部来自静态审计 + 依赖元数据 + lint + dex 反汇编，**没有真机/模拟器背书**。
+  - 需覆盖的真机用例已写进 `docs/review/device-test-plan.md`（§1.2 设备侧 + T12 平台 API 兼容）：任一含 `TextClock` 的页面（43 个布局里都有，4.4 上原本会因 4 参 `TextView` 构造直接崩）、列表页 `AsyncLayoutInflaterX.fadeIn`（`activity/base/BaseActivity.kt:435`）、任一写 SharedPreferences 的操作（登录态刷新 / 设置项开关）、发评论或回复（`activity/reply/WriteReplyActivity.kt:177`）、设置页各图标（验证 `res/drawable-v21` 之外的兜底色可接受）、通知（三处 `NotificationChannel` 均有 `SDK_INT >= O` 闸，预期低版本不弹且不崩）。
+  - 逐项静态结论与依赖下限见 `docs/architecture-map.md` §1.1。
 
 - [ ] **番剧界面补齐（§3.8）未真机验证**：季切 tab、两行选集卡片、追番按钮、全量选集弹窗、历史卡片一键续播、番剧心跳 5 秒 + 看完上报 -1 全部只过了编译 + JVM 单测。真机要看的：① 多季番能切到第二季/剧场版并出集；② 从别的季切回来回到这一季上次看的那一集；③ 一集播完后重进/从历史进来是接下一集而不是停在本集末尾；④ 历史里的番剧卡片点一下直接起播且位置对；⑤ 未登录点追番要提示，不能静默失败。
 
 ### 2.2 功能与工程待办
 
 - [ ] **「自动跳过片头片尾」处于撤回状态**，恢复清单 6 步未执行（撤回为 26.10.10 用户明确要求，非缺陷）。§3.3
+- [ ] **播放器弱网 / 直播：P0-1、P0-3、P1-1、P1-2、P2-1 与半个 P2-3 已实施，其余待办**（26.10.11 已过编译 + 两 flavor 各 478 个 JVM 单测全绿；真机只验证到「播放器能正常起播、回前台位置未复现回跳」，**看门狗/线路轮换未在真机触发**——release 包 `Logu` 默认关闭，需 debug 包 + 真实直播间）：
+  - 已实施：**P0-1** `activity/player/PlayerActivity.kt` 的 `setDisplay()` 给在线流加 `rw_timeout=10s` / `addrinfo_timeout=5s` / `reconnect_streamed=1` / `reconnect_delay_max=5s`；**P0-3** 新增 `checkStall()` 停滞看门狗（直播 20s / 点播 30s 不动就重试，直播切候选线路、点播原地重建；最多 3 次、冷却 15s、位置前进 5s 后复位）；**P1-1** 状态保存恢复；**P1-2** 重挂 Surface 改用 `video_now`；**P2-1** 删 `activity/video/ShortVideoPlayerActivity.kt` 里实测不存在的 `max_cached_duration`；**P2-3 的一半** 新增纯函数 `util/live/LiveStreamSelector.kt`（14 个单测），候选按「FLV 各线路 → HLS」排序，随 Intent `live_url_candidates` 交给播放器做运行时线路轮换。
+  - **未做**：P0-2 的「重连前重调 `getRoomPlayInfo` 拿新 URL」（现在只在已到手的候选里轮换，URL 过期后仍会失败）、P1-3 后台保活与音频焦点、P2-2 短视频激进参数复核、`PlayerActivity.kt:892` 的 `dns_cache_clear`（二手证据不足，未动）。
+  - **明确不采纳**：P0-4 提高直播默认清晰度（`util/TerminalContext.java:259` 写死 `qn=80`=流畅）——用户诉求是弱网可看，低码率是刻意保守；`reconnect_at_eof` 不开——点播正常播完会被当成 EOF 触发重连，有「永远播不完」的风险。
+  - 建议清单见 `docs/superpowers/specs/2026-10-11-player-network-resilience.md` §4；该文档 §2.4 附**本仓库 `.so` 的选项存在性实测**（`reconnect_on_network_error`、`max_cached_duration`、`http-detect-range-support` 均不存在）。§四十四
 - [ ] **26.10.05 那个已发布的 Release 说明没能补上**：本机无 `gh` CLI 也无 GitHub token，只能人工在网页端编辑，把 `update_log_current` 的 28 条粘进去。§40.5
 - [ ] **服务端没有告警渠道**：只有 systemd `Restart` + `health.log` 留痕（`*/10` 探活 cron 失败只追加一行，要真告警还得接通知渠道）。§42.9
 - [ ] **管理控制台只有口令登录**，没有 TOTP / IP 白名单；口令泄露 = 全部后台能力。§42.9
@@ -100,7 +126,7 @@
 
 **别再重复排查（已排除）**：WebView 白底闪屏**不存在**；菜单按钮 `MaterialButton` 默认 `minHeight=48dip` **已达标**；`ui/widget/recycler/` 与 `fragment_empty.xml`、`BiliTerminalApp.kt` 是**死代码**（不当在用组件排查）。**不做**：裸 `Activity` 收编（`PlayerActivity`/`ImageViewerActivity`/`SplashActivity`/`GetIntentActivity`）——播放器保持黑色系统栏是有意为之，且 `PlayerActivity.kt` 3000 行，收益不抵回归风险（理由已进 `docs/architecture-map.md` §8.7.3）。**可接受**：`CardStyle`/`ButtonStyle` 强制 `clickable+focusable`；间距/圆角 token 已建但布局未全量改用；同构布局重复；布局层静态色已清干净（`@color/(card_dark|pink|divider_dark|pink_light)` 在 `res/layout` 0 处）。
 
-## 3. 最新状态快照（26.10.09 ~ 26.10.10）
+## 3. 最新状态快照（26.10.09 ~ 26.10.11）
 
 ### 3.1 自建反馈 / 公告 / 匿名统计 / 崩溃上报（§四十一）
 
@@ -217,6 +243,77 @@
   - ⑤ `strings.xml` 的 `update_log_current` 追加一条恢复说明；
   - ⑥ 递增 versionCode / versionName 并按发版技能出包（tag 只能用未被 Release 占用过的新号）。
 
+### 3.4 播放器网络韧性：弱网卡死 / 切后台位置错（§四十四，26.10.11）
+
+- **用户原话**：「播放视频时切换别的软件再回来时视频位置会出错」+「弱网看直播惨不忍睹。。。」；先要求「你先找原因，不修复」，同日批准「来吧，开始修复」。
+- **根因**（完整证据链见 `docs/superpowers/specs/2026-10-11-player-network-resilience.md`）：① 主播放器 `setDisplay()` 的 IJK 选项**没有读超时**（`rw_timeout` 默认 0 = 读可永久阻塞且永不回调 `onError`），且 `reconnect=1` 对 chunked 直播无效（ffmpeg `http.c` 有 `is_streamed && !reconnect_streamed` 就 break 的判定）；② 直播取流三处硬取 `stream[0].format[0].codec[0]` = 永远 FLV 单长连接，HLS 拿回不用、线路不自动 failover；③ 没有任何「位置 N 秒不前进」看门狗（ijkplayer 自身也没有）；④ 切后台重建 Surface 时 `onSurfaceReattached` 用 **UI 进度条值** seek 且无 live 守卫，叠加 `enable-accurate-seek` 默认 0 ⇒ 每次回前台往回跳一个关键帧间隔；⑤ 全页没有 `onSaveInstanceState`，被系统回收后只能回到进页那一刻的 Intent `progress`。
+- **改动（26.10.11 一次落地；`assembleDebug` + 474 个 JVM 单测全绿）**：
+  - `activity/player/PlayerActivity.kt`：`setDisplay()` 给在线流加 `rw_timeout=10s` / `addrinfo_timeout=5s` / `reconnect_streamed=1` / `reconnect_delay_max=5s`，点播开 `enable-accurate-seek=1`；`onSurfaceReattached` 改为 seek 到 `video_now` 并加 `!isLiveMode`；新增 `onSaveInstanceState` + `STATE_POSITION` 恢复；新增停滞看门狗 `checkStall()`（直播 20s / 点播 30s 无进展即重试，直播轮换候选线路、点播原地重建，最多 3 次、冷却 15s）；`retryAfterPlayerError(resumePositionMs = video_now)` 加默认参数。
+  - 新增 `util/live/LiveStreamSelector.kt`（纯函数，14 单测）：候选按「FLV 各线路 → HLS」稳定排序（首个候选与旧行为一字不差）；`activity/live/LiveInfoActivity.kt` 三处改用它，候选经 Intent `live_url_candidates`（`model/PlayerData.java` 新增字段 + Parcel 读写）交给播放器做运行时线路轮换。
+  - 删 `activity/video/ShortVideoPlayerActivity.kt` 的 `max_cached_duration`（`.so` 实测不存在）；`player/VideoPlayerCore.kt` 的 `http-detect-range-support` 保留但标注为空转。
+- **明确不做**：`reconnect_at_eof`（点播正常播完会被当成 EOF 无限重连）、提高直播默认清晰度（`TerminalContext.java:259` 的 `qn=80`，弱网可看优先）、`dns_cache_clear` 与短视频激进参数（证据不足）。
+- **真机验证（26.10.11，vivo `V2229A` / Android 16）**：只装了 release 包（两 flavor 双包，见 §3.5），`adb shell am start` 深链进播放器正常起播；熄屏再亮屏与「详情页压上去再返回」两种回前台路径都**没有**位置回跳（`00:56 → 00:58`），但**修复前的旧 release 包同样复现不出回跳**（本机熄屏不销毁 surface、按 HOME 切走后任务被 vivo 回收），故此项属「未复现」而非「已证实修复」。**弱网看门狗未在真机触发**（未进直播间，且 release 包 `Logu` 默认关闭、无埋点日志可查）。
+- **未验证**：D3-13/D3-15（弱网看门狗、断网重连续播）需在**带埋点的 debug 包 + 真实直播间**上跑；真机用例见 `docs/review/device-test-plan.md` 的 D3-11~D3-15。
+
+### 3.5 共存版：product flavor 拆分（§四十五，26.10.11）
+
+- **用户原话**：「可不可以像mt管理器一样发两个版本，一个共存版本一个普通版本」；后续三问的答复：产物**保持旧文件名**（普通版由 CI 改名回 `app-<abi>-release.apk`，老客户端继续能收到更新）、外链**两版都响应**（系统弹选择框，接受）、共存版**只换图标**（用上游原图标 `.dsh/ref/Re-BiliTerminal/.../icon.png`，即 22/33 泡面碗那张；普通版保持现行纳西妲 `icon.webp`）；**后续用户追加要求：「名字不变」「桌面名和应用名字，两个版本都改为 RE:哔哩终端」**——即两版同名，中途试过的「哔哩终端共存版」命名已回退。
+- **实现**：`app/build.gradle` 加 `flavorDimensions 'channel'` + `standard` / `coexist`（`applicationIdSuffix ".coexist"`、`buildConfigField COEXIST`）；清单 FileProvider `android:authorities` 改 `${applicationId}.FileProvider`（**全仓库唯一硬编码包名**）；`app/src/coexist/res/` 只放一枚上游原图标 `mipmap-nodpi/icon.png`；**两版名称保持一致**（应用名与桌面名都是 `@string/app_name` = 「RE:哔哩终端」，`SplashActivity` 的 label 由字面量「哔哩终端」改回 `@string/app_name`——桌面显示的是启动 Activity 的 label，字面量会让两处名字不一致）；`util/UpdateRelease.kt` 的 `pickApkUrl` 加 `namePrefix` 参数 + `apkNamePrefix(BuildConfig.COEXIST)`，`util/UpdateManager.kt` 传参（+4 单测，含「只有普通版附件时必须返回 null」）。
+- **CI**：`build-release.yml` 单测任务改 `testStandardDebugUnitTest`，并在构建后新增「整理发行 APK」步骤把 `standard` 产物改名回历史名、`coexist` 产物原样搬进 `app/build/outputs/apk/release/`（**下游 MD5 / 附件 / 直链步骤一字未改**）；`ci.yml` 同步改任务名与报告路径。
+- **验证**：`assembleDebug`（两 flavor）+ `testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 全绿，各 **478 例 / 0 失败**；`aapt2 dump badging` 实测两包 `package` / `application-label` / 图标 / 启动 label 均正确区分。技术要点已进 `docs/architecture-map.md` §7.37，构建命令已进 `AGENTS.md`。
+- **更新兼容性（26.10.11 核实）**：① 老客户端（含已发布的 2610102）看的是历史附件名，CI 整理步骤保证一字未变，元数据格式也没动 → 照常收到更新；② 共存版附件名是 `app-coexist-<abi>-release.apk`，由 `UpdateRelease.apkNamePrefix(BuildConfig.COEXIST)` 选中，`UpdateReleaseTest` 锁了「只有普通版附件时必须返回 null」；③ 取不到自己的包时 `parseRelease` 抛 `IOException` → `doFetchUpdateConfig()` 自动往下一个源走（Gitee → GitHub），**不会静默装错包**；④ 双保险：安装前 `util/ApkVerifier.kt` 要求「包名一致 + 签名集合一致」，不符就删残片并提示「安装包包名不符」；⑤ 下载落在 `context.externalCacheDir/update/`（按包名隔离），FileProvider authority 用 `${applicationId}`。**唯一在本仓库无法核实的一环**：Gitee 中转服务（服务端不在本仓库）是否把 `app-coexist-*` 附件一并同步——没同步的话共存版会回落到 GitHub 源。
+- **取舍**：共存版数据（登录态 / 设置 / 缓存 / `/Android/media/<包名>/`）与普通版完全隔离，**要重新登录**；外链两版都注册，系统弹选择框。
+- **真机验证（26.10.11，vivo `V2229A` / Android 16 / arm64-v8a，全部成功）**：① 普通版 `adb install -r`（同 versionCode 2610102、同签名 SHA-256 `991386eb…`，实测与设备原装包签名一致）**覆盖升级并保留登录态**，启动后推荐流正常；② 共存版全新安装 → 停在扫码登录页（**数据隔离成立**），两包进程可同时在跑（pid 7500 / 7776），均无 `FATAL EXCEPTION`；③ `aapt2 dump badging` + 从 release 包内导出图标核对：普通版图标 `res/fe.webp`（纳西妲）、共存版 `res/yP.png`（上游 22/33 泡面碗），两包 `application-label` / 启动 label 都是「RE:哔哩终端」（**同名要求成立**）；④ 外链 `https://www.bilibili.com/video/...` 会弹「使用哔哩终端打开」选择框（两版都能接，即用户接受的取舍）。
+- **未验证**：共存版自更新（需下一次发版产出 `app-coexist-*` 附件）；Gitee 中转服务是否同步共存版附件（服务端不在本仓库）。
+
+### 3.6 线上崩溃：PlaybackService 前台服务 5 秒义务未兑现（§四十六，26.10.11）
+
+- **用户原话**：贴出线上崩溃报告 + 「修复报错」。报告原文：
+  `android.app.RemoteServiceException: Context.startForegroundService() did not then call Service.startForeground(): ServiceRecord{2662445 u0 com.RobinNotBad.BiliClient/.service.PlaybackService}`，
+  栈只有 `ActivityThread$H.handleMessage(:1821)` → `Handler.dispatchMessage(106)` → `Looper.loop(193)` → `ActivityThread.main(7083)`（系统发给主线程的强制崩溃，没有业务栈）。
+  设备：`26.10.10 / BiDeZhi uws6152_1h10_go CD_Watch_A · SDK 28 · 内存 3906MB / 2591MB · 线程 main`，时间 2026-10-11 11:14。
+- **根因（两条，都在 `service/PlaybackService.kt`，均已修）**：
+  1. **主因 — `stop()` 与 `start()` 的竞态把尚未兑现的义务作废**。`PlayerActivity.onPause:2016` 调 `PlaybackService.start()`（`startForegroundService`），
+     `onResume:2024` / `onDestroy:2055` 调 `PlaybackService.stop()`（`stopService`），二者在时间上紧挨。而**创建服务是异步的**——
+     线上机型可用内存只剩 2591MB、创建服务本来就慢，若 `stopService` 抢在 `onCreate`/`onStartCommand` 之前到达，
+     这次 `startForegroundService()` 留下的义务就**永远无人兑现**，5 秒后系统直接崩主线程。
+     对应 Google issue 300134171（用户明明选了停止服务，仍收到 `ForegroundServiceDidNotStartInTimeException`）。
+  2. **次因 — `startUpdateTimer()` 原先放在 `onCreate()`**（上游 Java 版放在 `onStartCommand` 的 `startForeground` 之后）：
+     `onCreate` 与 `onStartCommand` 是主线程上**两条独立消息**，主线程被占满时，Timer 会在 1 秒后先 `stopSelf()`、
+     抢在 `startForeground` 之前，义务同样作废。
+- **已排除的触发路径（本次只读核实）**：① 旋转重建 Activity —— `AndroidManifest.xml:179` 的 `PlayerActivity` 带
+  `android:configChanges="orientation|screenSize|keyboardHidden"`，旋转不重建，只会走 `onConfigurationChanged`；
+  ② `onPause` 里主线程被网络阻塞 —— `PlayerActivity.kt:1412 reportProgressNow()` 非阻塞，网络丢进 `CenterThreadPool.run { }`。
+- **改动（`app/src/main/java/com/RobinNotBad/BiliClient/service/PlaybackService.kt`，本轮新增两条顺序铁律）**：
+  - 新增进程级 `@Volatile foregrounded` / `@Volatile stopPending` 两个标志；`stop()` 里 `playerRef = null` 后先判
+    `!foregrounded` → 只置 `stopPending = true` 并 return，**不发 `stopService`**；`start()` 每次复位 `stopPending`（避免新启动被上一轮的停止请求误伤）。
+  - `onCreate()` 末尾新增 `if (!enterForeground()) stopSelf()`；`onStartCommand()` 先 `enterForeground()`（失败即 `stopSelf` + `START_NOT_STICKY`），
+    再消费 `stopPending`（`stopSelf`），**之后**才 `startUpdateTimer()`——即「先进场、再停止」。
+  - 抽出 `enterForeground(): Boolean`：`buildNotification()` 抛异常时退到新增的 `buildFallbackNotification()`（只有图标 + 标题，**不含 `PendingIntent`**，
+    因为组装失败点常在 `packageManager.getLaunchIntentForPackage`），保证任何时候都能先把义务兑现；`startForeground` 再抛才返回 false。
+  - `startUpdateTimer()` 改为 `if (timer != null) return`（不再 cancel 重建）；`onDestroy()` 复位 `foregrounded` / `stopPending`。
+- **文档同步**：`docs/architecture-map.md` §7.5 里原来那句「`onStartCommand` 第一行必须 `startForeground`」已升级为
+  「`onCreate` 也要进前台 + 进前台前禁止 `stopService` + `enterForeground()` 返回 false 必须 `stopSelf()`」四条，并写明线上出处。
+- **验证（26.10.11，本机补跑，全部通过）**：`:app:assembleDebug` 两 flavor 全成功；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` **各 50 类 / 478 例 / 0 失败 0 错误**（与 §3.5 基线一致）；额外用 `:app:compileCoexistDebugKotlin --rerun` 强制重编 coexist 主源码通过（只有工程既有的 deprecation / unchecked cast 警告，无本文件相关告警），并核对两 flavor 的 `app/build/tmp/kotlin-classes/<flavor>Debug/.../PlaybackService.class` 均含 `enterForeground` / `stopPending` / `buildFallbackNotification`。
+  > 起因：初次构建时 coexist 侧报 `compileCoexistDebugKotlin UP-TO-DATE`（源码明明改过），故补一次 `--rerun` 排除构建缓存回放。
+- **未验证（真机）**：低内存手表上「起后台播放后 5 秒内切回前台」「快速进出播放页」反复若干次，确认不再出现 `RemoteServiceException`。本机无该机型（线上是 `BiDeZhi uws6152_1h10_go CD_Watch_A` / SDK 28）。
+
+### 3.6 弹幕「一抖一抖」：时钟基准错位（§四十六，26.10.11）
+
+- **报告**：User said (m01538)「这个弹幕总是一抖一抖的有办法修吗」。上一版修复是提交 `f1ec31a`「停止每 250ms 硬拨弹幕时钟」（2026-10-03，已在装机包里），说明「不要每次都 `timer.update`」这一层已经做了，但抖动仍在。
+- **根因（真机取证，不是推断）**：弹幕时钟与视频位置**不同步的不是容差，而是基准**。
+  - DFM 的 `DanmakuTimer` 自走；`DanmakuFlameMaster/src/main/java/master/flame/danmaku/controller/DrawHandler.java` 的 `syncTimer()`（`:431-476`）每帧按 `gapTime = (SystemClock.uptimeMillis() - mTimeBase) - timer.currMillisecond` 把时钟**拉回墙钟基准**，`gapTime > 2000` 时直接整段硬跳（`:448`）。
+  - `mTimeBase` 只在 `PREPARE` / `RESUME` / `SEEK_POS` 里写；`DanmakuTimer.update(pos)` **改不到它**。所以「我们拉回 pos → DFM 下一帧又追回旧基准」会反复发生。
+  - 实测（standard release 包 + 临时埋点，VOD `av170001`）：`updateTimer=192 次/2s、resync=84 次/2s、drift=[-1803, 0] ms`；从片尾点 `button_video` 重播后仍是 `resync=1 次/2s、drift=[-199244, 0] ms`（DFM 时钟还带着上一轮 ~199 秒的基准，每轮被整段硬跳拉回）。**约 42 次/秒的硬校正在肉眼上就是一抖一抖。**
+- **改动**：
+  - `app/src/main/java/com/RobinNotBad/BiliClient/player/DanmakuManager.kt`：`updateTimer` 回调**不再动时钟**（既不 `timer.update(pos)`，也不再在这个渲染线程上读播放位置），只留注释说明为什么——校正必须重设基准，而 `seekTo` 是唯一会 `mTimeBase -= deltaMs` 的入口（`DrawHandler` `SEEK_POS` 分支 `:222-234`）。构造函数里那个「返回当前播放位置的 lambda」随之删除（它是上一版的产物，现已无用）。
+  - `app/src/main/java/com/RobinNotBad/BiliClient/activity/player/PlayerActivity.kt`：对齐改到**主线程** `progressChange()` 的 250ms 循环里，用纯函数 `player/DanmakuSync.kt`（`TOLERANCE_MS = 400L`，>250ms 采样间隔）判定 `video_now` 与 `mDanmakuView.currentTime`，命中才 `mDanmakuView.seekTo(video_now)`（同时重设 `mTimeBase`，属于"一次性对齐、之后自走"）；`onPrepared` 起播时把弹幕时钟锚到 `resumeTarget`（0 也锚），消除起播缓冲造成的固定偏移。
+  - 判据保留：`progressChange` 的对齐只在 `isPrepared && isPlaying && !isSeeking && !destroyed` 内执行，且 `(hasDanmaku || isLiveMode)` 才做（直播的弹幕视图走 `prepareEmpty()`，`hasDanmaku` 可能为 false）。
+- **未采纳**：把 `TOLERANCE_MS` 调大或彻底删掉校正。前者只是降低触发频率（偏差仍会累积成一次可见跳），后者会让缓冲/解码漂移永久残留。
+- **真机验证方法学（踩过的坑，留给下次）**：这台 vivo 的 logcat 通道时有时无——`Log.d` 一律抓不到，`Log.e`/`Log.i` 间歇可见；同一台设备的 `adb install` 常返回 `INSTALL_FAILED_ABORTED: User rejected permissions`，必须在「安全守护提示您」弹窗点「继续安装」（`[432,2209][648,2272]`）。采样点必须是**播放中段**：`videoprogress`（`[0,2223][1080,2283]`）用 `input tap`/`swipe` 点不动，靠播放到片尾后点 `button_video`（`[492,2283][588,2394]`）重播来拿到"从 0 开始"的窗口。
+- **验证（本机构建/单测）**：`:app:assembleDebug` + `:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` **各 52 类 / 493 例 / 0 失败 0 错误**（用例数较 §3.4/§3.5 的 478 多出的部分来自同一工作区里并行的番剧剧集状态改动，与本次弹幕改动无关）；`DanmakuSync` 语义未改，`DanmakuSyncTest` 保持全绿。
+- **未验证（真机）**：修复后「抖动是否消失」需要用户在自己的使用场景里确认（本机测试期间设备被用户占用，只完成了机制取证与代码落地）。
+
 ### 3.8 番剧界面补齐：对齐 Re-BiliTerminal（26.10.11，未真机验证）
 
 起因：与 `cyq114514/Re-BiliTerminal`（基于 BiliClient 2.9.8）逐文件对比番剧界面，按用户 26.10.11 的拍板只补 **A 番剧详情页 UI + C 进度线 + D 历史卡片续播**，**明确不做** B（进详情页自动查历史定位上次观看）与 E（实验室诊断页）。每批一个 commit，均跑 `:app:assembleDebug` + `:app:testStandardDebugUnitTest` 后提交。
@@ -282,6 +379,10 @@
 | 四十一 | 26.10.09：自建反馈界面 + 自建公告源 + 匿名统计 / 崩溃自动上报（新功能） | `server/` 全栈 + `api/TerminalApi.java` + `util/TelemetryReporter.kt` / `CrashReporter.kt` / `CrashTrail.kt` + `activity/FeedbackActivity.kt` + 隐私文案改写 + §41.8 隐私再同意闸门（`PRIVACY_CONSENT_VERSION` / `PRIVACY_PROMPTED_VERSION` / `TerminalDialog.choice`） | 已闭环（明细回归清单待补） |
 | 四十二 | 26.10.09：管理控制台 WebUI（遥测 / 反馈 / 崩溃 / 公告四合一）+ 服务端并发加固 | `server/console.html` 零依赖单文件、`run_in_threadpool` + `synchronous=NORMAL`、无状态签名 Cookie + 双 CSRF 防线、`console.zsapp.asia` vhost / 证书、`backup.sh` + 探活、selftest 39 项 | 部分遗留（无告警渠道、无 TOTP/IP 白名单、无浏览器回归） |
 | 四十三 | 26.10.10 补丁：紧急撤回「自动跳过片头片尾」（2610102） | `SkipOpEdPrefs.FEATURE_ENABLED = false` + `isEnabled()`、四处落点、`SkipOpEdPrefsTest` +3 例、tag `26.10.10.1` | 部分遗留（处于撤回状态，恢复清单 6 步未执行） |
+| 四十四 | 26.10.11：播放器网络韧性（弱网卡死 / 直播线路 / 切后台位置错） | `PlayerActivity.kt` 加读超时与重连选项 + 停滞看门狗 + `onSaveInstanceState` + 重挂 Surface 改 seek `video_now`；新增 `util/live/LiveStreamSelector.kt`（+14 单测）与 `LiveInfoActivity.kt` 接线、`PlayerData.liveUrlCandidates`；删 `max_cached_duration` | 部分遗留（真机只跑到「位置未复现回跳」；看门狗未真机触发；P0-2 重取 URL、P1-3 后台保活未做） |
+| 四十五 | 26.10.11：共存版 product flavor（普通版 + 共存版双包） | `standard` / `coexist` flavor、FileProvider authority 去硬编码、`app/src/coexist/res/mipmap-nodpi/icon.png` 图标覆盖（两版同名 RE:哔哩终端，靠图标区分）、`UpdateRelease.pickApkUrl(namePrefix)`（+4 单测）、`build-release.yml` 整理发行 APK 步骤 | 已闭环（真机双包共存 + 数据隔离 + 同名 + 图标已验；共存版自更新待下次发版） |
+| 四十六 | 26.10.11：弹幕「一抖一抖」——时钟基准错位 | `player/DanmakuManager.kt` 的 `updateTimer` 不再 `timer.update(pos)`（删掉位置回调参数）；对齐改到主线程 `PlayerActivity.progressChange()` + `DanmakuSync` 判定 + `mDanmakuView.seekTo(video_now)`（`SEEK_POS` 会重设 `mTimeBase`）；`onPrepared` 起播锚定；短视频播放器同样处理 | 真机取证已完成（42 次/秒硬校正、偏差最大 199s）；修复后待用户实机确认 |
+| 四十六 | 26.10.11：线上崩溃 `PlaybackService` 5 秒义务未兑现（`RemoteServiceException`） | 根因 = `onPause` 的 `startForegroundService` 与 `onResume`/`onDestroy` 的 `stopService` 竞态（低内存手表上服务创建慢，`stopService` 先到 → 义务作废 → 5 秒后崩主线程）+ `startUpdateTimer()` 误放 `onCreate`；修法 = `foregrounded`/`stopPending` 两标志 + `onCreate` 就 `enterForeground()` + 兜底通知 + 定时器移到进场之后 | 已过构建与单测（两 flavor 各 478 例全绿）；真机未复现 |
 
 ## 5. 仍待回迁 / 仅见于归档的长期结论
 

@@ -66,12 +66,15 @@
 ## 构建
 
 ```bash
-./gradlew.bat :app:assembleDebug      # 编译验证（无 CI，以此为准）
-./gradlew.bat :app:testDebugUnitTest  # 纯 JVM 单测
-./gradlew.bat :app:assembleRelease    # 正式包（R8 + ABI 分包）
+./gradlew.bat :app:assembleDebug                 # 编译验证（无 CI，以此为准；两个 flavor 都编）
+./gradlew.bat :app:testStandardDebugUnitTest     # 纯 JVM 单测（普通版）
+./gradlew.bat :app:testCoexistDebugUnitTest      # 纯 JVM 单测（共存版，同源码）
+./gradlew.bat :app:assembleRelease               # 正式包（R8 + ABI 分包，两个 flavor 都出）
 ```
 
-多模块 `:app` / `:ijkplayer-java` / `:DanmakuFlameMaster` / `:brotlij`（后三个别乱动）。Gradle 8.11.1、AGP 8.5.2、Kotlin 2.0.0、JDK 17、minSdk 24 / compileSdk 34、`resConfigs 'zh'`。
+**单测任务名带 flavor 前缀**（26.10.11 起引入 `standard` / `coexist` 两个 product flavor，见 `docs/architecture-map.md` §7.37）：`testDebugUnitTest` **已不存在**，写成它 Gradle 直接报任务找不到。产物也按 flavor 分目录：`app/build/outputs/apk/<flavor>/<buildType>/app-<flavor>-<abi>-<buildType>.apk`（发布附件里普通版会被 CI 改名回历史名 `app-<abi>-release.apk`，共存版是 `app-coexist-<abi>-release.apk`）。
+
+多模块 `:app` / `:ijkplayer-java` / `:DanmakuFlameMaster` / `:brotlij`（后三个别乱动）。Gradle 8.11.1、AGP 8.5.2、Kotlin 2.0.0、JDK 17、minSdk 19 / compileSdk 34、`resConfigs 'zh'`。降 minSdk 时必须先看 `docs/architecture-map.md` §1.1 的兼容清单（依赖版本下限、`Build.SUPPORTED_ABIS`、`res/drawable-v21` 双份资源等）。
 
 **Release 说明必须包含完整的本次更新说明，不许省略**：发布说明里要有 `strings.xml` 中 `update_log_current` 的全部条目（去掉 `<item>` 标签、保留「【YY.MM.DD 本次更新】」标题与编号）。**只留 `### APK 校验值（MD5）` 与 `<!-- update: … -->` 机器元数据不算合格**，拿 GitHub 自动生成的「Full Changelog」commits 摘要顶替也不算。这条已由 `build-release.yml` 保证：手工触发用输入的 `release_body`，**推 tag 时 `inputs.*` 恒空，改由 `.github/scripts/extract_update_log.py` 从 `update_log_current` 自动抽取**，抽不到就 `::error::` + 退出 1、拒绝发版（26.10.05 曾因没有这道兜底而漏掉说明）。**别把这段逻辑改回「只取 `inputs.release_body`」**。发完仍要回读 Release 正文确认条数对得上。
 
@@ -110,7 +113,7 @@
 - `BaseActivity.kt:282` 用 `if (this !is InstanceActivity) setTopbarExit()` 做**向下判断**——任何「让 `RefreshMainActivity` 继承 `RefreshListActivity`」的方案都会把顶栏行为从「打开菜单」变成「点击即返回」。
 - **`cell_video_list` / `cell_dynamic_video` 的 id 是跨包事实协议**：改 id 会同时打破 `PrivateMsgAdapter`、`DynamicHolder`、`NoticeHolder`、`OpusContentAdapter`。
 - **`notifyItemRangeInserted` 的起点由 adapter 的 `getItemCount()` 决定，`+1` 多数是"头部占位"**：`ReplyAdapter` / `UserDynamicAdapter` / 系列详情内部 adapter 的 `getItemCount()` 都是 `data.size + 1`，通知起点要 `sizeBefore + 1`；而 `VideoCardAdapter` / `ArticleCardAdapter` / `LiveCardAdapter` 无头部、起点就是 `sizeBefore`。**看到 `+1` 先读 `getItemCount()` 再判越界**（26.10.04 批次 3 修掉 4 处真 bug，详见 `docs/architecture-map.md` §7.9）。
-- **崩溃页跑在 `:error_activity` 独立进程**（26.10.04 起）：`CatchActivity` 不经过 `PerformanceManager.init` / `ErrorCatch.init` / 未读轮询 / 更新检查，加依赖前先确认它不需要这些初始化；判进程用 `BiliTerminal.currentProcessName()`（读 `/proc/self/cmdline`，`minSdk 24` 用不了 API 28 的 `Application.getProcessName()`）。
+- **崩溃页跑在 `:error_activity` 独立进程**（26.10.04 起）：`CatchActivity` 不经过 `PerformanceManager.init` / `ErrorCatch.init` / 未读轮询 / 更新检查，加依赖前先确认它不需要这些初始化；判进程用 `BiliTerminal.currentProcessName()`（读 `/proc/self/cmdline`，`minSdk 19` 用不了 API 28 的 `Application.getProcessName()`）。
 - **设备档位参数一律从 `PerformanceManager` 取**（图片质量/宽度、分页大小）：`GlideUtil` 里的 `QUALITY_*` / `MAX_W_*` 四个常量已于 26.10.04 删除，**不要在任何调用点重新写死**，否则又变回"两处真相"（详见 `docs/architecture-map.md` §7.10）。
 - **任何"把 APK 交给系统安装器"的路径都必须先过 `ApkVerifier.verify(context, apkFile)`**（26.10.04 批次 4 新增）：现有两条链路（`UpdateManager.downloadApk`→`installApk`、`DownloadActivity.installApk`）都已接线；下载链路上校验失败要**删掉残片**，否则下次 `Range` 续传会把它当成"已下载一部分"。判定为「包名一致 且 签名集合一致」，**读不到签名一律失败关闭**（详见 `docs/architecture-map.md` §7.11）。
 - **私信发图（`msg_type=2`）的 content 有硬格式**（26.10.04 批次 5 新增）：`url` 必须是 B 站图床地址（否则 21037「图片格式不合法，不要调戏接口啦」），`width`/`height` 必带（缺了接口不报错、客户端显示异常），`size` 单位是 **KB**。组装一律走纯函数 `PrivateMsgApi.buildImageContent(...)`，别手拼 JSON（详见 `docs/architecture-map.md` §7.14）。

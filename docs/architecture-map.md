@@ -47,7 +47,129 @@ ksp { arg("room.schemaLocation", ...) }                                     // �
 
 **改功能时的影响**：新代码直接加到 `api/` + `activity/`，沿用静态方法 + `org.json` 风格；`network/api/`、`di/`、`ui/*` 这些空壳目录已删除，别再往里加东西。
 
-> **26.09.10 已清理**：`androidx.multidex:multidex:2.0.1` 依赖、`BiliTerminal.java` / `BiliTerminalApp.kt` 里的 `MultiDex.install(this)` 与对应的 `attachBaseContext` 覆写已删除——`minSdk 24` 下 ART 原生支持 multidex，`MultiDex.install()` 在 API 21+ 首行即返回，是纯死代码。（`multiDexEnabled true` 保留未动，minSdk ≥ 21 下本就无副作用。）
+> **26.09.10 曾清理过 multidex**：那时 `androidx.multidex:multidex:2.0.1` 依赖、`MultiDex.install(this)` 与
+> `attachBaseContext` 覆写都被删掉了，理由是 `minSdk 21` 下 ART 原生支持 multidex。
+> **26.10.10 降到 19 之后这段清理被整体回滚**（19 及以下 ART 还不支持原生多 dex），见下一条。
+
+> **minSdk 24 → 21 → 19（Android 4.4）已落地**（26.10.10 下调，最终停在 **19**）：`app/build.gradle:21` 是唯一落点。
+> 依赖侧必须降两处——`androidx.appcompat:appcompat` 1.7.0 → **1.6.1**、`androidx.fragment:fragment-ktx` 1.8.0 → **1.6.2**
+> （只有这两代 AAR 自己还声明 minSdk 14；1.7.0 / 1.8.0 声明的是 21），并恢复
+> `androidx.multidex:multidex:2.0.1` + `BiliTerminal.kt` 里 `override fun attachBaseContext()` 中的
+> `MultiDex.install(this)`。改回 21 时这三件事要一起撤掉。
+> 代码侧除了 minSdk 21 阶段清掉的 API 24 调用，又清了一批 API 21 调用点，全部列在下面 §1.1。
+> `multiDexEnabled true` 保留未动。
+
+### 1.1 minSdk 19（Android 4.4）兼容清单（26.10.10 落定，改代码前核对）
+
+`minSdk` 从 24 一路降到 19，要照顾的是 API 19 / 20 / 21 / 22 / 23 五个区间。
+**下表里标「已清除」的都是本轮真改过的代码**；标「不会踩」的是核实过的。逐项结论：
+
+| 会踩的东西 | 何时才有 | 现状 |
+| --- | --- | --- |
+| `java.util.function.*`（`BooleanSupplier` / `Consumer` / `Supplier` …） | API 24 | **已清除**：`util/AsyncLayoutInflaterX.java` 改用工程内 `CancelledChecker`、`util/SharedPreferencesUtil.java` 改用 `EditorAction`（两个调用点 `activity/base/BaseActivity.kt:435`、`util/AccountManager.java:202` 走 SAM 转换，未改） |
+| `java.util.Map.getOrDefault` 等默认方法（`putIfAbsent` / `computeIfAbsent` / `removeIf` / `List.sort`） | API 24 | **已清除**：`activity/reply/WriteReplyActivity.kt:177` 改成 `msgMap[k] ?: 默认值`。注意 `util/Cookies.java:41` 的 `getOrDefault(String, String)` 是**工程自定义方法**（内部就是 `cookieMap.get` + 判空），与平台默认方法无关，改它反而会坏事 |
+| `java.util.Optional` / `java.util.stream.*` / `java.time.*` / `CompletableFuture` / `LongAdder` / `ThreadLocal.withInitial` | API 24 / 26 | **工程源码全库零命中**（已 grep `app/src/main` 的 `.kt` + `.java`）。`util/TimeUtil.kt:37` 留了一条「别用 `ThreadLocal.withInitial`」的注释——保持这个状态。**但第三方库里有**，见下面「依赖里的 API 24 引用（dex 级审计）」 |
+| `java.util.concurrent.ConcurrentHashMap.newKeySet()`（及它返回的 `KeySetView`） | API 24 | **已清除**：`util/VideoPreloadManager.kt:12` 原用 `newKeySet<Int>()` 做「在飞预加载」去重集合，类一初始化就 `NoSuchMethodError`（已确认穿过 R8 留在 release dex 里）。改成 `java.util.Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())`（API 9，并发语义等价） |
+| Kotlin 对 `Int` / `Long` 等基本类型属性的**装箱 `hashCode()`**（`java/lang/Long.hashCode(J)I` 这类静态重载） | API 24 | 不会在 release 踩：`jvmTarget = '17'` 下 Kotlin 生成这些调用，但 R8 在 release 里已全部消除（实测 `classes.dex` 零命中）。**只有出 debug 包时才有风险**（21 个数据类的 `hashCode()`），真进 `HashMap`/`HashSet`/`distinct()`/`groupBy()` 才会炸；发 release 不用管 |
+| **`Build.SUPPORTED_ABIS`** | **API 21** | **已清除**：它是静态**数组字段**（不是内联常量），低版本一执行 `getstatic` 就 `NoSuchFieldError`，而它是 `Error`、`catch (Exception e)` 兜不住。三处调用点统一改走 `api/TerminalApi.java` 新增的 `firstAbi()` / `supportedAbis()`（内部有 `SDK_INT >= LOLLIPOP` 闸，低版本回落 API 1 就有的 `Build.CPU_ABI`）：`util/CrashReporter.kt:71`、`api/TerminalApi.java` 的 `ping()`、`util/UpdateManager.kt:160`。定稿包 `classes.dex` 里 `SUPPORTED_ABIS` 只剩 **1 处**引用，落在 D8 生成的 `$$ExternalSyntheticApiModelOutline` 桶类的静态方法里，唯一调用点就在那个 `SDK_INT` 闸内 |
+| **`android.widget.TextView(Context, AttributeSet, int, int)`（4 参构造）** | **API 21** | **已清除**：`ui/widget/TextClock.kt` 原来是 `@JvmOverloads constructor(context, attrs, defStyleAttr, defStyleRes) : TextView(context, attrs, defStyleAttr, defStyleRes)`——`@JvmOverloads` 自动生成的 **2 参构造**（就是 `LayoutInflater` 反射调的那个）方法体里调的正是 4 参构造。而全工程有 **43 个布局**写着 `<com.RobinNotBad.BiliClient.ui.widget.TextClock>`，4.4 上一解析就崩。改成三个显式次构造（1 / 2 / 3 参），只碰 API 1 就存在的重载 |
+| **`View.setBackgroundTintList`** | **API 21** | **已清除**：`activity/settings/TutorialManagerActivity.kt:195` 与 `:199` 改成 `ViewCompat.setBackgroundTintList(...)`（附注：`statusBadge` 本身没设 `background`，所以 pre-21 下这个方法是个 no-op，不会崩；观感与 21+ 一致） |
+| **XML drawable 里的主题引用（`android:tint="?android:attr/..."`）** | **API 21** | **已清除**：7 个矢量图（`icon_announcement` / `icon_download` / `icon_home` / `icon_nav_dynamic` / `icon_nav_media` / `icon_nav_trending` / `icon_update`）在 `res/drawable/` 里的版本改用固定色 `@color/text_primary`（原 `?android:attr/colorForeground`）/ `@color/text_secondary`（原 `?android:attr/textColorSecondary`），**带 `?android:attr` 的正本原样挪到 `res/drawable-v21/`**——API 21+ 的观感与改动前完全一致。**两份文件必须一起改**，`res/drawable/` 那份里留了指针注释 |
+| `android.app.NotificationChannel` | API 26 | 不会踩：三处都有 `if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)` 闸——`service/PlaybackService.kt:90`、`util/MsgNotifier.kt:156`、`service/download/DownloadNotifier.kt:39` |
+| `PendingIntent.FLAG_IMMUTABLE` | 常量 API 23 才有 | 不会踩：编译期常量直接内联，旧系统只是忽略该位 |
+| `java.util.Objects.requireNonNull` | API 19 | 安全，`api/*.java` 里大量在用 |
+| 矢量图 `VectorDrawable` | 原生支持要 API 21 | 安全：全库**没有** `android:background="@drawable/<矢量>"`，矢量只出现在 `android:src` / `android:drawableStart`，消费方是 AppCompat 控件，pre-21 由 AppCompat 接管 |
+
+**验证方式**：`./gradlew.bat :app:lintRelease --no-configuration-cache`（lint 会按 `current min is 19` 逐条报
+`NewApi`）。**26.10.10 定稿实测：全量 1181 issue 里 `NewApi` 从 22 条降到 2 条**，这 2 条就是下面说的
+`PlayerActivity.kt:1981` 假阳性（`InlinedApi` 3 条、`ObsoleteSdkInt` 14 条均未变）。除上表外，lint 还有两类**不需要改**的输出：
+`InlinedApi`（`FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS`、`MotionEvent.AXIS_SCROLL` 等常量已内联进字节码，旧系统只是忽略）与
+`ObsoleteSdkInt`（现在恒真的 `SDK_INT` 分支）。
+另外 `activity/player/PlayerActivity.kt:1981` 的 `MediaSession.Callback` 是 **lint 假阳性**——它所在的
+`private fun initMediaSession()` 第一行就是 `if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return`，
+lint 不做跨语句/跨方法的控制流跟踪。
+
+**依赖下限（再往下调会硬失败）**：下限来自 **AAR 自己声明的 `minSdkVersion`**（`checkReleaseAarMetadata` +
+清单合并会硬失败），实测值（读缓存 AAR 内的 `AndroidManifest.xml`）：
+
+| 依赖 | 当前版本 → minSdk | 可降到 | 备注 |
+| --- | --- | --- | --- |
+| `androidx.appcompat:appcompat` | 1.7.0 → **21** | 1.6.1 → **14** | 1.6.1 的 `minCompileSdk` 是 33 |
+| `androidx.fragment:fragment(-ktx)` | 1.8.0 → **21** | 1.6.2 → **14** | 同上 |
+| `androidx.core:core(-ktx)` | 1.13.1 → **19** | ≤1.9.0 才到 14 | |
+| `androidx.activity:activity(-ktx)` | 1.9.0 → **19** | ≤1.2.0 才到 14 | |
+| `com.google.android.material:material` | 1.12.0 → **19** | ≤1.5.0 才到 14 | |
+| `androidx.recyclerview:recyclerview` | 1.3.2 → **14** | — | |
+
+结论：**降到 19（Android 4.4）在依赖层是通的，且已落地**——`appcompat` 1.7.0→1.6.1、`fragment(-ktx)` 1.8.0→1.6.2，
+外加恢复 `androidx.multidex:multidex:2.0.1` + `MultiDex.install()`（19 下 ART 还不支持多 dex）。
+`:app:clean` → `:app:assembleRelease` 在 minSdk 19 下 **BUILD SUCCESSFUL**（2m13s），四个包 `aapt2 dump badging` 都是
+`minSdkVersion:'19'` / `targetSdkVersion:'34'`（体积：universal **12,564,796 B**、x86 6,777,240 B、arm64-v8a 6,673,074 B、
+armeabi-v7a 6,225,574 B），说明 release 全量依赖里没有别的东西要求 >19。
+**再往下到 14（Android 4.0）就不通了**：`core 1.13.1` / `activity 1.9.0` / `material 1.12.0` 三族本身就是 19，
+得一并降级；且自家代码还要补 API 21 的调用点（见本表上面几行），成本远高于收益。
+（对照：上游 2.9.7 时代的 `app/build.gradle` 是 `minSdk 14` + `compileSdk 33` + `targetSdk 26` + Java 9 且**不挂 Kotlin 插件**，
+那套能到 14 是因为代码本身就是老纯 Java 工程，不是靠换依赖清单实现的。）
+
+**为什么不能把上游 2.9.7 的依赖清单直接搬过来**（有人问过，记下来省得重复论证）：
+
+1. **那份脚本不挂 Kotlin 插件**，而本工程 `app/src/main` 有 260 个 `.kt`、135 个 `.java`。直接换 = 所有 Kotlin 类不参与编译，
+   Java 侧引用 Kotlin 对象（`Logu`、`CenterThreadPool` …）全部找不到符号。
+2. **它没有本工程必需的东西**：`kotlinx-coroutines-android`（36 处 `import kotlinx.coroutines`、24 处 `StateFlow`）、
+   `core-ktx`（17）、`activity-ktx`（23，含 27 处 `registerForActivityResult`）、`fragment-ktx`（16）、`lifecycle-*`（7）、
+   `recyclerview`（122）、`viewpager2`（4）。
+3. **okhttp 3.12.1 与 4.12.0 是源码级不兼容**：工程里 46 处 Kotlin 写的是 OkHttp 4 的 Kotlin 属性语法
+   `response.body!!` / `response.body?.string()`；3.12.1 是纯 Java 的 `body()` 方法，Kotlin 下 `response.body` 直接不解析。
+4. **它会退掉工程级配置**：`compileSdk 33`（`material 1.12.0` 要求 34，`checkReleaseAarMetadata` 直接失败）、
+   `targetSdk 26`（通知渠道 / 前台服务类型 / 分区存储等适配全部回退）、`abiFilters 'mips'`（NDK 早已删除 mips，
+   且会丢掉 `arm64-v8a`）、`sourceSets exclude '**/GeetestUtil.java'`（本工程根本没这个文件）。
+   那份脚本的 `signingConfigs` 里还引用了未定义的 `pro` 变量，**照抄会直接配置失败**。
+5. **它会加回已确认零引用的依赖**：`androidx.asynclayoutinflater`（工程另有一个自研 `util/AsyncLayoutInflaterX.java`，
+   只依赖 `androidx.core`/`androidx.appcompat`，不依赖它）、`androidx.multidex`、`org.brotli:dec` + `brotli4j`
+   （由 `:brotlij` 模块 `api fileTree('libs')` 自带）。`protobuf-javalite` 也**不需要**：
+   `com.RobinNotBad.BiliClient.model.DmSegMobileReply` 与 `util/ProtobufParser.java` 是手写的 protobuf wire-format 解析
+   （`Cursor` + `readVarint`），`com.google.protobuf` 在 `app/src/main` 与 `:DanmakuFlameMaster`（64 个源文件）里都是 0 命中。
+
+**依赖里的 API 24 引用（dex 级审计，26.10.10 必须知道）**：源码干净不等于包干净。把 `app-universal-release.apk` 的 `classes.dex`
+用 `dexdump -d` 反汇编后逐条归属到类，结论：
+
+- **`org.jsoup:jsoup` 必须钉在 `1.16.1`**（`app/build.gradle` 的依赖块）。`1.16.2` 起 `org.jsoup.internal.StringUtil`
+  的**静态初始化块**就会调 `ThreadLocal.withInitial(java.util.function.Supplier)`，那两者都是 API 24 才有；而 `StringUtil`
+  被 `Jsoup.parse()` 必然用到，于是 Android 4.4/5.0/5.1/6.0 上一解析 HTML 就 `NoSuchMethodError`。工程里 jsoup 调用点只有两处：
+  `api/CookieRefreshApi.java:64` 的 `Jsoup.parse(response.body().string())` 与 `util/StringUtil.java:164` 的
+  `Jsoup.parse(html).text()`。降到 `1.16.1` 后 dex 里 `java/util/function/` 与 `withInitial` **双双归零**（实测；1.15.4 / 1.16.1 都没有该调用，
+  1.16.2 才有）。1.16.1 里残留的 `java.util.function.Consumer` 只出现在已废弃的
+  `Node.forEachNode(Consumer)` 之类**方法签名**上，工程从不调用，ART 不会在类加载时解析方法参数类型。
+  安全上不吃亏：`CVE-2026-71497`（jsoup 的 `Cleaner` + 自定义 `Safelist` 才可触发的 XSS）影响
+  `>= 1.14.3 且 < 1.23.1`，**1.17.2 与 1.16.1 同样在受影响区间内**，降级没有引入新问题；本工程只用
+  `Jsoup.parse(...).text()` / `.select()`，从不碰 `Cleaner` / `Safelist`，该 CVE 不适用。
+- 残余的 API 24+ 引用只剩三个来源，**都不会在 API 19~23 上执行**，因此不动：
+  okhttp 的 `java.time.Duration` / `Instant` 重载（`OkHttpClient$Builder.xxxTimeout(Duration)`、
+  `Headers$Builder.add/set(String, Instant)`、`Headers.getInstant`——工程调的全是 `(long, TimeUnit)` 版本）；
+  AndroidX 的 `AccessibilityNodeInfoCompat$Api34Impl`（`SDK_INT >= 34` 闸）；
+  `androidx.emoji2` 的 `UnprecomputeTextOnModificationSpannable.chars()/codePoints()`（是对 `CharSequence` 的 Java 8 默认方法的**重写**，
+  API < 24 的 `CharSequence` 上根本没有这两个方法，没人会调到）。
+- R8 产物里 `C1.h` / `N.g` 这种啥都沾一点的「桶」不是业务代码：用 `app/build/outputs/mapping/release/mapping.txt`
+  反查可得它们是 **D8 生成的 `$$ExternalSyntheticApiModelOutline*`**，本身就是为老系统的类验证安全而生的。
+- 复现方式：解压 APK 取 `classes.dex` → `build-tools/36.0.0/dexdump -d` → 扫 `Ljava/util/function/`、`withInitial`、`Ljava/util/stream/`；
+  再用 mapping.txt 把混淆名反查回原名。
+- **26.10.10 定稿包的原始串计数**（universal，**只有 1 个 `classes.dex`，3,722,236 B——R8 后方法数没过 64K，`classes2.dex` 不存在**，
+  所以 multidex 库对 release 只是给 debug / 未来增长兜底）：`java/util/function/` **0**、`withInitial` **0**、`newKeySet` **0**、
+  `KeySetView` **0**、`java/util/Optional` **0**、`java/util/Base64` **0**、`hashCode(J)` **0**、`SUPPORTED_ABIS` **1**；
+  `java/util/stream/` **1**、`java/time/` **2**——后三者都已在上面的归属清单里解释清楚（闸内 / 仅签名 / `@IgnoreJRERequirement` 重载）。
+- **判据（别被扫描结果吓到）**：Dalvik/ART 上，一个不存在的类**只出现在签名/常量池里**（参数类型、返回类型、字段类型、覆写一个当时还不存在的方法）
+  **不会崩**；真会崩的只有三种——invoke 一个 owner 存在于当时但没有的成员（`NoSuchMethodError`）、实例化/解析一个不存在的类
+  （`NoClassDefFoundError`）、以及 lambda 脱糖出的合成类**所实现的接口**不存在。所以「dex 里引用了 API 24 类型」**不等于**「会崩」。
+- **扫描工具要按完整描述符做键**：只按成员名去键会把重载系统性误报（`Objects.requireNonNull` 取到 `(Object,Supplier)` 报 24、
+  `Context.getSystemService` 取到 `(Class)` 报 23、`Map.remove` 取到 `(Object,Object)` 报 24、`View.setFocusable` 取到 `(int)` 报 26），
+  一次能刷出 400+ 条假警报。按描述符复核后，app 自己字节码里 since>21 的成员只剩个位数。
+
+**TLS 不受影响**：`util/NetWorkUtil.java:160 setOkHttpSsl()` 已收敛成无条件返回传入的 builder（历史 trust-all 分支整体删除），
+所以下调 minSdk **不会**重新激活中间人风险——这正是当初删它的原因。
+
+**没做的事**：本机 `D:\Program Files\android-sdk` 下没有 `emulator`、没有 `system-images`，
+**没有在 API 19~23 的设备/模拟器上做过运行验证**，以上全部是静态审计 + 依赖元数据 + `dexdump` 反汇编结论。
+真机验证清单见 `docs/review/device-test-plan.md` 的 T12。
 
 ---
 
@@ -87,7 +209,7 @@ SplashActivity（LAUNCHER，typewriter 动画）
 
 **改功能注意**：
 - `BiliTerminal.onCreate()` 里所有初始化都包在 `if (context == null)` 内——**多进程/重复创建时只会跑一次**。新增全局初始化要放在这个块里，否则可能被跳过。
-- **`CatchActivity` 跑在 `:error_activity` 独立进程**（26.10.04 批次 3，`AndroidManifest.xml` 的 `android:process`）。主进程已崩溃时，同进程再启 Activity 容易被一起带走，所以崩溃页必须自给自足：它**不会**经过 `PerformanceManager.init`、`ErrorCatch.init`、未读轮询、更新检查。往 `CatchActivity` 加依赖前先确认那个依赖不要求这些初始化。判进程用 `BiliTerminal.currentProcessName()`（读 `/proc/self/cmdline`——`minSdk 24` 用不了 API 28 的 `Application.getProcessName()`）。
+- **`CatchActivity` 跑在 `:error_activity` 独立进程**（26.10.04 批次 3，`AndroidManifest.xml` 的 `android:process`）。主进程已崩溃时，同进程再启 Activity 容易被一起带走，所以崩溃页必须自给自足：它**不会**经过 `PerformanceManager.init`、`ErrorCatch.init`、未读轮询、更新检查。往 `CatchActivity` 加依赖前先确认那个依赖不要求这些初始化。判进程用 `BiliTerminal.currentProcessName()`（读 `/proc/self/cmdline`——`minSdk 19` 用不了 API 28 的 `Application.getProcessName()`）。
 - 首屏由**用户自定义菜单顺序**决定，不是硬编码 `RecommendActivity`。改导航时注意 `loadMenuEnabled()`。
 - `onActivityPreCreated` 的强制更新拦截会 **finish 掉任意 Activity**，调试时若被"莫名其妙踢到更新页"，检查 `force_update_required` 这个 SharedPreferences 键。
 
@@ -209,7 +331,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 ### 5.3 线程约定
 
 `CenterThreadPool`（`util/CenterThreadPool.java`）：
-- `run(Runnable)` → 实际走 `Dispatchers.IO` 协程（`Build.VERSION.SDK_INT < 17` 的原生线程池分支在 minSdk 24 下**永不执行**，是死代码）。
+- `run(Runnable)` → 实际走 `Dispatchers.IO` 协程（`Build.VERSION.SDK_INT < 17` 的原生线程池分支在 minSdk 19 下**永不执行**，是死代码）。
 - `supplyAsyncWithLiveData(Callable<T>)` → `LiveData<Result<T>>`，失败自动 `MsgUtil.err(e)`。
 - `observe(Future<T>, Consumer<T>)` → 自动切主线程。
 - `runOnUiThread(Runnable)` → `Handler(Looper.getMainLooper()).post`。
@@ -418,7 +540,15 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 普通播放器与短视频的弹幕栈是两套（前者内联，后者走 `DanmakuManager`），统一它们是合并两个播放器时**风险最低、收益最高的第一步**，但要先解决上面第 1 条的并发约束。
 
-3. **`DanmakuManager` 的位置回调在"播放器未就绪/正在重建"时必须返回负数**。`updateTimer` 跑在 `DanmakuView` 的渲染线程上，与主线程重建 `IjkMediaPlayer` 的动作并发；`IjkMediaPlayer` 的 native 层不是线程安全的，窗口期读到的脏位置一旦灌进 `DanmakuTimer`，**整批弹幕会被判定为"已过期"而一条都不显示**，且因为是竞态所以**间歇性**出现（26.09.10 真实踩过：合并弹幕栈时删掉了原 `if (ijkPlayer != null && isPrepared)` 守卫，导致"普通视频弹幕间歇性消失"）。对应的两个 `isPrepared` 字段也因此加了 `@Volatile`。
+**26.10.11 起的网络韧性与状态恢复（§四十四，明细见 `docs/review/fix-progress.md` §3.4）**：
+
+- `PlayerActivity.setDisplay()` 的在线流选项现在含 `rw_timeout=10s` / `addrinfo_timeout=5s` / `reconnect_streamed=1` / `reconnect_delay_max=5s`（点播另开 `enable-accurate-seek=1`）。**别把 `rw_timeout` 当可选项删掉**：默认 0 = 读操作可永久阻塞且永不回 `onError`，弱网黑屏的直接原因就是它；`reconnect=1` 单独对 chunked 直播无效（ffmpeg `http.c` 有 `is_streamed && !reconnect_streamed` 就 break 的判定）。
+- 新增 `util/live/LiveStreamSelector.kt`（**纯函数 + 14 个 JVM 单测**，放 `util/live/` 而不是 `player/`，因为后者不是公共层）：把「直播取流」从三层硬取 `stream[0].format[0].codec[0]` 改成按「FLV 各线路 → HLS」稳定排序的候选列表；`activity/live/LiveInfoActivity.kt` 三处消费它，候选经 Intent `live_url_candidates`（`model/PlayerData.java` 新增字段 + Parcel）交给 `PlayerActivity` 做运行时线路轮换。
+- `PlayerActivity` 新增停滞看门狗 `checkStall()`：挂在 `progressChange()` 的 250ms 循环里判「位置是否 N 秒不前进」，直播 20s / 点播 30s 触发重试（直播换候选线路、点播原地 `retryAfterPlayerError()`），最多 3 次、冷却 15s。`retryAfterPlayerError(resumePositionMs)` 有默认参数，旧调用点无需改动。
+- 位置恢复现在有三条入口：`onSaveInstanceState`/`STATE_POSITION`（系统回收后重建）、`onSurfaceReattached` 的 `seekTo(video_now)`（切后台回来 Surface 重建）、`onPrepared()` 的 `resumeTarget`。**三处的共同前提是「seek 目标取 `video_now` 或存档值，绝不取 `seekbar_progress.progress`」**——旧写法在直播下该值恒为 0，等于每次回前台把直播 seek 回起点。
+
+3. **（26.10.11 起口径已变）弹幕时钟的对齐只能在主线程用 `IDanmakuView.seekTo(pos)` 做，不能在 `updateTimer` 回调里 `DanmakuTimer.update(pos)`**。原因：`DanmakuTimer` 由 DFM 自走，`DrawHandler.syncTimer()`（`DanmakuFlameMaster/src/main/java/master/flame/danmaku/controller/DrawHandler.java:431-476`）每帧按 `gapTime = (SystemClock.uptimeMillis() - mTimeBase) - timer.currMillisecond` 把时钟拉回**墙钟基准**（`gapTime > 2000` 时整段硬跳，`:448`），而 `mTimeBase` 只在 `PREPARE`/`RESUME`/`SEEK_POS` 里写 —— `timer.update()` 改不到它，于是「拉回 → 下一帧又被拽回」高频反复（真机实测 2 秒 84 次、片尾/重播场景偏差 199 秒），肉眼就是弹幕「一抖一抖」。`seekTo` 走 `SEEK_POS` 分支并 `mTimeBase -= deltaMs`，才算真正对齐；判定用纯函数 `player/DanmakuSync.kt`（容差 400ms）。落地在 `PlayerActivity.progressChange()`（250ms 主线程循环）与 `ShortVideoPlayerActivity` 的进度观察处，起播时各自在 `onPrepared` 锚一次。`DanmakuManager` 的构造函数因此**不再接收「返回播放位置」的 lambda**，其 `updateTimer` 回调是**刻意空实现**（注释里写明原因）。
+   - 仍然成立的那半条：**绝不能在 `DanmakuView` 的渲染线程上读 `IjkMediaPlayer.currentPosition`**（取 native 锁，与主线程 seek/release 并发有卡死风险）——所以对齐一定在主线程做。旧的「必须返回负数守卫」随回调一起删除，但「窗口期不把脏位置灌进 `DanmakuTimer`」这个教训由新写法天然满足（主线程只在 `isPrepared && isPlaying && !isSeeking` 时对齐）。
 
 ---
 
@@ -431,8 +561,22 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   （`serviceTogglePlay`/`serviceStopPlayback`/`serviceReportNow` 等桥接方法定义在 `PlayerActivity` 里）。这不是 MediaSession 方案：
   通知是普通 `NotificationCompat.Builder` + 两个 `PendingIntent.getService` 自定义 action。
 - **通知 id 1028（播放）、1027 是 `DownloadService`**；渠道 `playback_channel` 与下载的 `biliterminal_download` 分开。
-- **`onStartCommand` 第一行必须 `startForeground`**（Android 5 秒规则）；`FOREGROUND_SERVICE_MEDIA_PLAYBACK` 权限与
-  Manifest 里的 `<service ... android:foregroundServiceType="mediaPlayback">` 是运行期硬性要求（Android 14 起），删任一个都会崩。
+- **「5 秒义务」是本节最容易踩死的一条（26.10.11 因此崩过线上）**。`Context.startForegroundService()` 一旦调用，
+  系统就给这次启动记一笔账：服务必须在 5 秒内 `startForeground()`，否则向主线程抛
+  `RemoteServiceException: Context.startForegroundService() did not then call Service.startForeground()`，**整个进程崩掉**。
+  两条硬性要求缺一不可：
+  1. **`onCreate` 里就要进前台**，不能只在 `onStartCommand` 里。`onCreate` 与 `onStartCommand` 是主线程上两条**独立消息**，
+     低内存手表（线上机型 3906MB/2591MB）上创建服务本来就慢，两者可以隔很久。
+     `startUpdateTimer()` 也因此必须放在 `onStartCommand` 的进场之后——它 1 秒后就会尝试 `stopSelf()`，
+     提前开在主线程忙时会抢在 `startForeground` 前面把义务作废（上游 Java 版就是这个顺序，Kotlin 版曾改错）。
+  2. **没进前台之前禁止 `stopService()`**：`PlaybackService.stop()` 由 `onResume`/`onDestroy` 调，和 `onPause` 里的 `start()`
+     本来就紧挨着；若 `stopService` 先到，`onStartCommand` 永不执行，义务无人兑现，5 秒后照样崩。
+     现在 `stop()` 先看进程级 `foregrounded` 标志：未进前台只置 `stopPending`，由 `onStartCommand` 在 `startForeground` **之后**
+     再 `stopSelf()`——结果同样干净（服务与通知都不残留），但不会崩。所以**「先进场、再停止」是本服务的顺序铁律**。
+  3. `enterForeground()` 返回 false（Android 14+ 缺权限、厂商拦截、连兜底通知都挂不上）时**必须 `stopSelf()`**：
+     服务被销毁，那笔义务才会随 `ServiceRecord` 一起作废；不销毁才是真的会崩。
+  4. `FOREGROUND_SERVICE_MEDIA_PLAYBACK` 权限与 Manifest 里的 `<service ... android:foregroundServiceType="mediaPlayback">`
+     是运行期硬性要求（Android 14 起），删任一个都会崩。
 - **TimerTask 必须整体 try/catch**：Timer 的 `TimerTask` 抛未捕获异常会**永久终止整个 Timer**，进度通知从此静默失效。
 - 已知限制：点通知走 `getLaunchIntentForPackage`（本项目 = `SplashActivity`）+ `FLAG_ACTIVITY_REORDER_TO_FRONT`，
   与上游一致；`PlayerActivity` 没有 `launchMode`，所以 `onNewIntent` 里那句 `finish()` 是死代码，未改动。
@@ -760,6 +904,19 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 推荐底座是方案 A（`SettingsKeys.PLAYER_AV_SYNC_OFFSET` 手动微调）；方案 B 自动套偏移需要 `BLUETOOTH_CONNECT` 权限。方案 A–D 的完整对比见 `docs/archive/bluetooth-av-sync-report.md`。
 
+### 7.37 共存版：product flavor 拆分（26.10.11 新增）
+
+同一份代码出两个包：**普通版** `standard` 与**共存版** `coexist`，两包可同时安装。`app/build.gradle` 里加了 `flavorDimensions += 'channel'` 与两个 flavor；共存版靠 `applicationIdSuffix ".coexist"` 换包名，两个 flavor 各有一个编译期常量 `BuildConfig.COEXIST`（用来区分更新检查该认哪种附件名）。
+
+改这块必须记住四条：
+
+1. **单测任务名带 flavor**：`testDebugUnitTest` **已不存在**，要写 `testStandardDebugUnitTest` / `testCoexistDebugUnitTest`（CI 与 `AGENTS.md` 已同步改）。产物也按 flavor 分目录：`app/build/outputs/apk/<flavor>/<buildType>/app-<flavor>-<abi>-<buildType>.apk`。
+2. **发布附件名不能变**：老客户端的更新检查按**精确文件名**匹配 `app-<abi>-release.apk`（`util/UpdateRelease.kt`），所以 `build-release.yml` 加了「整理发行 APK」一步，把 `app-standard-<abi>-release.apk` 改名回历史名再进 Release；共存版是 `app-coexist-<abi>-release.apk`，由 `UpdateRelease.apkNamePrefix(BuildConfig.COEXIST)` 选中。**共存版拿不到自己的附件时不会退化成装错包**：`UpdateReleaseTest` 锁了「只有普通版附件时返回 null」，真取错了 `util/ApkVerifier.kt` 也会因包名不符拒装。
+3. **唯一硬编码包名已消除**：FileProvider 的 `android:authorities` 改成 `${applicationId}.FileProvider`（代码侧本来就是 `packageName + ".FileProvider"`，`DownloadActivity` / `PlayerApi` / `UpdateManager` 三处）。漏改会让下载安装与分享在共存版上崩。
+4. **名称两版一致，只靠图标区分**（用户 26.10.11 明确要求）：应用名与桌面名都取 `@string/app_name`（「RE:哔哩终端」），**清单里 `SplashActivity` 的 label 必须继续指向 `@string/app_name`**——桌面图标下显示的是**启动 Activity 的 label**，之前那里写的是字面量「哔哩终端」，所以就算 `app_name` 是对的、桌面名字也是另一个值。共存版不再覆盖任何字符串，只覆盖图标：`app/src/coexist/res/mipmap-nodpi/icon.png`（上游原图标）压过 main 的 `icon.webp`。**别再给共存版加「共存版」后缀的名字**——那是中途做过、已被用户否掉的方案。
+
+数据天然隔离：登录态 / 设置 / 缓存 / `/Android/media/<包名>/` 都分开，**共存版需要重新登录**。外链（http / https / bilibili scheme）两个包都会响应，系统弹选择框——这是明确接受的取舍，别去「优化」掉。
+
 ### 7.38 番剧详情页与番剧进度线（26.10.11 新增）
 
 对齐 `cyq114514/Re-BiliTerminal` 后补的三块（**A 详情页 UI + C 进度线 + D 历史卡片续播**；B 进详情页自动定位上次观看、E 实验室诊断页**明确不做**）。远端那个 `activity/video/BangumiActivity.java`（番剧主页：新番/追番/索引）在全部 tag 里都不在 manifest / `MenuActivity`，是死代码，**别照抄**。
@@ -1030,7 +1187,7 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_font.ttf`）并全局应用。
 
 **为什么是「拷贝」而不是记住 URI**
-1. `minSdk 24`，`Typeface.Builder(FileDescriptor)` 要 API 26 用不了；安全可用的只有
+1. `minSdk 19`，`Typeface.Builder(FileDescriptor)` 要 API 26 用不了；安全可用的只有
    `Typeface.createFromFile(File)`，它需要一个**真实路径**。
 2. 用户随时可能删除/移动源文件；记 URI 还得处理 `takePersistableUriPermission`。拷一份最稳。
 
