@@ -95,13 +95,21 @@ description: >-
    `RELAY_URL` / `RELAY_SECRET`，请求体用 HMAC-SHA256 签名；由中转服务自己去 GitHub
    拉附件并同步到 Gitee `zisekongling/bili-terminal-re`（幂等，同步后 Gitee 只留最近若干个发行版）。
    **Action 侧绝不直接访问 Gitee**（网络不通），也不要把地址/密钥写进代码或日志。
-   ⚠️ **2026-10-08 换主后这两个 Secret 没配**（值随旧仓库一起丢失）：工作流已改成「缺 Secret
-   就 `::warning::` 跳过」而不再 `exit 1`，所以**现在发版不会自动同步到 Gitee**，
-   Gitee 侧需手工补，或等 relay 恢复后重发通知。
+   ✅ **26.10.11 实测：`RELAY_URL` / `RELAY_SECRET` 已配好**，Notify relay 步骤 success，
+   Gitee 发行版在 GitHub 发布后约 1 分钟内出现（正文一字不差）。
+   （26.10.08 换主那阵子这两个 Secret 曾丢失，工作流当时改成「缺 Secret 就 `::warning::` 跳过」而不是
+   `exit 1`；万一将来又缺，就只剩手工补或重发通知，且**发版日志里不会红**——记得回读 Gitee 确认。）
+   ⚠️ **中转服务端只同步白名单里的附件名**（`assets.include`，26.10.11 实测为 5 个历史文件名）：
+   **新增发行渠道 / 改包名前缀后，必须同步把该渠道的 4 个附件名加进白名单并重启中转服务**，
+   否则该渠道在 Gitee 上没有包——客户端会按 `UpdateRelease.pickApkUrl` 的精确名匹配失败、
+   回落到 GitHub 源（能更新，但国内直连慢）。26.10.11 首次发共存版就踩到这条：Gitee 上只有普通版
+   4 个包，手动补传后正常。
 
 - 客户端更新源：Gitee 发行版优先，失败回落 GitHub 发行版；两处都是公开仓库，读 release 不需要 token。
 - Gitee 直链格式：`https://gitee.com/zisekongling/bili-terminal-re/releases/download/<tag>/<文件名>`。
-- 漏同步 / 想重跑同步：触发 `.github/workflows/relay-notify.yml` 并填 tag（只重发通知，不重新构建）。
+- 漏同步 / 想重跑同步：触发 `.github/workflows/relay-notify.yml` 并填 tag（只重发通知，不重新构建）；
+  若只是某个渠道的包漏了（白名单问题），直接在中转服务器上跑它的手动同步（`python3 bridge.py --once --tag <tag>`，
+  幂等、只补缺的附件、会按 `md5sums.txt` 校验）最快。
 - ⚠️ **本仓库开着 release immutability**：一个 tag 只要被不可变 release 用过，**就永久不能再建**，
   即使把 release 和 tag 都删掉也一样（报 `tag_name was used by an immutable release` +
   `Cannot create ref due to creations being restricted`）。所以**重发同一个版本必须换 tag**
@@ -113,7 +121,8 @@ description: >-
 - strings.xml 保持 XML 合法（本次只改数组文本）。
 - 版本号改过就必须让 `:app:verifyVersionConsistency` 通过（校验 build.gradle 与 strings.xml 更新日志锚点）。
 - **Release 建好后必须回读它的说明正文**（`https://api.github.com/repos/PurpleEthereality/BiliTerminal-RE/releases/latest` 的 `body`），确认 `update_log_current` 的全部条目都在里面。若正文只有 `### APK 校验值（MD5）` + `<!-- update: … -->` + `**Full Changelog**`，就是省略了更新说明 —— 见 §4 的硬要求，必须补上。**别只看 `conclusion=success` 就收工**：工作流全绿也不代表说明写了。
-- 向用户汇报：改了哪些文件、发行 APK 的路径/大小、**Release 说明是否含完整更新日志**、CI 里 Gitee 同步是否成功、`release-links.txt` 里的直链。
+- **还要回读 Gitee 的附件清单**（`/repos/zisekongling/bili-terminal-re/releases/tags/<tag>` 的 `assets`）：**每个发行渠道都要有 4 个包 + `md5sums.txt`**。Gitee 上少包 = 中转服务端白名单没更新（见 §4），客户端会回落 GitHub 源。26.10.11 就是回读时发现只有普通版、共存版一个都没有。
+- 向用户汇报：改了哪些文件、发行 APK 的路径/大小、**Release 说明是否含完整更新日志**、CI 里 Gitee 同步是否成功（**含每个渠道的附件是否齐**）、`release-links.txt` 里的直链。
 
 ## 约定与坑
 - 一律**中文**文案与注释；遗留页文案硬编码、不改 `strings.xml`（设置页为字符串驱动例外，用 `desc_*`）。
