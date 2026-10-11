@@ -59,6 +59,8 @@
   - ④ 公告页在上游接口挂掉时仍能显示自建公告（反向也要成立）。§41.7
 - [ ] **隐私同意闸门未真机验证**（条目已补进回归清单第 228~231、236 条，**尚未执行**）：全新安装 / 清数据后首次启动必须弹一次；点「不同意」能正常进主界面且抓包无请求。§41.8
 
+- [ ] **番剧界面补齐（§3.8）未真机验证**：季切 tab、两行选集卡片、追番按钮、全量选集弹窗、历史卡片一键续播、番剧心跳 5 秒 + 看完上报 -1 全部只过了编译 + JVM 单测。真机要看的：① 多季番能切到第二季/剧场版并出集；② 从别的季切回来回到这一季上次看的那一集；③ 一集播完后重进/从历史进来是接下一集而不是停在本集末尾；④ 历史里的番剧卡片点一下直接起播且位置对；⑤ 未登录点追番要提示，不能静默失败。
+
 ### 2.2 功能与工程待办
 
 - [ ] **「自动跳过片头片尾」处于撤回状态**，恢复清单 6 步未执行（撤回为 26.10.10 用户明确要求，非缺陷）。§3.3
@@ -81,6 +83,7 @@
 
 - **F4 漫画**：快照 `bilibili-API/docs/manga/` 无任何「追漫/收藏漫画列表」接口，也无漫画搜索接口，项目内漫画实现为零（只有 `activity/user/VipActivity.kt:79-80` 会员权益文案）。
 - 用户 26.10.04 明确「漫画算了」，记 **不做**（不是暂缓：暂缓意味着还打算做）。§三十一
+- **番剧 B/E 两项（26.10.11 用户拍板暂不做，别顺手补）**：B = 进番剧详情页自动查历史接口定位"上次看到的那一集"；E = 实验室里的「番剧进度诊断页」。同一轮对比里远端的 `BangumiActivity.java`（番剧主页：新番/追番/索引）是**跨全部 tag 都不可达的死代码**，同样不要照抄。§3.8
 
 ### 2.4 视觉技术债（26.10.10 从 `docs/archive/visual-experience-report.md` 回迁；数字均为当时 grep 实测）
 
@@ -213,6 +216,18 @@
   - ④ `PlayerActivity.needViewPoints()` 的 `|| PLAYER_SKIP_OP_ED` 判断按需恢复；
   - ⑤ `strings.xml` 的 `update_log_current` 追加一条恢复说明；
   - ⑥ 递增 versionCode / versionName 并按发版技能出包（tag 只能用未被 Release 占用过的新号）。
+
+### 3.8 番剧界面补齐：对齐 Re-BiliTerminal（26.10.11，未真机验证）
+
+起因：与 `cyq114514/Re-BiliTerminal`（基于 BiliClient 2.9.8）逐文件对比番剧界面，按用户 26.10.11 的拍板只补 **A 番剧详情页 UI + C 进度线 + D 历史卡片续播**，**明确不做** B（进详情页自动查历史定位上次观看）与 E（实验室诊断页）。每批一个 commit，均跑 `:app:assembleDebug` + `:app:testStandardDebugUnitTest` 后提交。
+
+- **批次 1 追番按钮**（`6a0c8e1`）：`BangumiApi.getFollowStatus/parseFollowStatus/setFollow` + `FOLLOW_KEY_PREFIX = "bangumi_follow_"`；`res/layout/fragment_media_info.xml` 的 `btn_play` 改由 `btnRow` 包住，右侧是 `btn_follow`（OutlinedButton，文案"追番/已追番"）。缓存键**必须用 season_id**——远端追番列表页拿 media_id 写同一前缀，是 bug，没抄。
+- **批次 2 两行选集卡片**（`ab38b1e`）：新增 `app/src/main/java/com/RobinNotBad/BiliClient/adapter/video/EpisodeCardAdapter.kt`、`app/src/main/res/layout/cell_episode_card.xml`（固定 128dp：第一行集号 + `episode_playing` 声波图标 + 会员/限免角标，第二行长标题）、`app/src/main/res/drawable/ic_episode_playing.xml`。**不复用 `MediaEpisodeAdapter`**（那套是单行 MaterialButton，直播页清晰度/线路也在用）；颜色走 `ColorScheme`、圆角交给外观档位，不照抄远端的固定色 drawable。
+- **批次 3 季切换**（`46e726f`）：新增 `SeasonTabAdapter` + `cell_season_tab.xml`，`fragment_media_info.xml` 里 `rv_season_tabs` **取代旧 `section_choose` 弹窗按钮**；`BangumiApi.getSeasonDetail/parseSeasonDetail`（只发 `pgc/view/web/season`，**不发 user/status**，因为季级 `lastEpid` 定位属于不做的 B 项）；fragment 里改用 `sections`/`currentSeasonId`/`currentSeasonType`，切季懒加载 + `seasonCache` + `seasonSelection` 位置记忆，播放时用**当前展示的季**调 `episode.toPlayerData(currentSeasonId, currentSeasonType)`（不是 `info.season_id`）。
+- **批次 4 状态文案 + 全量选集**（`2ffbd25`）：`episodeStatusText(seasonDesc, infoDesc, isFinish, mainEpCount)` 纯函数（优先级：当前季 desc → 详情 desc → "已完结/连载中，共N话" → "选集"）+ `updateEpisodeStatusText()`；`getEposideChooseDialog()` 改为拍平**当前季全部分区**（多分区前缀【分区名】），走 `TerminalDialog.singleChoice`（远端用的是裸 `AlertDialog.Builder`，本仓库硬约定禁止）。
+- **批次 5 历史卡片一键续播**（`24f7d8d`）：`VideoCardHolder` 的 `media_bangumi` 分支在 `card.epid > 0` 时直接 `BangumiApi.getEpisodeFromEpid` → `JumpToPlayerActivity`（带 `card.progress * 1000`；注意 `PlayerData.progress` 是 **Int 毫秒**），失败才退回详情页。
+- **批次 6 进度线**（`491d6d5`）：番剧心跳 15 秒 → **5 秒**（`PlayerActivity.progressReportIntervalMs` 改为按 `epid` 取值，投稿视频不变）；`onCompletion` 立即上报 `HistoryApi.PROGRESS_FINISHED = -1`（"已看完"），退出路径的补报保持 -1，`reportHistoryPgc` 守卫由 `progress <= 0` 改为 `== 0`；`PlayerApi.getLastPlayProgress` 要求 **`last_play_cid == 请求 cid`** 才采用 `last_play_time`（防"看着这一集点开另一集却从上一集位置起播"），观看记录兜底 `findProgressMsByAid(aid, epid)` 也带 epid 身份校验（解析抽成纯函数 `parseHistoryProgressMs`）。
+- **测试**：`HistoryApiTest`（9 例，含"oid 命中但 epid 不符必须丢弃"）、`BangumiApiTest` 扩到 16 例、`EpisodeCardAdapterTest` 4 例、`BangumiInfoFragmentTest` 4 例，全绿。真机项见 §2.1。
 
 ## 4. 历史章节索引
 

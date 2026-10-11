@@ -760,6 +760,19 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 推荐底座是方案 A（`SettingsKeys.PLAYER_AV_SYNC_OFFSET` 手动微调）；方案 B 自动套偏移需要 `BLUETOOTH_CONNECT` 权限。方案 A–D 的完整对比见 `docs/archive/bluetooth-av-sync-report.md`。
 
+### 7.38 番剧详情页与番剧进度线（26.10.11 新增）
+
+对齐 `cyq114514/Re-BiliTerminal` 后补的三块（**A 详情页 UI + C 进度线 + D 历史卡片续播**；B 进详情页自动定位上次观看、E 实验室诊断页**明确不做**）。远端那个 `activity/video/BangumiActivity.java`（番剧主页：新番/追番/索引）在全部 tag 里都不在 manifest / `MenuActivity`，是死代码，**别照抄**。
+
+- **详情页选集两套 adapter，别合并**：番剧详情页用 `adapter/video/EpisodeCardAdapter.kt`（两行卡片：集号 + `episode_playing` 声波 + 会员/限免角标 + 长标题），直播页的清晰度/线路仍在用 `adapter/video/MediaEpisodeAdapter.kt`（单行 MaterialButton）——语义不同，改一个不要顺手"统一"。季 tab 用 `adapter/video/SeasonTabAdapter.kt` + `res/layout/cell_season_tab.xml`（选中加粗上 `ColorScheme.getPrimary`）。
+- **`sections` 是运行期状态，不再直读 `bangumi.info.sectionList`**：`BangumiInfoFragment` 用 `sections`/`currentSeasonId`/`currentSeasonType` 三个字段当"当前展示的季"，切季时整体替换（`seasonCache` 缓存已加载的季，`seasonSelection` 记每季上次看的位置）。**只有一季时不显示季 tab 行**；当前季不在 `info.seasons` 里（剧场版等）时在首位补一个"正片" tab。播放必须用 `episode.toPlayerData(currentSeasonId, currentSeasonType)`——用 `info.season_id` 会把第二季的心跳记到主季上。
+- **`getSeasonDetail` 只发 `pgc/view/web/season`**（远端还额外查 `user/status` 拿季级 `last_ep_id` 自动定位，那属于不做的 B 项）。追番按钮的缓存键 **必须是 season_id**（`BangumiApi.FOLLOW_KEY_PREFIX`），远端追番列表页拿 media_id 写同一前缀，是它自己的 bug。
+- **进度上报的番剧专属口径**（`activity/player/PlayerActivity.kt` + `api/HistoryApi.java` + `api/PlayerApi.java`）：
+  - 心跳间隔按类型分：`progressReportIntervalMs` 是 `get() = if (epid != 0L) 5000L else 15000L`；**投稿视频仍是 15 秒**。
+  - `onCompletion` 立刻上报 `HistoryApi.PROGRESS_FINISHED = -1`（服务端约定的"已看完"），且退出路径的补报**必须继续报 -1**——改报当前位置会把服务端的"已看完"覆盖成"看到最后几秒"。`reportHistoryPgc` 的守卫是 `progress == 0`（**不是 `<= 0`**，否则 -1 被吃掉）。
+  - `PlayerApi.getLastPlayProgress` 只在 **`last_play_cid == 请求 cid`** 时才采用 `last_play_time`；取不到该字段（0）也按"不属于这一集"处理，由观看记录兜底。这是"看着这一集点开另一集却从上一集位置起播"的闸门。观看记录兜底走 `HistoryApi.findProgressMsByAid(aid, epid)`，解析抽成纯函数 `parseHistoryProgressMs`（有单测）。
+- **历史卡片续播**：`adapter/video/VideoCardHolder.kt` 的 `media_bangumi` 分支在 `card.epid > 0` 时先 `BangumiApi.getEpisodeFromEpid`，成功就直接进 `JumpToPlayerActivity`（`card.progress` 是**秒**，要 ×1000 成 `PlayerData.progress` 的**毫秒 Int**），失败才退回详情页并提示。
+
 ---
 
 ## 8. UI 基建速查（新增页面临摹用）
@@ -1098,7 +1111,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `ArticleApi` | 专栏 cv | `getArticle`、`like`、`addCoin`、`opusId2cvid` |
 | `VoteApi` | 投票 | `createVote`、`doVote`、`getVoteInfo`、`parseVoteInfo` |
 | `SeriesApi` | 合集/系列 | `getUserSeries`、`getSeriesInfo`、`getSeriesByJson` |
-| `BangumiApi` | 番剧/追番 | `getFollowingList`、`getBangumi`、`getSections`、`getMdidFromEpid` |
+| `BangumiApi` | 番剧/追番 | `getFollowingList`、`getBangumi`、`getSections`、`getMdidFromEpid`、`getSeasonDetail`（页内切季）、`getEpisodeFromEpid`（历史卡片续播）、`getFollowStatus`/`setFollow`（追番按钮） |
 | `TimelineApi` | 番剧时间表 | `getTimeline` |
 | `TopicApi` | 话题广场 / 话题下动态列表（26.10.04 批次 6 的 C10） | `getRecommendedTopics`、`searchTopics`、`parseTopics`、`getTopicDynamicList` |
 | `NoteApi` | 视频笔记（只读，26.10.04 批次 6 的 C27） | `getNoteIdsOfVideo`、`getNoteInfo`、`parseBlocks`、`parseNoteDetail` |
