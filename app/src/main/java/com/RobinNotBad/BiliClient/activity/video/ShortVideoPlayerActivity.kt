@@ -42,6 +42,7 @@ import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.VideoPreloadManager
 import com.RobinNotBad.BiliClient.player.DanmakuManager
+import com.RobinNotBad.BiliClient.player.DanmakuSync
 import com.RobinNotBad.BiliClient.player.IjkOption
 import com.RobinNotBad.BiliClient.player.IjkPlayerBridge
 import com.bumptech.glide.Glide
@@ -690,14 +691,9 @@ class ShortVideoPagerAdapter(
 
                 // 初始化弹幕视图
                 danmakuView = itemView.findViewById(R.id.danmakuView)
-                danmakuManager = DanmakuManager(danmakuView!!) {
-                    // 播放器未就绪时返回 -1，让 DanmakuManager 跳过本次 timer 更新。
-                    // 本回调在 DanmakuView 的渲染线程上，与主线程重建播放器并发，
-                    // 窗口期读到脏位置会让弹幕整批不显示（间歇性"弹幕没了"）。
-                    // 这里只读主线程维护的 videoNow，绝不直接调 playerBridge.currentPosition——
-                    // 那会在这条非主线程上打 JNI，与主线程的 release/重建并发（P2 同根因）。
-                    if (isPrepared) videoNow.toLong() else -1L
-                }
+                // 弹幕时钟不再由 DanmakuManager 自己校正（见其 updateTimer 注释与
+                // docs/review/fix-progress.md §3.6）：DFM 的基准只能靠 seekTo 重设。
+                danmakuManager = DanmakuManager(danmakuView!!)
                 danmakuManager?.init()
 
                 playerBridge.setOnPrepared {
@@ -843,6 +839,13 @@ class ShortVideoPagerAdapter(
                         if (pos != videoNowLast) {
                             videoNowLast = pos
                             videoNow = pos
+                            // 弹幕时钟对齐（与 PlayerActivity 同源，见 docs/review/fix-progress.md §3.6）：
+                            // 只有 seekTo 会重设 DFM 的 mTimeBase；只改 timer 会被 DFM 下一帧拽回旧基准。
+                            danmakuView?.let { dv ->
+                                if (DanmakuSync.shouldResync(pos.toLong(), dv.currentTime)) {
+                                    dv.seekTo(pos.toLong())
+                                }
+                            }
                             // 进度条每 250ms 刷（要平滑），但文本一秒才变一次，
                             // 所以只在整秒变化时才做字符串拼接与 setText
                             videoProgress.progress = pos
@@ -1008,7 +1011,9 @@ class ShortVideoPagerAdapter(
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 0),
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 8 * 1024 * 1024),
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "min-frames", 5),
-            IjkOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max_cached_duration", 3000),
+            // 原有一条 "max_cached_duration" = 3000 已删：实测本工程两个 .so（libijkplayer /
+            // libijkffmpeg，arm64-v8a）里都找不到这个选项名，设了也不会生效，留着只会误导后来人
+            // （依据见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 §2.4）。
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "infbuf", 1),
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user_agent", NetWorkUtil.USER_AGENT_WEB),
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_CODEC, "skip_loop_filter", 48)

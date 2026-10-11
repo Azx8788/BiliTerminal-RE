@@ -58,6 +58,7 @@ import com.RobinNotBad.BiliClient.model.Subtitle
 import com.RobinNotBad.BiliClient.model.SubtitleLink
 import com.RobinNotBad.BiliClient.model.ViewPoint
 import com.RobinNotBad.BiliClient.player.DanmakuManager
+import com.RobinNotBad.BiliClient.player.DanmakuSync
 import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
 import com.RobinNotBad.BiliClient.player.SkipOpEdPrefs
@@ -192,6 +193,20 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var audioTrackUrl: String? = null // DASH外部音频轨道
     private var audioPlayer: android.media.MediaPlayer? = null // 外部音频播放器
 
+    companion object {
+        /** `onSaveInstanceState` 保存的播放位置（毫秒），用于系统重建本页后回到原位 */
+        private const val STATE_POSITION = "player_state_position"
+
+        /** 自动恢复的最多次数，超过就只提示、交回给用户手动重试 */
+        private const val MAX_STALL_RETRY = 3
+
+        /** 两次自动恢复之间的最小间隔，避免刚重建完又被判停滞 */
+        private const val STALL_RETRY_COOLDOWN_MS = 15_000L
+
+        /** 恢复后位置又前进了这么多毫秒，才算"真的播起来了"，恢复计数清零 */
+        private const val STALL_RECOVERED_MS = 5_000
+    }
+
     private var video_all: Int = 0
     // 主线程的 progressChange 定时器写、弹幕渲染线程读（见 bindDanmakuView 的位置回调），
     // 必须 volatile：弹幕线程不再直接调 ijkPlayer.currentPosition（那是取原生锁的 JNI 调用），
@@ -199,9 +214,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     @Volatile
     private var video_now: Int = 0
     private var video_now_last: Int = 0
+    /** 上次给弹幕时钟做基准对齐（`seekTo`）的时间，用于限频——见 `progressChange` 里的对齐块。 */
+    private var danmakuResyncMs: Long = 0
     private var lastMediaSessionSecond: Int = -1 // 上次上报 MediaSession 的整秒数，用于抑制重复 Binder IPC
     private var progress_history: Long = 0
     private var progress_str: String = ""
+    /**
+     * 本页是一次「系统重建」（走了 onSaveInstanceState 恢复）而非首次进入。
+     * 重建后必须回到原位，且不该再提示"已从上次的位置播放"。
+     */
+    private var restoredFromSaveState: Boolean = false
 
     private var screen_width: Int = 0
     private var screen_height: Int = 0
@@ -244,6 +266,28 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var playerError = false
     private var loop_enabled: Boolean = false
     private var auto_next_enabled = false
+
+    // ---- 位置停滞看门狗（弱网，见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-3）----
+    // IJK 没有任何"位置 N 秒不前进"的看门狗：弱网下连接可能还在、但一个字节都不来，
+    // 于是既不回调 onError、也不走 onCompletion，界面永远停在转圈上（用户看到的就是"卡死"）。
+    // 这里复用已有的 250ms 主线程定时器做判定：位置长时间不动 → 自动重连。
+    /** 上一次观测到的位置（判定"有没有前进"） */
+    private var stallLastPosition: Int = -1
+    /** 上一次发现位置前进的时间（elapsedRealtime） */
+    private var stallLastAdvanceMs: Long = 0L
+    /** 连续自动恢复的次数（真正播起来一段后清零） */
+    private var stallRetryCount: Int = 0
+    /** 上次自动恢复时的时间与位置，用于冷却与"是否真的播起来了" */
+    private var stallRetryMs: Long = 0L
+    private var stallRetryPosition: Int = 0
+    /** 放弃自动恢复后只提示一次 */
+    private var stallGaveUp = false
+    /** 直播候选地址表与当前下标（由 LiveInfoActivity 经 PlayerData/Intent 传入） */
+    private var liveUrlCandidates: ArrayList<String> = ArrayList()
+    private var liveCandidateIndex: Int = 0
+
+    /** 停滞多久算"卡死"：直播比点播更早介入（直播没有"等缓冲"的价值，越等越落后） */
+    private val stallTimeoutMs: Long get() = if (isLiveMode) 20_000L else 30_000L
 
     private lateinit var batteryView: BatteryView
     private var batteryManager: BatteryManager? = null
@@ -376,6 +420,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         Logu.d("history", progress_history.toString())
 
         isLiveMode = intent.getBooleanExtra("live_mode", false)
+        // 直播候选地址表（LiveInfoActivity 用 util/live/LiveStreamSelector 排好序后随 Intent 传入）：
+        // 弱网下换 CDN / 换 HLS 就靠它，不必回头再请求一次取流接口
+        liveUrlCandidates = intent.getStringArrayListExtra("live_url_candidates") ?: ArrayList()
+        if (isLiveMode && liveUrlCandidates.isNotEmpty()) {
+            liveCandidateIndex = liveUrlCandidates.indexOf(video_url.orEmpty()).takeIf { it >= 0 } ?: 0
+            Logu.d("直播候选", "${liveUrlCandidates.size} 条，当前 $liveCandidateIndex")
+        }
         isOnlineVideo = video_url!!.contains("http")
         hasDanmaku = danmaku_url.isNotEmpty()
 
@@ -445,6 +496,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         if (!getExtras()) {
             finish()
             return
+        }
+
+        // 系统重建本页时（内存压力、以及 configChanges 未覆盖的配置变化如深色模式/字体大小），
+        // Intent 仍是"进入页面那一刻"的那一份，progress_history 会退回旧值 → 表现为位置莫名跳回。
+        // 用 onSaveInstanceState 存下的真实位置覆盖它。
+        if (savedInstanceState != null && !isLiveMode) {
+            val savedPosition = savedInstanceState.getInt(STATE_POSITION, 0)
+            if (savedPosition > 0) {
+                progress_history = savedPosition.toLong()
+                restoredFromSaveState = true
+                Logu.d("恢复位置", savedPosition.toString())
+            }
         }
 
         initUI()
@@ -896,10 +959,27 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "fflags", "flush_packets")
         ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect", 1)
 
+        if (!isLiveMode) {
+            // 不精确 seek（默认 0）会落到目标前最近的关键帧：切后台回来重挂 surface、
+            // 用户拖进度条都会"往回跳一个 GOP"，表现为位置出错。VideoPlayerCore 也开了它
+            // （player/VideoPlayerCore.kt:133）。直播不做 seek，故只在非直播下开。
+            ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "enable-accurate-seek", 1)
+        }
+
         if (isOnlineVideo) {
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1)
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 15 * 1024 * 1024)
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user_agent", NetWorkUtil.USER_AGENT_WEB)
+            // 弱网韧性（详见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-1）：
+            // 1) rw_timeout：默认 0 = "读可以永久阻塞"，而且卡住时 IJK 不会回调 onError，
+            //    界面上只会一直转圈 —— 这是弱网下直播/长视频"卡死不动"的直接原因；
+            // 2) reconnect 只在"某次 read 返回负值"时才生效，而 chunked 直播（is_streamed=1）
+            //    在 ffmpeg http.c 里还有一道 `!reconnect_streamed` 就 break 的判定，两者都要开；
+            // 3) reconnect_delay_max 单位是秒（默认 120）。
+            ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "rw_timeout", 10_000_000L)
+            ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "addrinfo_timeout", 5_000_000L)
+            ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_streamed", 1L)
+            ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_delay_max", 5L)
             Logu.v("设置ua")
         }
 
@@ -1186,6 +1266,24 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                             }
                         } catch (_: Exception) {}
                     }
+                    // 弹幕时钟对齐：DFM 的时钟按自身 mTimeBase 自走，只有基准与视频位置一致时才会跟着视频走。
+                    // 跑偏时**必须**用 seekTo（DrawHandler 的 SEEK_POS 分支会同步 `mTimeBase -= deltaMs`），
+                    // 用 DanmakuTimer.update 只改时间不改基准，DFM 的 syncTimer 会立刻把时钟拉回旧基准
+                    // —— 那就是用户报的「弹幕一抖一抖」。判定用纯函数 DanmakuSync（容差 400ms > 250ms 采样间隔）。
+                    // 两条闸门：① 缓冲中不动它（缓冲时弹幕视图被 pause，seekTo 会顺带 resume，等于把暂停撤销）；
+                    // ② 限频 1s，避免"视频卡住但没报缓冲"时每 250ms 重建一次弹幕更新线程。
+                    if ((hasDanmaku || isLiveMode) && mDanmakuView != null &&
+                        loading_info.visibility != View.VISIBLE
+                    ) {
+                        val danmakuTime = mDanmakuView!!.currentTime
+                        val nowElapsed = android.os.SystemClock.elapsedRealtime()
+                        if (DanmakuSync.shouldResync(video_now.toLong(), danmakuTime) &&
+                            nowElapsed - danmakuResyncMs >= 1000L
+                        ) {
+                            danmakuResyncMs = nowElapsed
+                            mDanmakuView!!.seekTo(video_now.toLong())
+                        }
+                    }
                     if (video_now_last != video_now) {
                         video_now_last = video_now
                         val currSec = video_now / 1000f
@@ -1217,6 +1315,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         maybeReportProgress()
                     }
                 }
+                // 停滞判定放在 if 之外：暂停/seek/未准备好时也需要复位计数器
+                checkStall()
                 if (!destroyed) mainHandler?.postDelayed(this, 250)
             }
         }
@@ -1224,7 +1324,91 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     /**
-     * 周期上报当前进度（每 15 秒一次）。
+     * 位置停滞看门狗：由 [progressChange] 的 250ms 主线程定时器驱动。
+     *
+     * 判据只有一条——**位置长时间不前进**（而不是"有没有收到 onInfo/onError"）：
+     * 弱网下最常见的坏形态是 TCP 连接还在、数据一个字节都不来，IJK 不会报错也不会结束，
+     * 界面就永远停在转圈上。直播 20 秒、点播 30 秒不动就自动恢复：
+     * - 直播：按候选表换下一条 CDN（换完一轮还有 HLS 兜底），地址来自 LiveInfoActivity 传给播放器的候选表；
+     * - 点播：原地重建播放器并从当前位置续播。
+     * 最多连续恢复 [MAX_STALL_RETRY] 次，之后只提示一次，交回给用户手动重试。
+     */
+    private fun checkStall() {
+        if (destroyed) return
+        // 未准备/暂停/拖拽/已知错误态都不算停滞：这些都是"用户意图"或"已有处理路径"
+        if (!isPrepared || !isPlaying || isSeeking || playerError) {
+            resetStallTracking()
+            return
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+
+        if (video_now != stallLastPosition) {
+            stallLastPosition = video_now
+            stallLastAdvanceMs = now
+            // 恢复之后真的又播了一段（而不是刚重建完又卡），把恢复预算还回去
+            if (stallRetryCount > 0 && video_now - stallRetryPosition >= STALL_RECOVERED_MS) {
+                stallRetryCount = 0
+                stallGaveUp = false
+            }
+            return
+        }
+
+        if (stallLastAdvanceMs == 0L) {
+            // 刚开始播放/刚恢复：以第一次观测为起点，不立刻判定
+            stallLastAdvanceMs = now
+            return
+        }
+        if (now - stallLastAdvanceMs < stallTimeoutMs) return
+
+        if (stallRetryCount >= MAX_STALL_RETRY) {
+            if (!stallGaveUp) {
+                stallGaveUp = true
+                Logu.d("停滞看门狗", "已连续自动恢复 $stallRetryCount 次，放弃自动恢复")
+                MsgUtil.showMsg("网络似乎已断开，可稍后手动重试")
+            }
+            // 继续刷新基准时间，避免每 250ms 都来一次提示
+            stallLastAdvanceMs = now
+            return
+        }
+        if (now - stallRetryMs < STALL_RETRY_COOLDOWN_MS) return
+
+        stallRetryCount++
+        stallRetryMs = now
+        stallRetryPosition = video_now
+        stallLastAdvanceMs = now
+        Logu.d("停滞看门狗", "位置停在 ${video_now}ms 超过 ${stallTimeoutMs}ms，第 $stallRetryCount 次自动恢复（直播=$isLiveMode）")
+        if (isLiveMode) switchLiveCandidate() else retryAfterPlayerError()
+    }
+
+    /** 暂停/拖拽/错误态下复位，避免"暂停十分钟后一恢复播放就被判停滞" */
+    private fun resetStallTracking() {
+        stallLastPosition = video_now
+        stallLastAdvanceMs = 0L
+    }
+
+    /**
+     * 直播换线路：按候选表顺序切到下一个地址后重建播放器。
+     * 候选表是进入播放器前就排好的（FLV 各线路在前、HLS 在后），所以这里不需要网络请求，
+     * 即使取流接口此刻不可用也能换 —— 这正是弱网下最需要的能力。
+     */
+    private fun switchLiveCandidate() {
+        if (liveUrlCandidates.size < 2) {
+            // 只有一条地址（或调用点没传候选表）：退化成原地重连
+            Logu.d("停滞看门狗", "无备用直播线路，原地重连")
+            retryAfterPlayerError(0L)
+            return
+        }
+        liveCandidateIndex = (liveCandidateIndex + 1) % liveUrlCandidates.size
+        val next = liveUrlCandidates[liveCandidateIndex]
+        video_url = next
+        Logu.d("停滞看门狗", "切换直播线路 → $liveCandidateIndex : $next")
+        MsgUtil.showMsg("网络不佳，正在切换线路")
+        // 直播不续播位置：从最新的流位置重新开始
+        retryAfterPlayerError(0L)
+    }
+
+    /**
+     * 周期上报当前进度（番剧每 5 秒一次，投稿视频每 15 秒一次，见 [progressReportIntervalMs]）。
      *
      * 只由 [progressChange] 的 250ms 定时器在主线程调用；节流用"与上次上报位置的毫秒差值"而不是墙钟时间，
      * 所以暂停、缓冲、seek 中都不会补报，也就不会有积压的请求在恢复播放后一起炸出来。
@@ -1586,14 +1770,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     /** 重新绑定弹幕视图与弹幕管理器（弹幕视图在切分页/切互动分支后会重新取一次引用）。 */
     private fun bindDanmakuView() {
         mDanmakuView = findViewById(R.id.sv_danmaku)
-        danmakuManager = DanmakuManager(mDanmakuView!!) {
-            // 位置只读主线程 progressChange 定时器维护的 video_now（@Volatile 内存值），
-            // 绝不在这里调 ijkPlayer.currentPosition：本回调跑在 DanmakuView 的渲染线程上，
-            // 而这个 JNI 调用会取原生锁，与主线程的 seek/release 并发时弹幕时间轴会被旧位置拽住，
-            // 极端情况下渲染线程永久卡在原生调用里，主线程 release() 里的 join 就会一直等（应用卡死）。
-            // 播放器未就绪时返回 -1，让 DanmakuManager 跳过本次 timer 更新。
-            if (isPrepared) video_now.toLong() else -1L
-        }
+        danmakuManager = DanmakuManager(mDanmakuView!!)
     }
 
     /** 释放弹幕视图与管理器。 */
@@ -1652,13 +1829,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 播放器报错后重新载入当前视频。
      * 之所以重建整个 IjkMediaPlayer 实例，而不是简单地 seekTo(0) + start()：IJK 出错后
      * （解码失败 / 加载失败）自身状态机已不可信，对同一实例重试往往立刻再次进入 onError。
+     *
+     * @param resumePositionMs 重建后从哪继续；默认取主线程维护的 [video_now]（点播续播）。
+     *   直播换线路时传 0——直播要的是"最新的流位置"，不是换线路前的那个位置。
      */
-    private fun retryAfterPlayerError() {
+    private fun retryAfterPlayerError(resumePositionMs: Long = video_now.toLong()) {
         playerError = false
         CenterThreadPool.run {
-            // 与 toggleAudioOnlyMode 一致：重建用的续播位置由主线程维护的 video_now 提供，
+            // 与 toggleAudioOnlyMode 一致：重建用的续播位置由调用方给定（点播默认取主线程维护的 video_now），
             // 不在这里调 ijkPlayer.currentPosition（后台线程碰 jni 且此刻播放器正要被释放）。
-            val resumePosition = video_now.toLong()
+            val resumePosition = resumePositionMs
             runOnUiThread {
                 if (destroyed || isFinishing()) return@runOnUiThread
                 // 顺序：先摘状态标志，再 release，最后置空引用（理由同 toggleAudioOnlyMode）
@@ -1843,6 +2023,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     fun serviceReportNow() {
         runOnUiThread { reportProgressNow(true, "后台服务兜底") }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        // 只存原始类型。存的是"播放到哪了"这个瞬时状态——官方 saving-states 指南里
+        // 瞬时状态就该走 onSaveInstanceState（大对象才需要 ViewModel/持久化）。
+        super.onSaveInstanceState(outState)
+        if (!isLiveMode && isPrepared) outState.putInt(STATE_POSITION, video_now)
     }
 
     override fun onPause() {
@@ -2144,8 +2331,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 // surface 重建（例如退到后台再回来）：播放器已经 prepare 过，只重新挂上，
                 // 绝不能重复 prepare。SurfaceView 还需要 seek 回当前位置强制出画面（与原实现一致）。
                 attachSurface(target)
-                if (isPrepared && target is SurfaceTarget.Holder) {
-                    ijkPlayer?.seekTo(seekbar_progress.progress.toLong())
+                if (isPrepared && !isLiveMode && target is SurfaceTarget.Holder) {
+                    // seek 目标用主线程维护的 video_now（播放状态真值），不用 seekbar_progress.progress：
+                    // 直播下进度条恒为 0（progressChange 只在非直播写它），拖拽/缓冲期间它也可能与真实位置不一致。
+                    ijkPlayer?.seekTo(video_now.toLong())
                 }
             },
             onSurfaceLost = { detachSurface() }
@@ -3566,13 +3755,26 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         if (isAudioOnlyMode) updateAudioOnlyUI()
 
-        if (SharedPreferencesUtil.getBoolean("player_from_last", true) && !isLiveMode) {
-            if (progress_history > 5) {
-                ijkPlayer!!.seekTo(progress_history)
-                if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(progress_history)
-                Logu.d("进度跳转", progress_history.toString())
-                runOnUiThread { MsgUtil.showMsg("已从上次的位置播放") }
+        if (!isLiveMode) {
+            val resumeTarget = when {
+                // ① 系统重建本页：必须回到原位，且不受"从上次位置播放"开关影响
+                restoredFromSaveState -> progress_history
+                // ② 首次进入且开关开启：按历史进度续播
+                SharedPreferencesUtil.getBoolean("player_from_last", true) -> progress_history
+                else -> 0L
             }
+            if (resumeTarget > 5) {
+                ijkPlayer!!.seekTo(resumeTarget)
+                Logu.d("进度跳转", resumeTarget.toString())
+                // 只有"按历史进度续播"才提示；恢复现场（系统重建）不该再提示一次
+                if (!restoredFromSaveState) runOnUiThread { MsgUtil.showMsg("已从上次的位置播放") }
+            }
+            // 起播时把弹幕时钟锚到视频位置（0 也要锚）。
+            // DFM 的时钟是以 prepare 时刻为基准自走的（DrawHandler.PREPARE 里 mTimeBase = uptimeMillis），
+            // 起播前那段缓冲时间里它会一直跑在视频前面；而我们的容差校正只改 timer、不改 mTimeBase，
+            // 于是 syncTimer 里的 gapTime 又把它拽回去，"跑快→拽回"反复发生 —— 真机实测 2 秒内校正 84 次、
+            // 瞬时偏差最大 1803ms，肉眼就是弹幕一抖一抖。seekTo 会同时重设 mTimeBase（DrawHandler SEEK_POS）。
+            if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(resumeTarget)
         }
 
         loading_info.visibility = View.GONE

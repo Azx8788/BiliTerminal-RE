@@ -2,7 +2,6 @@ package com.RobinNotBad.BiliClient.player
 
 import android.content.Context
 import android.graphics.Color
-import android.view.View
 import com.RobinNotBad.BiliClient.model.DmSegMobileReply
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
@@ -38,17 +37,7 @@ data class DanmakuState(
 )
 
 class DanmakuManager(
-    private val danmakuView: IDanmakuView,
-    /**
-     * 返回当前播放位置（毫秒）。**播放器未就绪或正在重建时必须返回负数**，
-     * 表示"没有可信位置"，[configureAndPrepare] 里会据此跳过 timer 更新，见其注释。
-     *
-     * 注意：本回调运行在 DanmakuView 的渲染线程上，实现方**不要在这里直接读播放器**
-     * （例如 `IjkMediaPlayer.currentPosition`）——那是会取 native 锁的 JNI 调用，
-     * 与主线程的 seek/release 并发时有卡死渲染线程的风险。请返回由主线程定时器维护的
-     * 内存值（参见 PlayerActivity 的 video_now）。
-     */
-    private val onCurrentPositionMs: () -> Long
+    private val danmakuView: IDanmakuView
 ) {
     private var danmakuContext: DanmakuContext? = null
     private var danmakuParser: BaseDanmakuParser? = null
@@ -180,28 +169,28 @@ class DanmakuManager(
             }
 
             override fun updateTimer(timer: DanmakuTimer) {
-                // 回调返回负数表示"当前拿不到可信的播放位置"，此时必须**跳过**本次更新。
-                // 这个守卫是必需的：IjkMediaPlayer 的 native 层在 setDataSource / prepareAsync /
-                // release 期间并非线程安全，而本回调运行在 DanmakuView 的渲染线程上，与主线程
-                // 重建播放器的动作并发。一旦把窗口期的脏位置灌进 timer，整批弹幕会被判定为
-                // "已过期"而一条都不显示 —— 表现为间歇性的"弹幕没了"。
-                // （原 PlayerActivity 内联实现用的是 `if (ijkPlayer != null && isPrepared)`，同一个道理。）
-                // 实现上 onCurrentPositionMs 已改为只读主线程定时器维护的内存值，
-                // 不再在这个渲染线程上直接调 ijkPlayer.currentPosition（那会取 native 锁）。
-                val pos = onCurrentPositionMs()
-                if (pos < 0) return
-                // 只在偏差超过容差时校正，**不能**每次采样都 timer.update(pos)。
+                // 这里**刻意什么都不做**：既不 `timer.update(pos)`，也不去读播放位置。
                 //
-                // 坑（issue 反馈的"弹幕一跳一跳"）：timer.update(pos) 是"把 DFM 的时钟强行拨到 pos"，
-                // 而 pos 由主线程定时器每 250ms 采样一次（见 onCurrentPositionMs 注释），**天然滞后
-                // 0~250ms**；DFM 本来在 syncTimer 里每帧 timer.add(d)（DrawHandler.java:466）平滑自走。
-                // 旧的"位置一变就硬校"于是每 250ms 把已经走到的时钟往回拽约 125ms，一秒 4 次 ——
-                // 固定弹幕不横向移动看不出来，滚动弹幕就是有节奏的"每 0.25 秒一跳"。
+                // 历史（26.09.10）：本回调曾经把"当前播放位置"喂给 DanmakuTimer，并且要求实现方在
+                // "播放器未就绪/正在重建"时返回负数——因为 IjkMediaPlayer 的 native 层在
+                // setDataSource / prepareAsync / release 期间不是线程安全的，而本回调运行在
+                // DanmakuView 的渲染线程上，与主线程重建播放器的动作并发，窗口期的脏位置一旦灌进
+                // timer，整批弹幕会被判定为"已过期"而一条都不显示（间歇性"弹幕没了"）。
+                // 现在连"读位置"本身都搬去了主线程，这条守卫随之取消。
                 //
-                // 改为"DFM 自走 + 跑偏才拉回"：容差内一律不动，只有真正的 seek / 缓冲卡停 /
-                // 解码漂移才会被一次性拉回。判定逻辑抽在 [DanmakuSync]（纯函数，有 JVM 单测）。
-                if (!DanmakuSync.shouldResync(pos, timer.currMillisecond)) return
-                timer.update(pos)
+                // 为什么不能在这里校正时钟：DanmakuTimer 由 DFM 自走，DrawHandler.syncTimer 每帧按
+                // `gapTime = (uptimeMillis - mTimeBase) - timer.currMillisecond` 把时钟拉向墙钟基准
+                // （gapTime > 2000ms 时直接整段硬跳，见 DrawHandler.java:448），而 `mTimeBase` 只在
+                // PREPARE / RESUME / SEEK_POS 里改 —— `timer.update()` 改不到它。于是"我们拉回 pos →
+                // DFM 立刻追回旧基准"会反复发生：真机实测 2 秒内硬校正 84 次、瞬时偏差 1.8 秒；
+                // 片尾/重播场景偏差高达 199 秒，每轮就是一次肉眼可见的硬跳（用户报的「弹幕一抖一抖」）。
+                //
+                // 正确做法是让**基准**跟着视频走，放在主线程做（见 PlayerActivity.progressChange）：
+                // 用 [DanmakuSync.shouldResync] 判定，命中则 `IDanmakuView.seekTo(pos)` —— seekTo 走
+                // DrawHandler 的 SEEK_POS 分支，会 `mTimeBase -= deltaMs`，基准才是真的对齐。
+                //
+                // 另外：本回调运行在 DanmakuView 的渲染线程上，绝不能在这里调
+                // ijkPlayer.currentPosition（取 native 锁，与主线程 seek/release 并发有卡死风险）。
             }
 
             override fun danmakuShown(danmaku: BaseDanmaku?) {}
