@@ -292,8 +292,8 @@
             </androidx.constraintlayout.widget.ConstraintLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- 播放与追番并排：追番是详情页第二个高频动作，但比播放次要，
-             所以用描边按钮区分主次，宽度各占一半（手表屏窄，做成两行会把播放键挤出首屏） -->
+        <!-- 播放与追番并排：两个都是填充按钮、同款式（26.10.11 用户要求统一样式，别把追番改回描边），
+             追番只靠文字「追番 / 已追番」区分状态；宽度各占一半（手表屏窄，做成两行会把播放键挤出首屏） -->
         <LinearLayout
             android:id="@+id/btnRow"
             android:layout_width="match_parent"
@@ -313,7 +313,6 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_follow"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
