@@ -85,8 +85,10 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-configuration-cache --stacktrace
 
       # 112 个单测此前不在任何自动化路径执行，测试全红也能发版（见 §五 E3）
+      # 引入 product flavor 后任务名带 flavor：testDebugUnitTest 已不存在。
+      # 两个 flavor 共用同一份 app/src/test，跑普通版那一个即可。
       - name: 运行单元测试
-        run: ./gradlew :app:testDebugUnitTest --no-configuration-cache --stacktrace
+        run: ./gradlew :app:testStandardDebugUnitTest --no-configuration-cache --stacktrace
 
       # 单测失败时也要把报告传上来，否则只能看到一行 FAILED
       - name: 上传单测报告
@@ -94,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-report
-          path: app/build/reports/tests/testDebugUnitTest/
+          path: app/build/reports/tests/testStandardDebugUnitTest/
           if-no-files-found: warn
 
       - name: 上传 Debug APK

@@ -119,11 +119,38 @@ jobs:
 
       # 发版前先跑单测：此前 112 个用例不在任何自动化路径执行，测试全红也能发出 Release
       # （见 docs/review/upstream-fork-audit.md §五 E3）。红着测试就不该发版。
+      # 引入 product flavor（standard / coexist）后，单测任务名带上了 flavor：
+      # testDebugUnitTest 已不存在，必须写 testStandardDebugUnitTest
+      # （两个 flavor 共用同一份 app/src/test，跑一个即可）。
       - name: 运行单元测试
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: ./gradlew :app:testStandardDebugUnitTest --stacktrace
 
       - name: 构建签名发行 APK
         run: ./gradlew :app:assembleRelease
+
+      # flavor 上线后 AGP 把产物放在 outputs/apk/<flavor>/release/ 下，且普通版被自动
+      # 命名成 app-standard-<abi>-release.apk。这里统一搬进 outputs/apk/release/ 并
+      # 把普通版改回**历史文件名 app-<abi>-release.apk** —— 老客户端的更新检查是按
+      # 精确文件名匹配的（util/UpdateRelease.kt），一改名它们就永远收不到更新。
+      # 共存版保留 app-coexist-<abi>-release.apk，共存版客户端只认这个名字。
+      - name: 整理发行 APK（普通版保持历史文件名）
+        shell: bash
+        run: |
+          set -euo pipefail
+          dest=app/build/outputs/apk/release
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          for f in app/build/outputs/apk/standard/release/app-standard-*.apk; do
+            [ -f "$f" ] || { echo "::error::没找到普通版 release APK"; exit 1; }
+            n=$(basename "$f")
+            cp "$f" "$dest/${n/app-standard-/app-}"
+          done
+          for f in app/build/outputs/apk/coexist/release/app-coexist-*.apk; do
+            [ -f "$f" ] || { echo "::error::没找到共存版 release APK"; exit 1; }
+            cp "$f" "$dest/"
+          done
+          echo "--- 发行目录 ---"
+          ls -l "$dest"
 
       # 发布说明与 Release 附件里都附上每个 APK 的 MD5，方便用户核对下载完整性 / 确认包没被换过。
       # 上游也只在部分版本提供过 MD5 表（见 docs/review/upstream-fork-audit.md §五 E1）。

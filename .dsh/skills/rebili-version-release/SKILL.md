@@ -19,7 +19,7 @@ description: >-
 | 本次更新日志 | `app/src/main/res/values/strings.xml` → `update_log_current` | 关于页“本次更新 (版本名)”展示的内容 |
 | 历史更新日志 | 同上 → `update_history_log` | 按 `## YYYY-MM-DD` 日期分组，新日期放数组最前（最上方） |
 | 遗留完整日志 | 同上 → `update_log_items` | 老入口用，非必要时**不要**改动 |
-| 发行包 | `app/build/outputs/apk/release/*-release.apk` | assembleRelease 产物（ABI 分包 + universal） |
+| 发行包 | `app/build/outputs/apk/release/*-release.apk` | CI 里由「整理发行 APK」步骤汇总（26.10.11 起；Gradle 原始产物按 flavor 分目录，普通版回历史名 `app-<abi>-release.apk`，共存版 `app-coexist-<abi>-release.apk`） |
 | 发行渠道 | GitHub Release（`.github/workflows/build-release.yml`）+ Gitee 发行版 | 客户端更新检查按「Gitee → GitHub」顺序读这两个仓库的 `releases/latest` |
 | 版本元数据 | Release 说明末尾的 `<!-- update: versionCode=… versionName=… forceUpdate=… -->` | 发版工作流自动从 `app/build.gradle` 读出并写入，**不再有 config.json** |
 
@@ -53,7 +53,7 @@ description: >-
 ```bash
 ./gradlew.bat :app:assembleRelease   # Windows；Linux/WSL 需覆盖 gradle.properties 里的 java.home
 ```
-- 成功标记：`BUILD SUCCESSFUL`；产物在 `app/build/outputs/apk/release/`。
+- 成功标记：`BUILD SUCCESSFUL`。**26.10.11 起两个 flavor 都会构建**，Gradle 原始产物分别在 `app/build/outputs/apk/standard/release/` 与 `app/build/outputs/apk/coexist/release/`（文件名带 flavor，如 `app-standard-arm64-v8a-release.apk` / `app-coexist-arm64-v8a-release.apk`）；**本地想凑出 CI 那种发布目录，要自己按 CI 的「整理发行 APK」步骤把普通版改名成 `app-<abi>-release.apk` 再放到 `app/build/outputs/apk/release/`**（名字不能变——老客户端按精确文件名取包，详见 `docs/architecture-map.md` §7.37）。
 - 注意（在受限沙箱/agent 环境下）：Gradle 要写 `C:\Users\<user>\.gradle` 与 SDK 等**工作区之外**的路径，首次可能因写锁/权限失败。若失败需以不受限文件权限重跑同一命令，不要改路径绕过。
 - `app/build.gradle` 里 `copyApkToDesktop`（含 `adb install`）已注释，**不会**随 assembleRelease 自动复制/安装；需要时单独跑 `./gradlew.bat copyApkToDesktop`。
 
@@ -82,7 +82,7 @@ description: >-
 **优先走 CI**：推一个 tag（或手工触发 `构建发行版并创建 Release` 工作流并填 tag）即可，
 工作流会依次完成：
 
-1. 跑单测 → `:app:assembleRelease` → 生成各 APK 的 MD5；
+1. 跑单测（`:app:testStandardDebugUnitTest`，两个 flavor 共用同一份 `app/src/test`）→ `:app:assembleRelease` → 「整理发行 APK」（普通版改名回 `app-<abi>-release.apk`、共存版搬 `app-coexist-*` 进 `app/build/outputs/apk/release/`）→ 生成各 APK 的 MD5；
 2. 组装 **Release 说明正文**：更新日志在前（手工触发取 `release_body`，推 tag 由
    `.github/scripts/extract_update_log.py` 从 `strings.xml` 的 `update_log_current` 自动抽，
    见上方硬要求），接着是 MD5 表，末尾是从 `app/build.gradle` 读出的
@@ -122,4 +122,4 @@ description: >-
 - 例外：**渠道切换那一次**（把 26.10.02 及更早、只认 123pan config.json 的老客户端带过来）需要在触发发版时把 `emit_config_json` 打开，工作流会额外产出一份 `config.json`（`downloadUrl` = Gitee 上 **32 位包**直链、`forceUpdate` 同本次）挂到 Release —— 还需**人工把它传到 123pan**。之后不再产出。
 - `:app:verifyVersionConsistency` 只校验 build.gradle 与 strings.xml 更新日志锚点两处；改了版本号就要同步那个锚点，否则 CI 会红。
 - Gitee 会在发行版里**自动附带** `{tag}.zip` / `{tag}.tar.gz` 两个源码归档（tag 落在 `master` 上产生），
-  客户端选包必须按精确文件名匹配（`app-<abi>-release.apk`），不能用"第一个附件"。
+  客户端选包必须按精确文件名匹配（普通版 `app-<abi>-release.apk`、共存版 `app-coexist-<abi>-release.apk`，见 `util/UpdateRelease.apkNamePrefix`），不能用"第一个附件"。
