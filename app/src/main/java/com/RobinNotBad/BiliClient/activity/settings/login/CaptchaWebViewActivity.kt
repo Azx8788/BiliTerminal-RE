@@ -2,6 +2,7 @@ package com.RobinNotBad.BiliClient.activity.settings.login
 
 import android.annotation.SuppressLint
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.webkit.CookieManager
@@ -98,14 +99,20 @@ class CaptchaWebViewActivity : BaseActivity() {
         settings.allowContentAccess = false
         settings.allowUniversalAccessFromFileURLs = false
         settings.allowFileAccessFromFileURLs = false
-        // 极验脚本为 https，禁止混合内容
-        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        // 极验脚本为 https，禁止混合内容（setMixedContentMode 是 API 21；Android 4.4 上 WebView
+        // 默认就不允许 https 页面加载 http 子资源，跳过等价）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        }
         settings.cacheMode = WebSettings.LOAD_NO_CACHE
         settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36"
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
-        cookieManager.setAcceptThirdPartyCookies(webView, true)
+        // setAcceptThirdPartyCookies 是 API 21；4.4 的 WebView 默认就接受第三方 Cookie，跳过等价
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.setAcceptThirdPartyCookies(webView, true)
+        }
 
         webView!!.addJavascriptInterface(CaptchaJsInterface(), "Android")
         webView!!.webViewClient = CustomWebViewClient()

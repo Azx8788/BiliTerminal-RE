@@ -9,7 +9,10 @@ class VideoPreloadManager(private val preloadCount: Int = 2) {
 
     // 后台线程写入、主线程读取，用写时复制列表避免并发读写的数据竞争
     private val allItems = java.util.concurrent.CopyOnWriteArrayList<ShortVideoItem>()
-    private val inFlightPreloads = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+    // 注意：不能用 ConcurrentHashMap.newKeySet()——它和它返回的 KeySetView 都是 API 24 才有的，
+    // minSdk 21 上类初始化就 NoSuchMethodError。newSetFromMap 是 API 9，并发语义等价。
+    private val inFlightPreloads =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Int, Boolean>())
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentIndex = 0
 

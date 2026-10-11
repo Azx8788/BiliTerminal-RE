@@ -327,6 +327,34 @@ public class TerminalApi {
         return NetWorkUtil.getJson(BASE_URL + path, headers());
     }
 
+    /**
+     * 设备首选 ABI（例：armeabi-v7a / arm64-v8a）。
+     *
+     * <p><b>为什么不能直接读 {@link Build#SUPPORTED_ABIS}</b>：那个静态数组字段是 API 21 才
+     * 有的，minSdk 19 的设备上一执行 getstatic 就抛 {@link NoSuchFieldError}。它是
+     * {@link Error} 而不是 {@link Exception}，外面套 {@code catch (Exception e)} 根本兜不住，
+     * 必须先过 {@code SDK_INT} 闸。低版本回落到 API 1 就存在的、已废弃的
+     * {@link Build#CPU_ABI}。
+     */
+    public static String firstAbi() {
+        String[] abis = supportedAbis();
+        return abis.length > 0 ? abis[0] : "";
+    }
+
+    /**
+     * 同 {@link #firstAbi()}，但返回完整 ABI 列表（顺序就是设备优先顺序）。
+     *
+     * <p>见 {@link #firstAbi()} 里对 API 21 门槛的说明。
+     */
+    public static String[] supportedAbis() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            String[] abis = Build.SUPPORTED_ABIS;
+            if (abis != null && abis.length > 0) return abis;
+        }
+        String cpuAbi = Build.CPU_ABI;
+        return cpuAbi != null ? new String[]{cpuAbi} : new String[0];
+    }
+
     private static void requireOk(JSONObject result) throws Exception {
         if (result.optInt("code", -1) != 0) {
             throw new Exception("错误：" + result.optString("msg", "unknown"));
@@ -348,7 +376,7 @@ public class TerminalApi {
                     Build.VERSION.SDK_INT,
                     Build.BRAND,
                     Build.DEVICE,
-                    Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "");
+                    firstAbi());
             return post("/telemetry/ping", payload).optInt("code", -1) == 0;
         } catch (Exception e) {
             // 遥测是尽力而为：任何失败都不能影响用户使用，也不能弹窗打扰。

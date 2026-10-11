@@ -11,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import androidx.multidex.MultiDex
 import com.RobinNotBad.BiliClient.activity.base.InstanceActivity
 import com.RobinNotBad.BiliClient.activity.settings.UpdateActivity
 import com.RobinNotBad.BiliClient.activity.user.info.UserInfoActivity
@@ -227,6 +228,16 @@ class BiliTerminal : Application() {
         Logu.LOGV_ENABLED = SharedPreferencesUtil.getBoolean("dev_logv", debugBuild)
         Logu.LOGD_ENABLED = SharedPreferencesUtil.getBoolean("dev_logd", debugBuild)
         Logu.LOGI_ENABLED = SharedPreferencesUtil.getBoolean("dev_logi", debugBuild)
+    }
+
+    /**
+     * minSdk 19（< 21）时 Dalvik 只加载 `classes.dex`，剩下的 dex 必须在 `attachBaseContext`
+     * 阶段手动装进 ClassLoader，否则一碰后面的类就是 `ClassNotFoundException`。
+     * minSdk 提回 21 后连同 `androidx.multidex` 依赖一起删掉。
+     */
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        MultiDex.install(this)
     }
 
     override fun onCreate() {

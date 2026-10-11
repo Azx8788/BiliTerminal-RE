@@ -27,7 +27,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BooleanSupplier;
 
 public class AsyncLayoutInflaterX {
     private static final String TAG = "AsyncLayoutInflatePlus";
@@ -100,6 +99,17 @@ public class AsyncLayoutInflaterX {
     public interface OnInflateFinishedListener {
         void onInflateFinished(@NonNull View view, @LayoutRes int resid,
                                @Nullable ViewGroup parent);
+    }
+
+    /**
+     * 取消判定回调：返回 true 表示宿主已销毁、应当立刻停止续帧。
+     *
+     * 为什么不直接用 java.util.function.BooleanSupplier：该包是 Java 8 才加进 Android 的
+     * （API 24），本工程 minSdk 21，运行到 21~23 的设备上会在类加载时抛 NoClassDefFoundError。
+     * 这里自带一个单方法接口，Kotlin/Java 的 lambda 都能照常做 SAM 转换，调用点无需改动。
+     */
+    public interface CancelledChecker {
+        boolean isCancelled();
     }
 
     private static class InflateRequest {
@@ -279,7 +289,7 @@ public class AsyncLayoutInflaterX {
      * @param cancelled 宿主是否已销毁的回调；返回 true 时立刻收尾（置为完全不透明）并停止续帧，
      *                  避免对已销毁页面持续请求下一帧
      */
-    public static void fadeIn(@NonNull final View view, @Nullable final BooleanSupplier cancelled) {
+    public static void fadeIn(@NonNull final View view, @Nullable final CancelledChecker cancelled) {
         view.setAlpha(0f);
         Choreographer.getInstance().postFrameCallback(new Choreographer.FrameCallback() {
             private final long startMs = SystemClock.uptimeMillis();
@@ -291,7 +301,7 @@ public class AsyncLayoutInflaterX {
                 long elapsedMs = SystemClock.uptimeMillis() - startMs;
                 float alpha = Math.min(Math.min(frameCount / 3f, elapsedMs / 300f), 1f);
                 view.setAlpha(alpha);
-                if (alpha < 1f && (cancelled == null || !cancelled.getAsBoolean())) {
+                if (alpha < 1f && (cancelled == null || !cancelled.isCancelled())) {
                     Choreographer.getInstance().postFrameCallback(this);
                 } else {
                     view.setAlpha(1f);

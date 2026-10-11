@@ -164,10 +164,21 @@ public class SharedPreferencesUtil {
     /**
      * 原子批量写入：多个键值对合并为一次 apply()
      */
-    public static void edit(java.util.function.Consumer<SharedPreferences.Editor> operation) {
+    public static void edit(EditorAction operation) {
         SharedPreferences.Editor editor = sharedPreferences.edit();
-        operation.accept(editor);
+        operation.run(editor);
         editor.apply();
+    }
+
+    /**
+     * 批量写操作回调。
+     *
+     * 为什么不直接用 java.util.function.Consumer：该包是 Java 8 才加进 Android 的（API 24），
+     * 本工程 minSdk 21，运行到 21~23 的设备上会在类加载时抛 NoClassDefFoundError。
+     * 这里自带一个单方法接口，Kotlin/Java 的 lambda 都能照常做 SAM 转换，调用点无需改动。
+     */
+    public interface EditorAction {
+        void run(SharedPreferences.Editor editor);
     }
 
     /**

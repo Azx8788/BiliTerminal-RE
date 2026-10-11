@@ -174,7 +174,7 @@ class WriteReplyActivity : BaseActivity() {
                                 EventBus.getDefault().post(ReplyEvent(1, resultReply, pos, oid))
                                 finish()
                             } else {
-                                val toast_msg = "评论发送失败：\n" + (msgMap.getOrDefault(resultCode, resultCode.toString()))
+                                val toast_msg = "评论发送失败：\n" + ((msgMap[resultCode] ?: resultCode.toString()))
                                 runOnUiThread { MsgUtil.showMsg(toast_msg) }
                             }
                         } catch (e: Exception) {

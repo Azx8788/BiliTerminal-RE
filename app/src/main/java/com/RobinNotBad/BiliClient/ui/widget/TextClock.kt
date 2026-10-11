@@ -3,21 +3,30 @@ package com.RobinNotBad.BiliClient.ui.widget
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Typeface
-import android.os.Build
 import android.util.AttributeSet
 import android.widget.TextView
-import androidx.annotation.RequiresApi
 import com.RobinNotBad.BiliClient.util.TimeUtil
 
+/**
+ * 显示"时:分"并在整分钟自刷新的 TextView。
+ *
+ * <p><b>为什么不用 {@code @JvmOverloads} 主构造</b>：minSdk 19 下绝不能调
+ * {@code TextView(context, attrs, defStyleAttr, defStyleRes)} 这个 4 参构造，它是 API 21 才有的。
+ * 而 `@JvmOverloads` 生成的 2 参构造（XML inflate 用的那个）方法体里调的正是它 ——
+ * 4.4 上一被布局解析就会崩。改写成三个显式次构造之后，每个都只碰 API 1 就存在的重载。
+ */
 @SuppressLint("AppCompatCustomView")
-class TextClock @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0,
-    defStyleRes: Int = 0
-) : TextView(context, attrs, defStyleAttr, defStyleRes) {
+class TextClock : TextView {
 
-    init {
+    constructor(context: Context) : super(context) {
+        init()
+    }
+
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
+        init()
+    }
+
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
         init()
     }
 

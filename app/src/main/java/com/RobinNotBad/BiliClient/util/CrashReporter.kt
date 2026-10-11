@@ -68,7 +68,7 @@ object CrashReporter {
             /* device = */ Build.DEVICE,
             /* product = */ Build.PRODUCT,
             /* model = */ Build.MODEL,
-            /* abi = */ if (Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.isNotEmpty()) Build.SUPPORTED_ABIS[0] else "",
+            /* abi = */ TerminalApi.firstAbi(),
             /* ramTotal = */ ramTotal,
             /* ramAvail = */ ramAvail,
             /* uptimeSec = */ uptimeSec

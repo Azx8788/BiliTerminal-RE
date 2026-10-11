@@ -18,7 +18,7 @@ android {
 
     defaultConfig {
         applicationId "com.RobinNotBad.BiliClient"
-        minSdk 24
+        minSdk 19
         targetSdk 34
         versionCode 2610102
         versionName "26.10.10"
@@ -211,7 +211,7 @@ dependencies {
     // Kotlin
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.activity:activity-ktx:1.9.0'
-    implementation 'androidx.fragment:fragment-ktx:1.8.0'
+    implementation 'androidx.fragment:fragment-ktx:1.6.2'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.2'
     implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.8.2'
 
@@ -225,7 +225,10 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
     // UI
-    implementation 'androidx.appcompat:appcompat:1.7.0'
+    // minSdk 19 的硬约束：appcompat 1.7.0 / fragment-ktx 1.8.0 的 AAR 自身 minSdkVersion 是 21，
+    // 清单合并会直接失败。1.6.1 / 1.6.2 是仍声明 minSdk 14 的最后一代，故钉在这里。
+    // 想升回 1.7.0 / 1.8.0 必须先把 minSdk 提回 21。依据见 docs/architecture-map.md §1.1。
+    implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
@@ -240,7 +243,10 @@ dependencies {
 
     // Existing essential deps
     implementation 'com.google.zxing:core:3.5.3'
-    implementation 'org.jsoup:jsoup:1.17.2'
+    // jsoup 钉死在 1.16.1：1.16.2 起其 StringUtil 的 <clinit> 会碰 API 24 才有的
+    // ThreadLocal.withInitial，minSdk 21 上解析 HTML 会 NoSuchMethodError。原因与验证见
+    // docs/architecture-map.md §1.1「依赖里的 API 24 引用」。别再往上升。
+    implementation 'org.jsoup:jsoup:1.16.1'
     implementation 'com.github.chrisbanes:PhotoView:2.3.0'
     implementation 'org.greenrobot:eventbus:3.3.1'
 
@@ -249,7 +255,10 @@ dependencies {
     implementation project(path: ':DanmakuFlameMaster')
     implementation project(path: ':brotlij')
 
-    // 注：minSdk 24 下 ART 原生支持 multidex，androidx.multidex 与其 install() 调用均为死代码，已移除
+    // minSdk 19（< 21）时 ART 还不支持原生多 dex，必须靠 multidex 库 + Application.attachBaseContext
+    // 里的 MultiDex.install()（见 BiliTerminal.kt）。AGP 只会自动带上 2.0.0，这里显式钉 2.0.1。
+    // 若日后 minSdk 提回 21，这一条和 BiliTerminal 里的 install() 都要一起删掉。
+    implementation 'androidx.multidex:multidex:2.0.1'
     // 注：androidx.asynclayoutinflater、protobuf-javalite、geetest sensebot 全工程零引用，已移除
 
     // UETool (饿了么开源) UI 调试工具，仅 Debug 生效，release 用 no-op 空实现

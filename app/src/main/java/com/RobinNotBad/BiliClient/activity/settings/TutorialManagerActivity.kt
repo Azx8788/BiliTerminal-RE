@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.util.MsgUtil
@@ -192,11 +193,13 @@ class TutorialManagerActivity : BaseActivity() {
         if (isCompleted) {
             statusBadge.text = "已完成"
             statusBadge.setTextColor(Color.parseColor("#ffffff"))
-            statusBadge.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#27ae60"))
+            // View.backgroundTintList 的 setter 是 API 21 才有的，minSdk 19 上要走 ViewCompat；
+            // API < 21 时它等价于 no-op（statusBadge 本身没设 background），不会崩。
+            ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(Color.parseColor("#27ae60")))
         } else {
             statusBadge.text = "未完成"
             statusBadge.setTextColor(Color.parseColor("#ffffff"))
-            statusBadge.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#e67e22"))
+            ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(Color.parseColor("#e67e22")))
         }
 
         titleRow.addView(titleText)

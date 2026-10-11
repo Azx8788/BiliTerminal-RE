@@ -439,8 +439,12 @@ object ColorScheme {
     fun applyWindowTheme(activity: Activity) {
         val window: Window = activity.window
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = STATUS_BAR_COLOR
-        window.navigationBarColor = NAV_BAR_COLOR
+        // setStatusBarColor / setNavigationBarColor 是 API 21；minSdk 19 上直接调会 NoSuchMethodError。
+        // Android 4.4 的系统栏本来就不支持自定义底色，跳过即可（下面的图标深浅逻辑同样只对 21+ 有意义）。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.statusBarColor = STATUS_BAR_COLOR
+            window.navigationBarColor = NAV_BAR_COLOR
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.navigationBarDividerColor = SURFACE
