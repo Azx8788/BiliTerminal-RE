@@ -285,9 +285,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var seasonType: Int = 0
 
     // ---- 播放中周期上报 / 切P·退出即时上报的状态（详见 maybeReportProgress / reportProgressNow）----
-    // 与上次上报位置的差值上限：达到 15 秒才再报一次，避免每 250ms 一个请求
-    private val progressReportIntervalMs = 15000L
-    // 上次上报时的播放位置（毫秒），初值 -1 让"刚开播"也能自然等到播满 15 秒才首报
+    // 与上次上报位置的差值上限，达到才再报一次，避免每 250ms 一个请求。
+    // 番剧压到 5 秒：一集十几分钟看两眼就退的人不少，间隔太长时"最后一次有效心跳"还没发出去就退出了，
+    // 服务端记的"看到哪"会明显落后，续播位置不准；投稿视频维持 15 秒（远端口径）
+    private val progressReportIntervalMs: Long
+        get() = if (epid != 0L) 5000L else 15000L
+    // 上次上报时的播放位置（毫秒），初值 -1 让"刚开播"也能自然等到播满一个间隔才首报
     private var lastReportedProgressMs: Long = -1L
     // 上次上报出去的秒数，用于跨路径去重：onPause/onStop/onDestroy/finish 会连着走，
     // 不拦就会把同一个位置重复写三次
@@ -952,6 +955,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         ijkPlayer!!.setOnCompletionListener {
             finishWatching = true
+            // 看完立刻上报 -1（"已看完"）：退出路径补报的是当前位置，服务端只会记成
+            // "看到最后几秒"，续播就停在本集末尾而不是接着看下一集。番剧（epid）才有这个语义
+            if (epid != 0L) reportProgressNow(true, "看完上报")
 
             if (interactionData != null && interactionData!!.edges != null &&
                 interactionData!!.edges!!.questions != null && !questionShown) {
@@ -1227,11 +1233,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         if (destroyed || !isPrepared || !isPlaying || isSeeking) return
         if (!isOnlineVideo || isLiveMode) return
         if (!canReportProgress()) return
-        // 位置没走够就不报。初值 -1 意味着开播/切P后播满 15 秒才首报
+        // 位置没走够就不报。初值 -1 意味着开播/切P后播满一个上报间隔才首报
         if (Math.abs(video_now.toLong() - lastReportedProgressMs) < progressReportIntervalMs) return
         val progressSec = video_now / 1000L
         // 0 秒上报没有信息量还会覆盖服务端记录（见 HistoryApi.reportHistoryPgc 的说明），直接跳过；
-        // 这里不更新 lastReportedProgressMs，等真正播满 15 秒再报
+        // 这里不更新 lastReportedProgressMs，等真正播满一个间隔再报
         if (progressSec <= 0) return
         lastReportedProgressMs = video_now.toLong()
         lastReportedProgressSec = progressSec
@@ -1252,13 +1258,23 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 取内存里的 video_now，而不是 ijkPlayer.currentPosition：后者是取原生锁的 JNI 调用，
         // seek/缓冲期间可能长时间不返回，放在退出路径上就是 ANR。
         // video_now 由 progressChange 每 250ms 刷新，差半秒对进度上报无影响。
-        val progressSec = video_now / 1000L
-        if (progressSec <= 0) return false
-        // 同一秒在任何路径上已经报过就跳过：onPause → onStop → onDestroy、finish → onPause 都是连着走的，
-        // 不做这一步就会把同一个位置重复写三遍
-        if (progressSec == lastReportedProgressSec) return false
-        // 非强制的路径只报前进的进度（seek 回退后没继续播时，别把服务端的大进度改成小进度）
-        if (!force && progressSec < lastReportedProgressSec) return false
+        val currentSec = video_now / 1000L
+        // 这一集看完之后一律报 -1（"已看完"）：onCompletion 已经报过一次，之后的退出补报如果改报当前位置，
+        // 服务端会把"已看完"覆盖回"看到最后几秒"，续播就会停在本集末尾而不是接着往下走
+        val finished = finishWatching && epid != 0L
+        val progressSec = if (finished) HistoryApi.PROGRESS_FINISHED else currentSec
+        // 0 秒没有可续播的位置；-1 是有信息的"已看完"终态，必须放行（所以这里只挡 0，不是 <= 0）
+        if (progressSec == 0L) return false
+        if (finished) {
+            // -1 是终态，报过一次就够，免得 onPause/onStop/onDestroy 连着报三遍
+            if (lastReportedProgressSec == HistoryApi.PROGRESS_FINISHED) return false
+        } else {
+            // 同一秒在任何路径上已经报过就跳过：onPause → onStop → onDestroy、finish → onPause 都是连着走的，
+            // 不做这一步就会把同一个位置重复写三遍
+            if (progressSec == lastReportedProgressSec) return false
+            // 非强制的路径只报前进的进度（seek 回退后没继续播时，别把服务端的大进度改成小进度）
+            if (!force && progressSec < lastReportedProgressSec) return false
+        }
 
         lastReportedProgressMs = video_now.toLong()
         lastReportedProgressSec = progressSec

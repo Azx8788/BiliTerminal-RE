@@ -332,8 +332,9 @@ public class PlayerApi {
         playerData.cidHistory = playerData.cid;
         long lastProgress = getLastPlayProgress(playerData.aid, playerData.cid);
         if (lastProgress <= 0) {
-            //WBI 接口(密钥/风控/未登录)取不到时兜底走观看记录列表，否则续播会永远从 0 开始
-            lastProgress = HistoryApi.findProgressMsByAid(playerData.aid);
+            //WBI 接口(密钥/风控/未登录)取不到时兜底走观看记录列表，否则续播会永远从 0 开始。
+            //带上 epid 一起校验：观看记录里的 oid 只是剧集 avid，光按 aid 匹配会把别的集的进度套过来
+            lastProgress = HistoryApi.findProgressMsByAid(playerData.aid, playerData.epid);
             if (lastProgress > 0) Logu.w("history-last", "WBI 进度不可用，使用观看记录兜底: " + lastProgress + "ms");
         }
         //注意不能无条件赋值：调用方（番剧详情页从历史列表进来时）可能已经把已知进度塞进
@@ -376,6 +377,16 @@ public class PlayerApi {
             if (data == null) return 0;
             long lastPlayTime = data.optLong("last_play_time", 0);
             if (lastPlayTime <= 0) return 0;
+            //last_play_time 与 last_play_cid 是一对：番剧按"季"维护这份记录，last_play_cid 才代表
+            //它属于哪一集。请求的 cid 与它不一致时必须丢弃，否则"看着这一集点开另一集"会从上一集的
+            //位置开始播（远端 v1.2.0fix 修的就是这个）。取不到该字段(0)时也按"不属于这一集"处理，
+            //由调用方回落到观看记录兜底——宁可查一次列表，也不能给一个错的续播位置
+            long lastPlayCid = data.optLong("last_play_cid", 0);
+            if (lastPlayCid != cid) {
+                Logu.w("history-last", "aid=" + aid + " 丢弃跨集的 last_play_time=" + lastPlayTime
+                        + "ms（last_play_cid=" + lastPlayCid + " 请求 cid=" + cid + "）");
+                return 0;
+            }
             Logu.d("history-last", "aid=" + aid + " cid=" + cid + " last_play_time=" + lastPlayTime);
             return lastPlayTime;
         } catch (Exception e) {

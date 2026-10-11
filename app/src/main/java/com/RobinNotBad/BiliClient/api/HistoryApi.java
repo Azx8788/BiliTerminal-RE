@@ -25,6 +25,14 @@ public class HistoryApi {
     private static final int LOCATE_MAX_PAGES = 5;
 
     /**
+     * "已看完"的进度约定值。
+     *
+     * <p>番剧心跳接口用 progress=-1 表示这一集已经看完，服务端据此把它标成"看完"
+     * （下一集才能被当作"上次看到的那一集"的后续）。报真实位置（≈时长）只会得到"看到最后几秒"。
+     */
+    public static final long PROGRESS_FINISHED = -1L;
+
+    /**
      * 上传历史记录
      *
      * @param aid      视频aid
@@ -60,13 +68,14 @@ public class HistoryApi {
      * @param epid       剧集 epid（即 Bangumi.Episode#id）
      * @param seasonId   番剧 season_id
      * @param seasonType 剧集副类型（Bangumi.Info#type）
-     * @param progress   已观看秒数
+     * @param progress   已观看秒数；{@link #PROGRESS_FINISHED}(-1) 表示已看完
      */
     public static void reportHistoryPgc(long aid, long cid, long epid, long seasonId, int seasonType, long progress) throws IOException {
         if (SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.PRIVACY_MODE, false)) return;
-        //progress<=0 的上报零信息量且有害：服务端对本季"最近观看"按季粒度维护，
-        //报 0 会把本季记录覆盖成"该集 + 0 进度"，详情页"定位上次观看分集"会因此失效
-        if (progress <= 0) {
+        //0 的上报零信息量且有害：服务端对本季"最近观看"按季粒度维护，
+        //报 0 会把本季记录覆盖成"该集 + 0 进度"，详情页"定位上次观看分集"会因此失效。
+        //-1(PROGRESS_FINISHED) 是"已看完"这个有信息的终态，必须放行
+        if (progress == 0) {
             Logu.d("history-report", "跳过 0 进度上报 epid=" + epid);
             return;
         }
@@ -229,6 +238,19 @@ public class HistoryApi {
      * @return 毫秒；未登录、无记录或进度为 0/-1（已看完）时返回 0
      */
     public static long findProgressMsByAid(long aid) {
+        return findProgressMsByAid(aid, 0);
+    }
+
+    /**
+     * 同上，但额外要求观看记录里的 epid 也一致（番剧续播用）。
+     *
+     * <p>番剧观看记录里 oid 就是剧集 avid，正常情况下按 aid 已能锁定那一集；
+     * 但"同一部番的 aid 在历史里被别的集复用/串号"时只按 aid 匹配会拿到别的集的进度，
+     * 所以调用方手上有 epid 时（详情页与历史卡片都带）要多校验一层。
+     *
+     * @param epid 剧集 epid；0 表示不校验（投稿视频没有 epid）
+     */
+    public static long findProgressMsByAid(long aid, long epid) {
         if (aid == 0) return 0;
         //未登录时没有观看记录，直接跳过，避免发无谓请求
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0) return 0;
@@ -245,16 +267,8 @@ public class HistoryApi {
                 JSONArray list = data.optJSONArray("list");
                 if (list == null) break;
 
-                for (int i = 0; i < list.length(); i++) {
-                    JSONObject item = list.optJSONObject(i);
-                    if (item == null) continue;
-                    JSONObject history = item.optJSONObject("history");
-                    if (history == null) continue;
-                    if (history.optLong("oid", 0) != aid) continue;
-                    //progress 单位是秒；0/-1 都没有可续播的位置
-                    int progress = item.optInt("progress", 0);
-                    if (progress > 0) return progress * 1000L;
-                }
+                long progress = parseHistoryProgressMs(list, aid, epid);
+                if (progress > 0) return progress;
 
                 JSONObject cursor = data.optJSONObject("cursor");
                 if (list.length() == 0 || cursor == null) break;
@@ -269,6 +283,32 @@ public class HistoryApi {
             }
         } catch (Exception e) {
             Logu.e("history-locate", "兜底查询观看记录失败: " + e.getMessage());
+        }
+        return 0;
+    }
+
+    /**
+     * 纯解析：在一页观看记录里找 aid（epid 非 0 时还要求 epid 相同）对应的播放进度，单位毫秒。
+     *
+     * <p>抽成纯函数是为了能被 JVM 单测覆盖——"按集身份校验"正是防串集的那道闸门，
+     * 光靠真机很难复现"另一集的进度被套到这一集"的场景。
+     *
+     * @return 毫秒；没有匹配记录、或记录里 progress 为 0/-1（已看完）时返回 0
+     */
+    public static long parseHistoryProgressMs(JSONArray list, long aid, long epid) {
+        if (list == null) return 0;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject item = list.optJSONObject(i);
+            if (item == null) continue;
+            JSONObject history = item.optJSONObject("history");
+            if (history == null) continue;
+            if (history.optLong("oid", 0) != aid) continue;
+            // epid 是"这一条记录属于哪一集"的身份：它与请求的剧集不一致时必须丢弃，
+            // 否则看着这一集点开另一集会从上一集的位置起播
+            if (epid != 0 && history.optLong("epid", 0) != epid) continue;
+            //progress 单位是秒；0/-1 都没有可续播的位置
+            int progress = item.optInt("progress", 0);
+            if (progress > 0) return progress * 1000L;
         }
         return 0;
     }
