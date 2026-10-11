@@ -25,6 +25,7 @@ import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.TerminalDialog
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
@@ -44,6 +45,10 @@ class BangumiInfoFragment : Fragment() {
     private var episodeRecyclerView: RecyclerView? = null
     private var sectionChoose: Button? = null
     private var episodeChoose: TextView? = null
+    private var followButton: Button? = null
+
+    /** 追番按钮的当前状态；点击时按「取反」发请求，成功后原地翻转 */
+    private var followed = false
     private var bangumi: Bangumi? = null
 
     companion object {
@@ -131,6 +136,7 @@ class BangumiInfoFragment : Fragment() {
         val record = rootView!!.findViewById<TextView>(R.id.text_record)
         sectionChoose = rootView!!.findViewById(R.id.section_choose)
         episodeChoose = rootView!!.findViewById(R.id.episode_choose)
+        followButton = rootView!!.findViewById(R.id.btn_follow)
         selectedSection = 0
 
         rootView!!.visibility = View.GONE
@@ -254,6 +260,9 @@ class BangumiInfoFragment : Fragment() {
         val indexShow = rootView!!.findViewById<TextView>(R.id.indexShow)
         indexShow.text = bangumi!!.info.indexShow
 
+        // 追番按钮要在"有没有剧集"的分支之前接线：还没开播的番（敬请期待）恰恰是最需要点追番的时候
+        setupFollowButton()
+
         // 首个"有剧集"的季才是可用的起始季：番剧数据里第一项常常是空的 PV/预告季，
         // 直接用它会让选集区空白，而且后面按下标取剧集时必然越界
         val firstSection = firstSectionWithEpisodes()
@@ -311,6 +320,78 @@ class BangumiInfoFragment : Fragment() {
         onFinishLoad()
 
         refreshReplies()
+    }
+
+    /**
+     * 追番按钮：先用本地缓存点亮首帧，再异步用服务端状态校正。
+     *
+     * 缓存（{@code bangumi_follow_<season_id>}）只是为了让按钮别闪一下"追番"，
+     * 真相以 {@code pgc/view/web/season/user/status} 为准；查询失败时保持缓存值不动。
+     * 未登录不查询也不发请求（接口会返回 -101），直接提示。
+     */
+    @SuppressLint("SetTextI18n")
+    private fun setupFollowButton() {
+        val button = followButton ?: return
+        val seasonId = bangumi?.info?.season_id ?: 0L
+        if (seasonId <= 0L) {
+            // season_id 都没有的壳数据（反查失败等情况）不该给一个点了会失败的按钮
+            button.visibility = View.GONE
+            return
+        }
+
+        val loggedIn = SharedPreferencesUtil.getLong("mid", 0) != 0L
+
+        fun applyFollowed(value: Boolean) {
+            followed = value
+            button.text = if (value) "已追番" else "追番"
+        }
+
+        button.visibility = View.VISIBLE
+        applyFollowed(SharedPreferencesUtil.getBoolean(BangumiApi.FOLLOW_KEY_PREFIX + seasonId, false))
+
+        button.setOnClickListener {
+            if (!loggedIn) {
+                MsgUtil.showMsg("未登录，无法追番")
+                return@setOnClickListener
+            }
+            val target = !followed
+            button.isEnabled = false
+            CenterThreadPool.run {
+                try {
+                    val code = BangumiApi.setFollow(seasonId, target)
+                    CenterThreadPool.runOnUiThread {
+                        button.isEnabled = true
+                        if (code == 0) {
+                            applyFollowed(target)
+                            SharedPreferencesUtil.putBoolean(BangumiApi.FOLLOW_KEY_PREFIX + seasonId, target)
+                            MsgUtil.showMsg(if (target) "已追番" else "已取消追番")
+                        } else {
+                            MsgUtil.showMsg("操作失败，请稍后重试")
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 失败不能翻转按钮状态，否则用户以为追上了、重进页面又变回来
+                    CenterThreadPool.runOnUiThread {
+                        button.isEnabled = true
+                        MsgUtil.showMsg("操作失败，请稍后重试")
+                    }
+                }
+            }
+        }
+
+        if (!loggedIn) return
+
+        CenterThreadPool.run {
+            try {
+                val remote = BangumiApi.getFollowStatus(seasonId)
+                CenterThreadPool.runOnUiThread {
+                    applyFollowed(remote)
+                    SharedPreferencesUtil.putBoolean(BangumiApi.FOLLOW_KEY_PREFIX + seasonId, remote)
+                }
+            } catch (ignored: Exception) {
+                // 拉取失败就保持缓存值，不要把一个未知状态写成"未追番"
+            }
+        }
     }
 
     /** sectionList 里第一个真正含有剧集的季的下标；全都为空（或没有季）时返回 -1。 */

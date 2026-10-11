@@ -102,4 +102,28 @@ class BangumiApiTest {
         assertTrue("错误码必须抛出 JSONException", thrown != null)
         assertEquals("错误码：-400", thrown!!.message)
     }
+
+    // ---------- 追番状态（详情页追番按钮） ----------
+
+    @Test
+    fun parseFollowStatus_follow为1_已追番() {
+        assertTrue(BangumiApi.parseFollowStatus(JSONObject("""{"code":0,"result":{"follow":1}}""")))
+    }
+
+    @Test
+    fun parseFollowStatus_follow为0_未追番() {
+        assertTrue(!BangumiApi.parseFollowStatus(JSONObject("""{"code":0,"result":{"follow":0}}""")))
+    }
+
+    @Test
+    fun parseFollowStatus_缺result_视为未追番() {
+        assertTrue(!BangumiApi.parseFollowStatus(JSONObject("""{"code":0}""")))
+        assertTrue(!BangumiApi.parseFollowStatus(JSONObject("""{"code":0,"result":null}""")))
+    }
+
+    @Test
+    fun parseFollowStatus_错误码_视为未追番() {
+        // -101 未登录：显示"追番"比误显示"已追番"安全（点一下会被告知未登录）
+        assertTrue(!BangumiApi.parseFollowStatus(JSONObject("""{"code":-101,"message":"账号未登录"}""")))
+    }
 }

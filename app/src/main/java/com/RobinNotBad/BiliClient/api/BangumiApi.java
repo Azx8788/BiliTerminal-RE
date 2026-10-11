@@ -21,6 +21,13 @@ public class BangumiApi {
     private static final int FOLLOW_PAGE_SIZE = 30;
     /** C16 追番更新检查最多翻多少页：追番再多也不该在冷启动时把流量打满。 */
     private static final int FOLLOW_MAX_PAGES = 10;
+    /**
+     * 追番状态缓存键前缀，完整键 {@code "bangumi_follow_<season_id>"}（boolean）。
+     * 只用来让详情页按钮首帧就有大致状态，随后由 {@link #getFollowStatus(long)} 校正。
+     * 键里的 id 必须是 <b>season_id</b>：详情页读写都用 season_id，
+     * 一头写 media_id、一头读 season_id 会让缓存永远命不中。
+     */
+    public static final String FOLLOW_KEY_PREFIX = "bangumi_follow_";
 
     public static int getFollowingList(int page, List<VideoCard> cardList) throws JSONException, IOException {
         String url = "https://api.bilibili.com/x/space/bangumi/follow/list?type=1&follow_status=0&pn=" + page
@@ -109,6 +116,47 @@ public class BangumiApi {
             list.add(item);
         }
         return list;
+    }
+
+
+    /**
+     * 查询某一季的追番状态。
+     *
+     * <p>用 {@code season_id} 而不是 {@code media_id} 查询：一部番的多季是各自独立的追番对象，
+     * 只看 media_id 会把"追了第二季没追第一季"混成一个状态。
+     *
+     * @return true 表示已追番
+     */
+    public static boolean getFollowStatus(long seasonId) throws IOException, JSONException {
+        String url = "https://api.bilibili.com/pgc/view/web/season/user/status?season_id=" + seasonId;
+        return parseFollowStatus(NetWorkUtil.getJson(url));
+    }
+
+    /**
+     * 纯解析：user/status 响应里 {@code result.follow == 1} 即已追番（抽出来给 JVM 单测覆盖）。
+     * 错误码一律按"未追番"处理：调用方只用它校正按钮显示，失败时保持原状更安全。
+     */
+    public static boolean parseFollowStatus(JSONObject all) {
+        if (all == null || all.optInt("code", -1) != 0) return false;
+        JSONObject result = all.optJSONObject("result");
+        return result != null && result.optInt("follow", 0) == 1;
+    }
+
+    /**
+     * 追番 / 取消追番（{@code pgc/web/follow/add|del}）。
+     *
+     * @param follow true 追番，false 取消
+     * @return 服务端 code，0 为成功
+     */
+    public static int setFollow(long seasonId, boolean follow) throws IOException, JSONException {
+        String url = follow
+                ? "https://api.bilibili.com/pgc/web/follow/add"
+                : "https://api.bilibili.com/pgc/web/follow/del";
+        NetWorkUtil.FormData formData = new NetWorkUtil.FormData()
+                .put("season_id", seasonId)
+                .put("csrf", NetWorkUtil.currentCsrf());
+        JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post(url, formData.toString(), NetWorkUtil.webHeaders).body()).string());
+        return result.optInt("code", -1);
     }
 
 
