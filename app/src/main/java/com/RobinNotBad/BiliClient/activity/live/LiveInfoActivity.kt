@@ -32,6 +32,7 @@ import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.TerminalContext
 import com.RobinNotBad.BiliClient.util.ToolsUtil
+import com.RobinNotBad.BiliClient.util.live.LiveStreamSelector
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
@@ -139,20 +140,26 @@ class LiveInfoActivity : BaseActivity() {
                     play.setOnClickListener {
                         CenterThreadPool.run {
                             try {
-                                val codec = playInfo?.playUrl?.stream?.getOrNull(0)
-                                    ?.format?.getOrNull(0)?.codec?.getOrNull(0)
-                                if (codec == null || codec.url_info.isEmpty()) {
+                                // 取流候选由纯函数摊平（util/live/LiveStreamSelector，带 JVM 单测）：
+                                // 首选仍是"用户选中的那条 FLV 线路"，同时把完整候选表交给播放器
+                                // （FLV 各线路在前、HLS 在后），弱网或线路故障时播放器可以直接换。
+                                val routes = LiveStreamSelector.routeCandidates(playInfo)
+                                val primary = routes.getOrNull(selectedHost)
+                                    ?: LiveStreamSelector.first(playInfo)
+                                if (primary == null) {
                                     runOnUiThread { MsgUtil.showMsg("直播已结束") }
                                     return@run
                                 }
-                                val urlInfo = codec.url_info[selectedHost.coerceIn(0, codec.url_info.size - 1)]
-                                val play_url = urlInfo.host + codec.base_url + urlInfo.extra
+                                val play_url = primary.url
 
                                 val playerData = PlayerData(PlayerData.TYPE_LIVE)
                                 playerData.videoUrl = play_url
                                 playerData.title = "直播·" + room!!.title
                                 playerData.aid = room_id
                                 playerData.mid = SharedPreferencesUtil.getLong("mid", 0)
+                                playerData.liveUrlCandidates = ArrayList(
+                                    LiveStreamSelector.orderedForFailover(playInfo, selectedHost)
+                                        .map { it.url })
 
                                 runOnUiThread {
                                     try {
@@ -177,9 +184,7 @@ class LiveInfoActivity : BaseActivity() {
                         startActivity(intent)
                         true
                     }
-                    val firstCodec = playInfo?.playUrl?.stream?.getOrNull(0)
-                        ?.format?.getOrNull(0)?.codec?.getOrNull(0)
-                    if (playInfo == null || playInfo!!.playUrl == null || firstCodec == null) {
+                    if (LiveStreamSelector.first(playInfo) == null) {
                         MsgUtil.showMsg("直播已结束")
                         play.visibility = View.GONE
                     } else {
@@ -237,16 +242,15 @@ class LiveInfoActivity : BaseActivity() {
     }
 
     private fun refresh_host_list() {
-        val codec = playInfo?.playUrl?.stream?.getOrNull(0)
-            ?.format?.getOrNull(0)?.codec?.getOrNull(0)
+        // 「路线N」= 候选表里的 FLV 线路（无 FLV 时退化为全部候选）；
+        // 顺序与播放时用的候选顺序一致，selectedHost 就是这张表的下标。
+        val routes = LiveStreamSelector.routeCandidates(playInfo)
         val hostList = ArrayList<Bangumi.Episode>()
-        if (codec != null) {
-            for (i in 0 until codec.url_info.size) {
-                val episode = Bangumi.Episode()
-                episode.id = i.toLong()
-                episode.title = "路线" + (i + 1)
-                hostList.add(episode)
-            }
+        for (i in routes.indices) {
+            val episode = Bangumi.Episode()
+            episode.id = i.toLong()
+            episode.title = "路线" + (i + 1)
+            hostList.add(episode)
         }
         hostAdapter!!.setData(hostList)
         selectedHost = 0

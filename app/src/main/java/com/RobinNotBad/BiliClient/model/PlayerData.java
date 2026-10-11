@@ -37,6 +37,10 @@ public class PlayerData implements Parcelable {
     public int currentPageIndex = 0;
     public DashData dashData; // DASH格式数据
     public String audioUrl = ""; // 单独的音频URL（用于仅音频下载）
+    // 直播专用：进入播放器前已经把全部可选地址排好序（见 util/live/LiveStreamSelector）。
+    // 直播流"连接还在、但长时间没有数据"时，播放器按这个顺序换 CDN / 换 HLS 重连，
+    // 不必回头再请求一次取流接口（也就不会因为请求失败而彻底没得救）。
+    public ArrayList<String> liveUrlCandidates = new ArrayList<>();
 
     public PlayerData() {
     }
@@ -66,6 +70,8 @@ public class PlayerData implements Parcelable {
         epid = in.readLong();
         seasonId = in.readLong();
         seasonType = in.readInt();
+        liveUrlCandidates = in.createStringArrayList();
+        if (liveUrlCandidates == null) liveUrlCandidates = new ArrayList<>();
         // dashData不序列化，下载时会重新获取
     }
 
@@ -107,6 +113,7 @@ public class PlayerData implements Parcelable {
         dest.writeLong(epid);
         dest.writeLong(seasonId);
         dest.writeInt(seasonType);
+        dest.writeStringList(liveUrlCandidates);
         // dashData不序列化，下载时会重新获取
     }
 

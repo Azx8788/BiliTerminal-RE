@@ -456,6 +456,10 @@ public class PlayerApi {
                 intent.putExtra("mid", playerData.mid);
                 intent.putExtra("progress", playerData.progress);
                 intent.putExtra("live_mode", playerData.isLive());
+                // 直播的候选地址表随 Intent 一起进播放器：弱网/线路故障时播放器要能在不改请求的前提下换线路。
+                if (playerData.liveUrlCandidates != null && !playerData.liveUrlCandidates.isEmpty()) {
+                    intent.putStringArrayListExtra("live_url_candidates", playerData.liveUrlCandidates);
+                }
                 //番剧维度必须随 Intent 一起进播放器：缺了这三个值，播放器只能按投稿视频上报，
                 //服务端的观看记录与续播进度都不会更新。放在这里而不是各调用点，是为了让
                 //所有入口（详情页、历史列表、缓存列表等）都自动带上。
