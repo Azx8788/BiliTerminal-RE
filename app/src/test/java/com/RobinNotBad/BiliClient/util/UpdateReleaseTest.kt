@@ -174,4 +174,44 @@ class UpdateReleaseTest {
     fun pickApkUrl_emptyAssets() {
         assertNull(UpdateRelease.pickApkUrl(emptyList(), listOf("arm64-v8a")))
     }
+
+    // ==================== 共存版（26.10.11）====================
+
+    @Test
+    fun pickApkUrl_coexistPicksItsOwnAssets() {
+        val list = assets(
+            "app-arm64-v8a-release.apk",
+            "app-coexist-arm64-v8a-release.apk",
+            "app-coexist-universal-release.apk"
+        )
+        val url = UpdateRelease.pickApkUrl(list, listOf("arm64-v8a"), UpdateRelease.apkNamePrefix(coexist = true))
+        assertTrue("共存版必须拿到自己的包，不能下到普通版（会因包名不符被拒装）", url!!.endsWith("app-coexist-arm64-v8a-release.apk"))
+    }
+
+    @Test
+    fun pickApkUrl_coexistFallsBackToItsOwnUniversal() {
+        val list = assets("app-coexist-arm64-v8a-release.apk", "app-coexist-universal-release.apk")
+        assertTrue(
+            UpdateRelease.pickApkUrl(list, listOf("mips"), UpdateRelease.apkNamePrefix(true))!!
+                .endsWith("app-coexist-universal-release.apk")
+        )
+    }
+
+    @Test
+    fun pickApkUrl_coexistNeverFallsBackToStandardAssets() {
+        // 共存版专用的包还没传上去时，必须返回 null 让调用方去别的更新源，
+        // 绝不能退回普通版：下载会成功、安装会被 ApkVerifier 拒绝（包名不符），
+        // 用户看到的是"有更新但永远装不上"。
+        val onlyStandard = assets("app-arm64-v8a-release.apk", "app-universal-release.apk")
+        assertNull(UpdateRelease.pickApkUrl(onlyStandard, listOf("arm64-v8a"), UpdateRelease.apkNamePrefix(true)))
+        assertNull(UpdateRelease.pickApkUrl(onlyStandard, listOf("mips"), UpdateRelease.apkNamePrefix(true)))
+    }
+
+    @Test
+    fun apkNamePrefix_standardKeepsLegacyNames() {
+        // 普通版必须保持历史文件名：已经装机的老客户端就是按 app-<abi>-release.apk 找包的，
+        // 一旦改名，它们会"检查不到更新"。CI 里普通版产出改名回旧名就是为此。
+        assertEquals("app", UpdateRelease.apkNamePrefix(coexist = false))
+        assertEquals("app-coexist", UpdateRelease.apkNamePrefix(coexist = true))
+    }
 }

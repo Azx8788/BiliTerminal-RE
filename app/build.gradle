@@ -52,6 +52,28 @@ android {
         }
     }
 
+    // 两个发行渠道（26.10.11 新增共存版）：
+    //   standard —— 包名不变，覆盖升级既有用户；
+    //   coexist  —— 包名加 .coexist 后缀，可与普通版**同时安装**（MT 管理器那种共存版）。
+    // 两者只有**包名与图标**不同，代码与资源其余部分共用；数据（登录态、设置、缓存、
+    // /Android/media/<包名>/）按包名天然隔离，所以共存版要重新登录一次。
+    // 名称**刻意保持一致**（两版都叫「RE:哔哩终端」，`app_name` 一个键管应用名与桌面名）——
+    // 用户 26.10.11 明确要求，靠图标区分（共存版用上游原图标，见 app/src/coexist/res/mipmap-nodpi/）。
+    // 注意：加了 flavor 后单测任务名变成 testStandardDebugUnitTest / testCoexistDebugUnitTest，
+    // 老的 testDebugUnitTest 不再存在（CI 与 AGENTS.md 已同步）。见 docs/architecture-map.md §7.37。
+    flavorDimensions += 'channel'
+    productFlavors {
+        standard {
+            dimension 'channel'
+            buildConfigField "boolean", "COEXIST", "false"
+        }
+        coexist {
+            dimension 'channel'
+            applicationIdSuffix ".coexist"
+            buildConfigField "boolean", "COEXIST", "true"
+        }
+    }
+
     buildTypes {
         release {
             buildConfigField "boolean", "BETA", String.valueOf(betaVer > 0)

@@ -76,20 +76,32 @@ object UpdateRelease {
      *
      * 注意 Gitee 会往发行版里塞 `{tag}.zip` / `{tag}.tar.gz` 两个**源码归档**（不是我们上传的），
      * 所以这里一律按精确文件名匹配，绝不能用"第一个附件"这种写法。
+     *
+     * [namePrefix] 区分两个发行渠道（26.10.11 起）：普通版是 `app`（文件名保持历史写法，
+     * **老客户端也认**），共存版是 `app-coexist`。共存版如果按普通版的名字取包，装的时候
+     * `ApkVerifier` 会因包名不符拒绝——表现为"永远检查得到更新、永远装不上"。CI 侧对应
+     * `.github/workflows/build-release.yml` 里的改名步骤。
      */
-    fun pickApkUrl(assets: List<ReleaseAsset>, supportedAbis: List<String>): String? {
+    fun pickApkUrl(
+        assets: List<ReleaseAsset>,
+        supportedAbis: List<String>,
+        namePrefix: String = "app"
+    ): String? {
         val byName = HashMap<String, String>()
         for (a in assets) byName[a.name] = a.url
 
         for (abi in supportedAbis) {
             val candidate = when (abi.lowercase()) {
-                "arm64-v8a" -> "app-arm64-v8a-release.apk"
-                "armeabi-v7a", "armeabi" -> "app-armeabi-v7a-release.apk"
-                "x86", "x86_64" -> "app-x86-release.apk"
+                "arm64-v8a" -> "$namePrefix-arm64-v8a-release.apk"
+                "armeabi-v7a", "armeabi" -> "$namePrefix-armeabi-v7a-release.apk"
+                "x86", "x86_64" -> "$namePrefix-x86-release.apk"
                 else -> null
             } ?: continue
             byName[candidate]?.let { return it }
         }
-        return byName["app-universal-release.apk"]
+        return byName["$namePrefix-universal-release.apk"]
     }
+
+    /** 当前渠道的 APK 文件名前缀（CI 产出的附件名要与它一致）。 */
+    fun apkNamePrefix(coexist: Boolean): String = if (coexist) "app-coexist" else "app"
 }

@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.content.FileProvider
 import com.RobinNotBad.BiliClient.BiliTerminal
+import com.RobinNotBad.BiliClient.BuildConfig
+import com.RobinNotBad.BiliClient.api.TerminalApi
 import com.RobinNotBad.BiliClient.model.UpdateConfig
 import kotlinx.coroutines.CancellationException
 import okhttp3.OkHttpClient
@@ -157,8 +159,14 @@ object UpdateManager {
                 }
             }
         }
-        val downloadUrl = UpdateRelease.pickApkUrl(assets, Build.SUPPORTED_ABIS.toList())
-            ?: throw IOException("发行版里找不到可用的 APK 附件（共 ${assets.size} 个附件）")
+        // Build.SUPPORTED_ABIS 是 API 21 的静态字段，minSdk 19 上直接读会 NoSuchFieldError，
+        // 统一走 TerminalApi.supportedAbis()（内部有 SDK_INT 闸 + CPU_ABI 回落）。
+        // 共存版必须只认自己那套附件名（app-coexist-*），否则会下到普通版、被 ApkVerifier 拒装。
+        val downloadUrl = UpdateRelease.pickApkUrl(
+            assets,
+            TerminalApi.supportedAbis().toList(),
+            UpdateRelease.apkNamePrefix(BuildConfig.COEXIST)
+        ) ?: throw IOException("发行版里找不到可用的 APK 附件（共 ${assets.size} 个附件）")
 
         val config = UpdateConfig(
             meta.versionCode,
