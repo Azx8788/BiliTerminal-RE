@@ -174,4 +174,48 @@ class BangumiApiTest {
         assertEquals(0, meta.seasonType)
         assertEquals("", meta.statusDesc)
     }
+
+    // ---------- 按 epid 反查剧集（历史卡片一键续播） ----------
+
+    @Test
+    fun parseEpisodeResult_正片命中_带回aid_cid与所属季() {
+        val result = BangumiApi.parseEpisodeResult(
+            JSONObject(
+                """{"season_id":555,"type":1,"episodes":[${episodeJson(1)},${episodeJson(2, "第2话", "再启程")}]}"""
+            ),
+            2L
+        )
+
+        assertEquals(2L, result.episode.id)
+        assertEquals(102L, result.episode.aid)
+        assertEquals(202L, result.episode.cid)
+        assertEquals("再启程", result.episode.title_long)
+        // 季 id 与季类型缺一个，播放进度就记不成番剧记录，必须一起带出来
+        assertEquals(555L, result.seasonId)
+        assertEquals(1, result.seasonType)
+    }
+
+    @Test
+    fun parseEpisodeResult_正片里没有_到附加分区里找() {
+        val result = BangumiApi.parseEpisodeResult(
+            JSONObject(
+                """{"season_id":555,"type":4,"episodes":[${episodeJson(1)}],""" +
+                        """"section":[{"id":9,"title":"预告花絮","type":1,"episodes":[${episodeJson(3, "PV", "正式预告")}]}]}"""
+            ),
+            3L
+        )
+
+        assertEquals(3L, result.episode.id)
+        assertEquals("PV", result.episode.title)
+        assertEquals(4, result.seasonType)
+    }
+
+    @Test(expected = JSONException::class)
+    fun parseEpisodeResult_找不到该集_抛异常而不返回空数据() {
+        // 只有回退到详情页这一条退路，静默返回 null 会把空播放数据交给播放器
+        BangumiApi.parseEpisodeResult(
+            JSONObject("""{"season_id":555,"type":1,"episodes":[${episodeJson(1)}]}"""),
+            999L
+        )
+    }
 }

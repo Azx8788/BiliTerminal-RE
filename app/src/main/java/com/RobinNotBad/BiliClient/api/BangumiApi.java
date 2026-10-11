@@ -380,6 +380,71 @@ public class BangumiApi {
         return meta;
     }
 
+    /**
+     * 单个剧集的播放入口信息（历史番剧卡片一键续播用）。
+     */
+    public static class EpisodeResult {
+        public Bangumi.Episode episode;
+        /** 该剧集所属季 id（心跳上报的 sid） */
+        public long seasonId;
+        /** 该季类型（心跳上报的 sub_type）；0 表示没取到 */
+        public int seasonType;
+    }
+
+    /**
+     * 用 epid 反查剧集的播放数据（aid/cid/所属季）。
+     *
+     * <p>历史记录里的番剧卡片只有 epid，没有 aid/cid，也没有所属季，
+     * 不补齐这三个值就没法直接起播：播放器要 aid/cid 取播放地址，进度心跳要 sid/sub_type 才记成番剧记录。
+     */
+    public static EpisodeResult getEpisodeFromEpid(long epid) throws IOException, JSONException {
+        String url = "https://api.bilibili.com/pgc/view/web/season?ep_id=" + epid;
+        JSONObject all = NetWorkUtil.getJson(url);
+        int code = all.optInt("code", -1);
+        if (code != 0) throw new JSONException("错误码：" + code);
+        return parseEpisodeResult(all.getJSONObject("result"), epid);
+    }
+
+    /**
+     * 纯解析：在季详情的 {@code result} 里找出 epid 对应的那一集（抽出来是为了能被 JVM 单测覆盖）。
+     *
+     * <p>只解析命中的那一条，不整季解析：附加分区里偶尔有字段不全的集（缺 badge/long_title），
+     * 整季解析会因为它抛异常，把本来能播的这一集一起拖死。
+     *
+     * <p>找不到时抛 {@link JSONException} 而不是返回 null——调用方只能回退到详情页，
+     * 静默返回 null 会让上层把空播放数据交给播放器。
+     */
+    public static EpisodeResult parseEpisodeResult(JSONObject result, long epid) throws JSONException {
+        if (result == null) throw new JSONException("获取剧集信息失败");
+
+        JSONObject target = findEpisodeJson(result.optJSONArray("episodes"), epid);
+        if (target == null) {
+            JSONArray sections = result.optJSONArray("section");
+            if (sections != null) {
+                for (int i = 0; i < sections.length() && target == null; i++) {
+                    JSONObject section = sections.optJSONObject(i);
+                    if (section != null) target = findEpisodeJson(section.optJSONArray("episodes"), epid);
+                }
+            }
+        }
+        if (target == null) throw new JSONException("剧集中未找到 epid=" + epid);
+
+        EpisodeResult episodeResult = new EpisodeResult();
+        episodeResult.episode = analyzeEpisode(target);
+        episodeResult.seasonId = result.optLong("season_id", 0);
+        episodeResult.seasonType = result.optInt("type", 0);
+        return episodeResult;
+    }
+
+    private static JSONObject findEpisodeJson(JSONArray episodes, long epid) {
+        if (episodes == null) return null;
+        for (int i = 0; i < episodes.length(); i++) {
+            JSONObject episode = episodes.optJSONObject(i);
+            if (episode != null && episode.optLong("id", 0) == epid) return episode;
+        }
+        return null;
+    }
+
     public static ArrayList<Bangumi.Section> getSections(long season_id) throws IOException, JSONException {
         String url = "https://api.bilibili.com/pgc/web/season/section?season_id=" + season_id;
         JSONObject all = new JSONObject(Objects.requireNonNull(Objects.requireNonNull(NetWorkUtil.get(url)).body()).string());  //得到一整个json

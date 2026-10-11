@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.activity.video.JumpToPlayerActivity
 import com.RobinNotBad.BiliClient.activity.video.info.VideoInfoActivity
 import com.RobinNotBad.BiliClient.api.BangumiApi
 import com.RobinNotBad.BiliClient.model.VideoCard
@@ -90,22 +91,22 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
                         val ctx = boundContext!!
                         if (card.epid > 0L) {
                             // 历史记录来源的番剧卡片：aid(history.oid) 是剧集 avid，不能当 media_id。
-                            // 直接拿它去请求，接口一样返回 code=0，但 season_id=0、标题为空，详情页是空壳，
-                            // 所以先用 epid 反查 media_id；反查是网络请求，放线程池，别卡主线程
+                            // 这类卡片可以直接续播：拿 epid 反查剧集的 aid/cid/所属季，凑齐播放数据就起播，
+                            // 省掉"先进详情页再点播放"的绕路。反查是网络请求，放线程池，别卡主线程
                             CenterThreadPool.run {
-                                val mediaId = BangumiApi.getMdidFromEpid(card.epid)
-                                if (mediaId != null && mediaId > 0L) {
-                                    // 顺便把 epid 和已看进度（秒）带进详情页，用于定位上次观看的那一集
-                                    val intent = Intent(ctx, VideoInfoActivity::class.java)
-                                    intent.putExtra("aid", mediaId)
-                                    intent.putExtra("type", "media")
-                                    intent.putExtra("epid", card.epid)
-                                    // 键名带 _sec 后缀：PlayerActivity 读的 extra 也叫 "progress" 但单位是毫秒，
-                                    // 两者若被同一条 Intent 转发会静默差 1000 倍，所以这里用独立键名
-                                    intent.putExtra("progress_sec", card.progress)
-                                    intent.putExtra("seekReply", -1L)
+                                try {
+                                    val result = BangumiApi.getEpisodeFromEpid(card.epid)
+                                    val data = result.episode.toPlayerData(result.seasonId, result.seasonType)
+                                    // 历史里的进度是秒、PlayerData.progress 是毫秒，换算只做这一次
+                                    if (card.progress > 0) data.progress = card.progress * 1000
+                                    val intent = Intent(ctx, JumpToPlayerActivity::class.java)
+                                    intent.putExtra("data", data)
                                     ctx.startActivity(intent)
-                                } else MsgUtil.showMsg("番剧信息获取失败")
+                                } catch (e: Exception) {
+                                    // 反查失败（网络异常/接口变更）时退回老口径：先反查 media_id 进详情页
+                                    e.printStackTrace()
+                                    openBangumiDetailPage(ctx, card)
+                                }
                             }
                         } else {
                             // 追番列表/动态等来源的卡片，aid 已经是 media_id，走原来的跳转
@@ -216,6 +217,27 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
             }
             else -> title.text = StringUtil.htmlToString(videoCard.title)
         }
+    }
+
+    /**
+     * 番剧历史卡片的兜底跳转：先把 epid 反查成 media_id，再进详情页。
+     *
+     * <p>直接续播失败（网络异常/接口变更）时走这条路，等价于改动前的行为，
+     * 顺便把 epid 和已看进度带进详情页用于定位上次观看的那一集。
+     */
+    private fun openBangumiDetailPage(ctx: Context, card: VideoCard) {
+        val mediaId = BangumiApi.getMdidFromEpid(card.epid)
+        if (mediaId != null && mediaId > 0L) {
+            val intent = Intent(ctx, VideoInfoActivity::class.java)
+            intent.putExtra("aid", mediaId)
+            intent.putExtra("type", "media")
+            intent.putExtra("epid", card.epid)
+            // 键名带 _sec 后缀：PlayerActivity 读的 extra 也叫 "progress" 但单位是毫秒，
+            // 两者若被同一条 Intent 转发会静默差 1000 倍，所以这里用独立键名
+            intent.putExtra("progress_sec", card.progress)
+            intent.putExtra("seekReply", -1L)
+            ctx.startActivity(intent)
+        } else MsgUtil.showMsg("番剧信息获取失败")
     }
 
     companion object {
