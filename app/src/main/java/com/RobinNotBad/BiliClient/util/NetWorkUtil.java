@@ -151,10 +151,10 @@ public class NetWorkUtil {
 
     /**
      * 本方法历史上在 Android 5.1 及以下会启用 trust-all 证书校验（信任任意自签证书）。
-     * 本项目 minSdk 24，`Build.VERSION.SDK_INT > 22` 恒成立，该分支永不执行；
-     * 但把它留在源码里等于给未来预留了一个"静默降级 TLS"的开关——一旦有人下调 minSdk
-     * 或在别处复制这段代码，登录 Cookie 就会立刻可被中间人截获。
-     * 所以收敛为无条件返回调用方传入的 builder（使用系统默认证书校验）。
+     * 那个分支当年靠 `Build.VERSION.SDK_INT > 22` 兜住（当时 minSdk 24，恒真），但留在源码里
+     * 等于给未来预留了一个"静默降级 TLS"的开关。26.10.10 minSdk 已下调到 21，那层闸再也
+     * 兜不住这件事，所以分支被整体删除，本方法无条件返回调用方传入的 builder
+     * （即系统默认证书校验，登录 Cookie 不会被中间人截获）。
      * 方法签名保留：CustomGlideModule 与本类仍按此入口构造 OkHttpClient。
      */
     public synchronized static OkHttpClient.Builder setOkHttpSsl(OkHttpClient.Builder okhttpBuilder) {

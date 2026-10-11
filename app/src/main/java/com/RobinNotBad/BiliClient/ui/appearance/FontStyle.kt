@@ -18,7 +18,7 @@ import java.io.File
  * ——门面负责递增外观版本号，让其它页面在 `onResume` 时重建并重新套用字体。
  *
  * ## 为什么是「拷贝到私有目录」而不是记住 URI
- * 1. `minSdk 24`，`Typeface.Builder(FileDescriptor)` 要 API 26，用不了；安全可用的只有
+ * 1. `minSdk 21`，`Typeface.Builder(FileDescriptor)` 要 API 26，用不了；安全可用的只有
  *    `Typeface.createFromFile(File)`，它需要一个**真实路径**。
  * 2. 用户随时可能删除或移动原文件；记住 URI 还得处理 `takePersistableUriPermission`。
  *    拷一份到 `filesDir/custom_font/` 里最稳，且与源文件解耦。
