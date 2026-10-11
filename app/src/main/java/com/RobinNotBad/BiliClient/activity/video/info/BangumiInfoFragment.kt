@@ -93,6 +93,30 @@ class BangumiInfoFragment : Fragment() {
             fragment.arguments = args
             return fragment
         }
+
+        /** 状态无从得知时只说"选集"（与远端同口径） */
+        private const val STATUS_TEXT_FALLBACK = "选集"
+
+        /**
+         * 选集标题行的状态文案（纯函数，便于单测）。
+         *
+         * 优先级对齐远端：当前季的 new_ep.desc → 详情的 new_ep.desc → 「已完结/连载中，共N话」→「选集」。
+         * 季级的 desc 更贴近"这一季更新到哪了"；info 上的 desc 只描述主季，
+         * 切到剧场版/OVA 时拿它显示会出现"剧场版显示连载中"这种错。
+         */
+        fun episodeStatusText(
+            seasonDesc: String?,
+            infoDesc: String?,
+            isFinish: Int,
+            mainEpCount: Int
+        ): String {
+            if (!seasonDesc.isNullOrEmpty()) return seasonDesc
+            if (!infoDesc.isNullOrEmpty()) return infoDesc
+            if (mainEpCount > 0) {
+                return (if (isFinish == 1) "已完结" else "连载中") + "，共" + mainEpCount + "话"
+            }
+            return STATUS_TEXT_FALLBACK
+        }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -330,6 +354,7 @@ class BangumiInfoFragment : Fragment() {
         // setData 会把高亮重置到第 0 项；定位成功时要把高亮和滚动位置一起挪到目标集
         adapter.selectedItemIndex = selectedEpisode
         episodeRecyclerView!!.scrollToPosition(selectedEpisode)
+        updateEpisodeStatusText()
 
         playButton.setOnClickListener {
             // 用安全取值代替 direct 下标：选中的季为空/下标越界时返回 null 而不是抛 IndexOutOfBoundsException
@@ -489,6 +514,8 @@ class BangumiInfoFragment : Fragment() {
         adapter?.selectedItemIndex = episodeIndex
         episodeRecyclerView?.scrollToPosition(episodeIndex)
 
+        // 状态文案是"季级"的：切季后要换成这一季的 new_ep.desc（剧场版/OVA 与主季的更新状态不同）
+        updateEpisodeStatusText()
         refreshReplies()
     }
 
@@ -607,31 +634,89 @@ class BangumiInfoFragment : Fragment() {
         return episodes[selectedEpisode]
     }
 
+    /**
+     * 选集标题行的状态文案：优先当前季的 new_ep.desc，其次详情上的 desc，最后按完结状态 + 正片集数拼。
+     *
+     * 两种情况会没有 desc：接口没下发（老番/预告），以及当前展示的是附加季（剧场版没有 new_ep）。
+     */
+    @SuppressLint("SetTextI18n")
+    private fun updateEpisodeStatusText() {
+        val seasonDesc = seasonCache[currentSeasonId]?.statusDesc
+        // info 上的 desc 只描述主季；当前展示的不是主季时必须丢掉，否则剧场版会显示主季的"连载中"
+        val infoDesc =
+            if (currentSeasonId == bangumi?.info?.season_id) bangumi?.info?.newEpDesc else null
+        val isFinish = bangumi?.info?.publish?.is_finish ?: 0
+        // 正片集数：优先后端标成"正片"的分区，没有就退回第一个非空分区
+        val mainSection = sections.firstOrNull { it.title == "正片" }
+            ?: sections.firstOrNull { !it.episodeList.isNullOrEmpty() }
+        val mainEpCount = mainSection?.episodeList?.size ?: 0
+
+        val status = episodeStatusText(seasonDesc, infoDesc, isFinish, mainEpCount)
+        episodeChoose?.text =
+            if (status == STATUS_TEXT_FALLBACK) STATUS_TEXT_FALLBACK else "选集 · " + status
+    }
+
+    /**
+     * 把选中的集切到 (分区下标, 集下标)。
+     *
+     * 横滑列表只显示当前分区的剧集，所以跨分区选集必须连列表数据一起换，
+     * 只改 selectedEpisode 会让高亮和列表内容对不上。
+     */
+    private fun selectEpisode(sectionIndex: Int, episodeIndex: Int) {
+        if (sectionIndex !in sections.indices) return
+        val episodes = sections[sectionIndex].episodeList ?: return
+        if (episodes.isEmpty()) return
+
+        selectedSection = sectionIndex
+        selectedEpisode = episodeIndex.coerceIn(0, episodes.size - 1)
+
+        val adapter = episodeRecyclerView?.adapter as? EpisodeCardAdapter
+        adapter?.setData(episodes)
+        adapter?.selectedItemIndex = selectedEpisode
+        episodeRecyclerView?.scrollToPosition(selectedEpisode)
+        refreshReplies()
+    }
+
+    /**
+     * 选集弹窗：把**当前季全部分区**的剧集拍平列出（多分区时前缀【分区名】）。
+     *
+     * 只靠横滑列表选不到"花絮/PV/特别篇"这些不在正片分区里的集，而它们恰恰是会被特意去找的
+     * （对齐远端 getEpisodeChooseDialog 的全量口径）。
+     */
     private fun getEposideChooseDialog(): Dialog {
-        val episodeList = sections.getOrNull(selectedSection)?.episodeList
+        val labels = ArrayList<String>()
+        val positions = ArrayList<IntArray>()
+        // 只有多个分区时才加前缀：单分区加前缀纯属噪音
+        val multiSection = sections.size > 1
+
+        for (s in sections.indices) {
+            val episodes = sections[s].episodeList ?: continue
+            for (e in episodes.indices) {
+                val episode = episodes[e]
+                val name = episode.title + "." + episode.title_long
+                labels.add(if (multiSection) "【" + (sections[s].title ?: "") + "】" + name else name)
+                positions.add(intArrayOf(s, e))
+            }
+        }
 
         // 双保险：数据刷新后仍可能落到空季上，空列表既不能建下标也不能建选择项
-        if (episodeList.isNullOrEmpty()) {
+        if (labels.isEmpty()) {
             MsgUtil.showMsg("该季暂无剧集")
             dialog = TerminalDialog.alert(requireContext(), message = "该季暂无剧集")
             return dialog!!
         }
 
-        val choices = episodeList.map { episode -> episode.title + "." + episode.title_long }
+        val checked = positions.indexOfFirst {
+            it[0] == selectedSection && it[1] == selectedEpisode
+        }.coerceAtLeast(0)
 
-        // 选中下标必须夹到合法范围，否则数据刷新导致列表变短时会指向不存在的项
         dialog = TerminalDialog.singleChoice(
             context = requireContext(),
             title = "选择剧集",
-            items = choices,
-            checked = selectedEpisode.coerceIn(0, episodeList.size - 1)
+            items = labels,
+            checked = checked
         ) { _, which ->
-            selectedEpisode = which
-            refreshReplies()
-
-            val adapter = episodeRecyclerView!!.adapter as EpisodeCardAdapter
-            adapter.selectedItemIndex = which
-            episodeRecyclerView!!.scrollToPosition(which)
+            positions.getOrNull(which)?.let { selectEpisode(it[0], it[1]) }
             dialog?.dismiss()
         }
 
