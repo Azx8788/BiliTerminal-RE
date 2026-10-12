@@ -31,7 +31,7 @@ replay_pid*.log
 /BiliTerminal_clone/
 
   
-# ��ʱ����嵥�뱸��  
+# ��ʱ����嵥�뱸��  
 review_filelist.txt  
 gradle.properties.bak 
 
@@ -47,3 +47,8 @@ config.json
 # Python 脚本产物（.github/scripts/ 下会跑 py_compile）
 __pycache__/
 *.pyc
+
+# 项目官网页面（官网已独立为仓库，位于 DEVELOP 同级目录的 bili-terminal-site，
+# 不再随客户端仓库分发。png/ 因 readme 界面预览仍在引用，故不在此忽略）
+/index.html
+/legacy.html

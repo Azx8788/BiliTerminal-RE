@@ -217,11 +217,8 @@
 
 ## 联系
 
-- 唯一官网：[biliterminal.cn](https://biliterminal.cn)
-- QQ 交流群
-  - 交流一群：482091687
-  - 交流二群：656364457
-  - 测试群：745414928
+- 唯一官网：[biliterminal.zsapp.asia](https://biliterminal.zsapp.asia/)
+- QQ 交流群：1129816758
 
 ---
 
