@@ -60,6 +60,7 @@ import com.RobinNotBad.BiliClient.model.ViewPoint
 import com.RobinNotBad.BiliClient.player.DanmakuManager
 import com.RobinNotBad.BiliClient.player.DanmakuSync
 import com.RobinNotBad.BiliClient.player.PlayerDefaults
+import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
 import com.RobinNotBad.BiliClient.player.SkipOpEdPrefs
 import com.RobinNotBad.BiliClient.player.ViewPointSkip
@@ -92,6 +93,7 @@ import org.greenrobot.eventbus.ThreadMode
 import org.json.JSONObject
 import tv.danmaku.ijk.media.player.IMediaPlayer
 import tv.danmaku.ijk.media.player.IjkMediaPlayer
+import tv.danmaku.ijk.media.player.misc.ITrackInfo
 import java.io.File
 import java.io.IOException
 import java.util.Locale
@@ -860,15 +862,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun clickUI() {
         val nowTimestamp = System.currentTimeMillis()
         if (nowTimestamp - timestamp_click < 300) {
-            if (SharedPreferencesUtil.getBoolean("player_scale", true) && scaleGestureListener!!.can_reset) {
-                scaleGestureListener!!.can_reset = false
-                layout_video.x = video_origX
-                layout_video.y = video_origY
-                layout_video.scaleX = 1.0f
-                layout_video.scaleY = 1.0f
-            } else {
-                handleDoubleTapAction()
-            }
+            handleDoubleTapAction()
         } else {
             timestamp_click = nowTimestamp
             if (layout_top.visibility == View.GONE) showcon()
@@ -877,14 +871,27 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     private fun handleDoubleTapAction() {
-        if (SharedPreferencesUtil.getBoolean("player_doubletap_restore_screen", false) && screen_landscape) {
-            screen_landscape = false
-            if (SharedPreferencesUtil.getBoolean("dev_player_rotate_software", false)) softwareRotate()
-            else requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        } else if (!isLiveMode) {
-            if (isPlaying) playerPause()
-            else playerResume()
-            showcon()
+        // 普通双击与快进手势的中间区域共用一套判据；手动旋转不属于缩放。
+        val action = PlayerDoubleTapPolicy.resolve(
+            restoreScaleFirst = SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_DOUBLETAP_RESTORE_SCREEN, false),
+            scaleEnabled = SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SCALE, true),
+            scaleX = layout_video.scaleX,
+            scaleY = layout_video.scaleY,
+            isLive = isLiveMode
+        )
+        when (action) {
+            PlayerDoubleTapPolicy.Action.RESET_SCALE -> {
+                layout_video.scaleX = 1f
+                layout_video.scaleY = 1f
+                layout_video.x = video_origX
+                layout_video.y = video_origY
+            }
+            PlayerDoubleTapPolicy.Action.TOGGLE_PLAYBACK -> {
+                if (isPlaying) playerPause()
+                else playerResume()
+                showcon()
+            }
+            PlayerDoubleTapPolicy.Action.IGNORE -> Unit
         }
     }
 
@@ -1011,6 +1018,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     private fun MPPrepare(nowurl: String) {
+        // 重载期间不能让上一轮的外部音频继续出声；onPrepared 会按新媒体轨道重新选择。
+        releaseAudioTrack()
         ijkPlayer!!.setOnPreparedListener(this)
         // 任何一次新的载入（切P / 切清晰度 / 出错重试）都要清掉上一次的错误态，
         // 否则重试后 controlVideo() 仍会认为处于错误态而再次走重新载入分支。
@@ -1033,7 +1042,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             e.printStackTrace()
         }
 
-        ijkPlayer!!.setOnCompletionListener {
+        ijkPlayer!!.setOnCompletionListener { completedPlayer ->
+            if (destroyed || completedPlayer !== ijkPlayer) return@setOnCompletionListener
             finishWatching = true
             // 看完立刻上报 -1（"已看完"）：退出路径补报的是当前位置，服务端只会记成
             // "看到最后几秒"，续播就停在本集末尾而不是接着看下一集。番剧（epid）才有这个语义
@@ -1044,6 +1054,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 checkEndInteractionQuestions()
                 if (questionShown) {
                     isPlaying = false
+                    releaseAudioTrack()
                     if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.pause()
                     btn_control.setImageResource(R.drawable.btn_player_play)
                     return@setOnCompletionListener
@@ -1058,6 +1069,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 switchToPage(currentPageIndex + 1)
             } else {
                 isPlaying = false
+                try { audioPlayer?.pause() } catch (_: Exception) {}
                 if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.pause()
                 btn_control.setImageResource(R.drawable.btn_player_play)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && mediaSession != null) {
@@ -1066,7 +1078,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
         }
 
-        ijkPlayer!!.setOnErrorListener { _, what, extra ->
+        ijkPlayer!!.setOnErrorListener { failedPlayer, what, extra ->
+            if (destroyed || failedPlayer !== ijkPlayer) return@setOnErrorListener true
             val EReport = "播放器可能遇到错误！\n错误码：" + what + "\n附加：" + extra
             Logu.e("ijk-err", EReport)
             // 返回 false 会被 IjkMediaPlayer 改判成 onCompletion（IjkMediaPlayer.java:1013-1017），
@@ -1079,6 +1092,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (firstError) MsgUtil.showMsgLong(EReport)
                 runOnUiThread {
                     isPlaying = false
+                    releaseAudioTrack()
                     if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.pause()
                     btn_control.setImageResource(R.drawable.btn_player_play)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && mediaSession != null) {
@@ -1844,6 +1858,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 // 顺序：先摘状态标志，再 release，最后置空引用（理由同 toggleAudioOnlyMode）
                 isPrepared = false
                 isPlaying = false
+                releaseAudioTrack()
                 if (ijkPlayer != null) {
                     ijkPlayer!!.stop()
                     ijkPlayer!!.release()
@@ -2093,8 +2108,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         releaseDanmaku()
         ijkPlayer?.release()
         ijkPlayer = null
-        audioPlayer?.release()
-        audioPlayer = null
+        releaseAudioTrack()
 
         if (isOnlineVideo && danmakuFile != null && danmakuFile!!.exists())
             danmakuFile!!.delete()
@@ -2658,34 +2672,79 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         swipe_seek_text.text = "$currentStr / $totalStr ($percent%)"
     }
 
-    /**
-     * 初始化外部音频轨道（DASH分离文件合并失败时的fallback）
-     * 使用Android MediaPlayer单独播放音频，与IJK视频播放器同步
-     */
-    private fun initAudioTrack() {
-        val url = audioTrackUrl ?: return
-        val audioFile = File(url)
-        if (!audioFile.exists()) {
-            Logu.e("AudioTrack", "音频文件不存在: $url")
-            return
-        }
+    /** 先摘引用再释放，防止重载覆盖引用后，旧音频播放器失联且继续出声。 */
+    private fun releaseAudioTrack() {
+        val previous = audioPlayer
+        audioPlayer = null
         try {
-            audioPlayer = android.media.MediaPlayer().apply {
-                setDataSource(url)
-                prepare()
-                // 与视频播放器保持同步的初始位置。本方法由 MPPrepare 的 onPrepared 回调调用（主线程），
-                // 位置同样从 video_now 取，不在这里摸 native 锁
-                if (isPrepared) {
-                    seekTo(video_now)
+            previous?.release()
+        } catch (e: Exception) {
+            Logu.e("AudioTrack", "释放外部音轨失败：${e.message}")
+        }
+    }
+
+    /**
+     * 主播放器已解析媒体后，确认主文件没有音轨才使用外部音频。
+     * 直接使用 IJK 的轨道元数据，不再额外打开文件扫描，也不删除任何缓存文件。
+     */
+    private fun initAudioTrack(mediaPlayer: IMediaPlayer) {
+        releaseAudioTrack()
+        val url = audioTrackUrl?.takeIf { it.isNotBlank() } ?: return
+        val audioFile = File(url)
+        val fileUsable = audioFile.isFile && audioFile.canRead() && audioFile.length() > 0L
+        val tracks = if (!isOnlineVideo && !isLiveMode && fileUsable) {
+            try {
+                mediaPlayer.trackInfo?.map { track ->
+                    when (track.trackType) {
+                        ITrackInfo.MEDIA_TRACK_TYPE_AUDIO -> LocalAudioTrackPolicy.TrackKind.AUDIO
+                        ITrackInfo.MEDIA_TRACK_TYPE_VIDEO -> LocalAudioTrackPolicy.TrackKind.VIDEO
+                        else -> LocalAudioTrackPolicy.TrackKind.OTHER
+                    }
                 }
-                isLooping = false
-                start()
+            } catch (e: Exception) {
+                Logu.e("AudioTrack", "读取主文件音轨失败：${e.message}")
+                null
             }
-            Logu.d("AudioTrack", "外部音频轨道已启动")
+        } else null
+        val selection = LocalAudioTrackPolicy.select(
+            mainIsLocal = !isOnlineVideo && !isLiveMode,
+            externalFileUsable = fileUsable,
+            embeddedAudio = LocalAudioTrackPolicy.embeddedAudio(tracks)
+        )
+        Logu.d("AudioTrack", "主文件轨道=$tracks，外部文件可用=$fileUsable，选择=$selection")
+        when (selection) {
+            LocalAudioTrackPolicy.Selection.MAIN_ONLY -> {
+                Logu.d("AudioTrack", "使用主文件音轨，不启动外部音频")
+                return
+            }
+            LocalAudioTrackPolicy.Selection.UNKNOWN -> {
+                Logu.e("AudioTrack", "主文件音轨未知，已阻止启动第二路音频")
+                MsgUtil.showMsg("无法确认本地音轨，暂未启用外部音频")
+                return
+            }
+            LocalAudioTrackPolicy.Selection.EXTERNAL -> Unit
+        }
+        // 创建后立即保存引用：setDataSource/prepare 抛异常时也能释放新实例。
+        try {
+            val player = android.media.MediaPlayer()
+            audioPlayer = player
+            player.setOnErrorListener { failedPlayer, what, extra ->
+                if (audioPlayer === failedPlayer) {
+                    Logu.e("AudioTrack", "外部音频播放失败：$what/$extra")
+                    releaseAudioTrack()
+                    if (!destroyed) MsgUtil.showMsg("本地音频播放失败，请重新载入")
+                }
+                true
+            }
+            player.setDataSource(url)
+            player.prepare()
+            if (isPrepared) player.seekTo(video_now)
+            player.isLooping = false
+            if (isPlaying) player.start()
+            Logu.d("AudioTrack", "已启用唯一的外部音频轨道")
         } catch (e: Exception) {
             Logu.e("AudioTrack", "音频轨道初始化失败: ${e.message}")
-            audioPlayer?.release()
-            audioPlayer = null
+            releaseAudioTrack()
         }
     }
 
@@ -2713,6 +2772,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         // 置空引用则是为了任何后续误用立刻暴露成 NPE / null 判断，而不是 use-after-release。
                         isPrepared = false
                         isPlaying = false
+                        releaseAudioTrack()
                         if (ijkPlayer != null) {
                             ijkPlayer!!.stop()
                             ijkPlayer!!.release()
@@ -2971,6 +3031,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun doSwitchPage(newTitle: String, newVideoUrl: String, newDanmakuUrl: String, pageIndex: Int) {
         if (destroyed) return
 
+        releaseAudioTrack()
+        audioTrackUrl = null // 新分页不能继续复用上一页的外部音轨。
         ijkPlayer?.stop()
         ijkPlayer?.release()
         releaseDanmaku()
@@ -3107,6 +3169,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     val currentPosition = video_now.toLong()
                     val wasPlaying = isPlaying
 
+                    releaseAudioTrack()
+                    audioTrackUrl = null // 在线取流已改变媒体来源，不复用本地旧音轨。
                     ijkPlayer?.stop()
                     ijkPlayer?.release()
 
@@ -3482,6 +3546,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 runOnUiThread {
                     if (destroyed) return@runOnUiThread
 
+                    releaseAudioTrack()
+                    audioTrackUrl = null
                     ijkPlayer?.stop()
                     ijkPlayer?.release()
                     releaseDanmaku()
@@ -3657,11 +3723,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     override fun onPrepared(mediaPlayer: IMediaPlayer) {
-        if (destroyed) {
-            // onDestroy 可能已把 ijkPlayer 置 null，此处必须用安全调用，且该回调在 IJK 内部线程
-            ijkPlayer?.release()
-            return
-        }
+        // 丢弃旧实例的迟到回调，不能让它重建外部音轨或启动新的当前播放器。
+        if (destroyed || mediaPlayer !== ijkPlayer) return
 
         isPrepared = true
         video_all = ijkPlayer!!.duration.toInt()
@@ -3795,10 +3858,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         progressChange()
         onlineChange()
 
-        // 初始化外部音频轨道（DASH分离文件的fallback）
-        if (!audioTrackUrl.isNullOrEmpty()) {
-            initAudioTrack()
-        }
+        // 判断实际轨道，含内嵌音轨时禁止再启动第二路音频；重复 prepared 也不会遗留旧实例。
+        initAudioTrack(mediaPlayer)
 
         if (isPlaying) {
             ijkPlayer!!.start()

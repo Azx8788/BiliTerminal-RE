@@ -94,6 +94,7 @@ object SettingsKeys {
     const val PLAYER_LONGCLICK = "player_longclick"
     const val PLAYER_DOUBLETAP_SEEK = "player_doubletap_seek"
     const val PLAYER_SWIPE_SEEK = "player_swipe_seek"
+    /** 双击有缩放时优先复位；保留旧键兼容已保存的开关，不再还原屏幕方向。 */
     const val PLAYER_DOUBLETAP_RESTORE_SCREEN = "player_doubletap_restore_screen"
     const val PLAYER_DOUBLETAP_SEEK_SECONDS = "player_doubletap_seek_seconds"
     /** 旧「洗脑循环」开关；已被 [PLAYER_DEFAULT_LOOP] 取代，仅用于迁移默认模式。 */

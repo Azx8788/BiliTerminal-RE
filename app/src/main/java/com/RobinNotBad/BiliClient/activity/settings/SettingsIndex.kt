@@ -139,7 +139,7 @@ object SettingsIndex {
         list += Entry("追番更新提醒", "追的番剧有新一集时在通知栏提醒") { a -> openGroup(a, GROUP_NOTIFY, "通知设置", "追番更新提醒") }
 
         addLeafItems(list, "内置播放器设置", SettingTerminalPlayerActivity::class.java, listOf(
-            "长按倍速", "双击快进快退", "双击优先还原屏幕", "快进快退秒数",
+            "长按倍速", "双击快进快退", "有缩放时，双击优先恢复缩放", "快进快退秒数",
             "后台/熄屏继续播放",
             // 「播放默认值」分组：开播时自动应用，各项名字与页内 SettingSection.name 严格一致（搜索靠名字定位）
             "播放默认值", "弹幕", "听视频模式", "循环播放", "自动连播", "倍速", "字幕", "屏幕方向",

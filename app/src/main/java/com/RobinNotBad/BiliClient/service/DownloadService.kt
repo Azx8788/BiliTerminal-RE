@@ -20,6 +20,7 @@ import com.RobinNotBad.BiliClient.helper.sql.DownloadSqlHelper
 import com.RobinNotBad.BiliClient.service.download.DownloadNotifier
 import com.RobinNotBad.BiliClient.service.download.DownloadPathSpec
 import com.RobinNotBad.BiliClient.service.download.DownloadProgressMath
+import com.RobinNotBad.BiliClient.service.download.DownloadStreamTransfer
 import com.RobinNotBad.BiliClient.service.download.DownloadProgressStore
 import com.RobinNotBad.BiliClient.service.download.DownloadProgressInfo
 import com.RobinNotBad.BiliClient.service.download.DownloadRepository
@@ -1051,9 +1052,10 @@ class DownloadService : Service() {
 
         val (totalSize, supportsRange) = try {
             client.newCall(headReq).execute().use { headRes ->
-                val len = headRes.header("Content-Length")
-                val size = if (len != null) len.toLong() else 0L
-                val range = "bytes" == headRes.header("Accept-Ranges")
+                // HEAD 被拒绝时，Content-Length 是错误页长度，不能拿来校验媒体文件。
+                val len = if (headRes.isSuccessful) headRes.header("Content-Length") else null
+                val size = len?.toLongOrNull()?.takeIf { it > 0 } ?: -1L
+                val range = headRes.isSuccessful && "bytes" == headRes.header("Accept-Ranges")
                 Pair(size, range)
             }
         } catch (e: Exception) {
@@ -1079,52 +1081,81 @@ class DownloadService : Service() {
         }
         val request = reqBuilder.build()
 
-        var effectiveTotalSize = totalSize
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return DownloadPathSpec.ERR_NETWORK
-            val body = response.body
-            if (body == null) return DownloadPathSpec.ERR_NETWORK
-            if (effectiveTotalSize <= 0) effectiveTotalSize = body.contentLength()
-            if (effectiveTotalSize <= 0) effectiveTotalSize = 1
-            body.byteStream().use { inputStream ->
-                FileOutputStream(file).use { fos ->
-                    val buffer = ByteArray(65536)
-                    var downloaded: Long = 0
-                    var read: Int
-                    var lastProgressUpdate = 0L
-                    // 未知大小时按 512KB 节流推进伪进度（封顶 90%），避免进度条瞬间满或卡死
-                    val progressUpdateInterval = if (effectiveTotalSize > 1) Math.max(effectiveTotalSize / 1000, 65536) else 512 * 1024
-                    var pseudoProgress = 0f
-                    while ((inputStream.read(buffer).also { read = it }) != -1 && started && !isPaused(sectionId)) {
-                        fos.write(buffer, 0, read)
-                        downloaded += read
-                        addDownloadedBytes(read.toLong())
-                        if (downloaded - lastProgressUpdate >= progressUpdateInterval) {
-                            lastProgressUpdate = downloaded
-                            val actualProgress = if (effectiveTotalSize > 1) {
-                                DownloadProgressMath.progressForBytes(downloaded, effectiveTotalSize, baseProgress, endProgress)
-                            } else {
-                                pseudoProgress = DownloadProgressMath.pseudoProgressStep(pseudoProgress)
-                                DownloadProgressMath.progressForPseudo(pseudoProgress, baseProgress, endProgress)
-                            }
-                            percent = actualProgress
-
-                            // 更新进度到进度映射表
-                            if (sectionId > 0) {
-                                setDownloadProgress(sectionId, actualProgress, state ?: "下载中", downloaded, effectiveTotalSize)
+        var effectiveTotalSize = -1L
+        var downloaded = 0L
+        var singleResult = DownloadPathSpec.ERR_NETWORK
+        try {
+            val response = try {
+                client.newCall(request).execute()
+            } catch (e: IOException) {
+                Logu.e("DownloadService", "下载连接失败：${file.name}")
+                singleResult = DownloadStreamTransfer.failureCode(started, isPaused(sectionId), DownloadPathSpec.ERR_NETWORK)
+                return singleResult
+            }
+            response.use {
+                if (!response.isSuccessful || response.body == null) {
+                    Logu.e("DownloadService", "下载失败，HTTP ${response.code}：${file.name}")
+                    singleResult = DownloadStreamTransfer.failureCode(started, isPaused(sectionId), DownloadPathSpec.ERR_NETWORK)
+                    return singleResult
+                }
+                val body = response.body!!
+                effectiveTotalSize = DownloadStreamTransfer.expectedBytes(totalSize, body.contentLength())
+                var lastProgressUpdate = 0L
+                val progressUpdateInterval = if (effectiveTotalSize > 0)
+                    Math.max(effectiveTotalSize / 1000, 65536) else 512 * 1024L
+                var pseudoProgress = 0f
+                singleResult = DownloadPathSpec.ERR_FILE // 在 copy() 返回前失败，说明开流/开文件未完成。
+                body.byteStream().use { inputStream ->
+                    FileOutputStream(file).use { fos ->
+                        val transfer = DownloadStreamTransfer.copy(inputStream, fos, effectiveTotalSize,
+                            isRunning = { started }, isPaused = { isPaused(sectionId) }) { total, delta ->
+                            downloaded = total
+                            addDownloadedBytes(delta.toLong())
+                            if (total - lastProgressUpdate >= progressUpdateInterval) {
+                                lastProgressUpdate = total
+                                val actualProgress = if (effectiveTotalSize > 0) {
+                                    DownloadProgressMath.progressForBytes(total, effectiveTotalSize, baseProgress, endProgress)
+                                } else {
+                                    pseudoProgress = DownloadProgressMath.pseudoProgressStep(pseudoProgress)
+                                    DownloadProgressMath.progressForPseudo(pseudoProgress, baseProgress, endProgress)
+                                }
+                                percent = actualProgress
+                                if (sectionId > 0) {
+                                    setDownloadProgress(sectionId, actualProgress, state ?: "下载中", total, effectiveTotalSize)
+                                }
                             }
                         }
+                        downloaded = transfer.downloadedBytes
+                        singleResult = transfer.code
                     }
-                    percent = DownloadProgressMath.progressForBytes(downloaded, effectiveTotalSize, baseProgress, endProgress)
+                }
+            }
+        } catch (e: IOException) {
+            // 网络读取失败由 copy() 返回 ERR_NETWORK；开文件/关闭异常保留已有失败及暂停语义。
+            val errorCode = if (singleResult == DownloadPathSpec.NORMAL) DownloadPathSpec.ERR_FILE else singleResult
+            singleResult = DownloadStreamTransfer.failureCode(started, isPaused(sectionId), errorCode)
+            Logu.e("DownloadService", "下载文件写入或关闭失败：${file.name}")
+        } finally {
+            // 资源关闭后仅清理本次下载目标，绝不删除旧成品所在的任务目录；暂停保留临时文件。
+            if (singleResult != DownloadPathSpec.NORMAL && singleResult != DownloadPathSpec.ERR_PAUSED) {
+                try {
+                    if (file.exists() && !file.delete()) {
+                        Logu.e("DownloadService", "清理未完成下载失败：${file.name}")
+                    }
+                } catch (e: Exception) {
+                    Logu.e("DownloadService", "清理未完成下载异常：${file.name}")
                 }
             }
         }
-        val singleResult = if (isPaused(sectionId)) DownloadPathSpec.ERR_PAUSED
-            else if (started) DownloadPathSpec.NORMAL
-            else DownloadPathSpec.ERR_UNKNOWN
-        // 下载成功后把进度推进到阶段终点，保证阶段进度条走满（分段进度依赖）
-        if (singleResult == DownloadPathSpec.NORMAL && sectionId > 0) {
-            setDownloadProgress(sectionId, endProgress, state ?: "下载中")
+        if (singleResult == DownloadPathSpec.ERR_NETWORK) {
+            Logu.e("DownloadService", "下载未完成：${file.name} $downloaded/$effectiveTotalSize")
+        }
+        // 只有读到 EOF 且字节校验通过、文件关闭成功，才推进阶段终点并允许调用方替换成品。
+        if (singleResult == DownloadPathSpec.NORMAL) {
+            percent = endProgress
+            if (sectionId > 0) {
+                setDownloadProgress(sectionId, endProgress, state ?: "下载中", downloaded, effectiveTotalSize)
+            }
         }
         return singleResult
     }

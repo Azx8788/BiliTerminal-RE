@@ -326,6 +326,9 @@ class BangumiInfoFragment : Fragment() {
             if (activity is VideoInfoActivity) {
                 activity.replyFragment?.setRefreshing(false)
             }
+            // 这个分支是提前 return 的，必须自己收尾：否则宿主 activity_simple_viewpager.xml 的
+            // 中央加载遮罩永远不会被收起，"敬请期待"的番剧会一直停在加载图上（还挡触摸）。
+            onFinishLoad()
             return
         }
 

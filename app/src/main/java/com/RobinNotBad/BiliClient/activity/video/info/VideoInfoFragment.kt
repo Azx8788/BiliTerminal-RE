@@ -340,7 +340,9 @@ class VideoInfoFragment : BaseFragment() {
             } catch (e: Exception) {
                 MsgUtil.err(e)
             }
-            onFinishLoad()
+            // 注意：这里**不**收起加载遮罩。取流预取是弱网下最慢的一步，而 ViewPager 会
+            // 把评论页一并建好（offscreenPageLimit = size），若等它才收起遮罩，用户切到评论
+            // 就会看到"评论已出、加载图还盖在上面且挡触摸"。遮罩由 initView 末尾统一收起。
         }
 
         cover.requestFocus()
@@ -643,6 +645,13 @@ class VideoInfoFragment : BaseFragment() {
             }
             false
         }
+
+        // 本页内容装配完成即可收起中央加载遮罩——**不等**后台的取流预取（PlayerApi.getVideo）。
+        // 弱网下取流可能耗时很久甚至超时重试，而 ViewPager 会把评论页一起创建好，
+        // 遮罩是 ViewPager 的兄弟节点、盖在最上层，会把已经加载完的评论挡住并吃掉触摸。
+        // 预取只负责填 playerData，没拿到时 playClick / startDownloadFlow 已有
+        // "视频信息还在加载中"的兜底，不会崩也不会把上一个视频的数据交出去。
+        onFinishLoad()
     }
 
     private fun cancelTripleAction() {

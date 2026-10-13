@@ -543,6 +543,10 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 普通播放器与短视频的弹幕栈是两套（前者内联，后者走 `DanmakuManager`），统一它们是合并两个播放器时**风险最低、收益最高的第一步**，但要先解决上面第 1 条的并发约束。
 
+**26.10.13 本地音轨防重（B1 播放侧）**：`PlayerActivity.onPrepared` 仅消费当前 IJK 实例回调，使用其 `trackInfo` 而不是文件存在性判断内嵌音轨，纯判据在 `player/LocalAudioTrackPolicy.kt`。有 audio 轨 → 只播主文件；确实有 video 轨且无 audio 轨、外部文件可读非空 → 用唯一的外部 MediaPlayer；null/空/不可识别轨道 → UNKNOWN，提示而非盲目启动第二路。**不得把解析失败当作「没有音轨」，也不得在播放时删缓存**。`releaseAudioTrack` 先摘引用再释放，重载/切听视频/重试/切页/出错/销毁清理；MediaPlayer 创建后先保存引用再 prepare，初始化或异步错误可释放，切换来源清空旧 `audioTrackUrl`。不依赖 MediaExtractor，不增网络或文件扫描；真实 IJK 轨道解析及双播放器生命周期仍需手表验证。
+
+**26.10.12 双击与旋转解耦**：`PlayerActivity.clickUI()` 与双击快进手势的中间区域统一走 `handleDoubleTapAction()`，判据抽在 `activity/player/PlayerDoubleTapPolicy.kt`（纯 JVM 单测）。只读取 `layout_video.scaleX/scaleY` 的实际比例，**方向不参与判定，复位分支只还原缩放与居中位置，不能写 `screen_landscape` / `requestedOrientation` 或调用 `softwareRotate()`**。`PLAYER_DOUBLETAP_RESTORE_SCREEN` 保留旧存储键，但语义改为“有缩放时，双击优先恢复缩放”；关闭时双击播放/暂停。`ViewScaleGestureListener.can_reset` 已删除，不再维护易过期的复位标志。左右两侧双击快退/快进与直播不暂停的既有行为保留。
+
 **26.10.11 起的网络韧性与状态恢复（§四十四，明细见 `docs/review/fix-progress.md` §3.4）**：
 
 - `PlayerActivity.setDisplay()` 的在线流选项现在含 `rw_timeout=10s` / `addrinfo_timeout=5s` / `reconnect_streamed=1` / `reconnect_delay_max=5s`（点播另开 `enable-accurate-seek=1`）。**别把 `rw_timeout` 当可选项删掉**：默认 0 = 读操作可永久阻塞且永不回 `onError`，弱网黑屏的直接原因就是它；`reconnect=1` 单独对 chunked 直播无效（ffmpeg `http.c` 有 `is_streamed && !reconnect_streamed` 就 break 的判定）。
@@ -841,6 +845,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 **行为契约不变的部分**：channel id `biliterminal_download`、前台通知 `1027`、`notifyExit` 的 `2`、`notifyCompletion` 的 `id % 100 + 100`、download 表 11 列 / version 4、SP 键（`aria2_enabled` / `aria2_split` / `parallel_download_videos`）。**已知的可见性变化**：`DownloadProgressInfo` 的 FQN 由 `DownloadService$Companion$DownloadProgressInfo` 变为 `com.RobinNotBad.BiliClient.service.download.DownloadProgressInfo`（全仓无显式引用，按旧 FQN 反射的代码会失配）。
 
+**26.10.13 完整性补丁（C3）**：高速单连接与分片失败后的单连接回退复用 `service/download/DownloadStreamTransfer.kt`（无 Android 依赖的流写入器）。GET 长度优先；HEAD 仅在响应成功且长度有效时作提示；未知长度保留 `-1`（不能伪造为 1）。必须真实 EOF、非空且已知长度精确相等才返回 `NORMAL`；网络读失败归 `ERR_NETWORK`，写入/flush 失败归 `ERR_FILE`。阶段完成只在资源关闭成功后发布，非暂停失败只清理本次目标文件（不删任务目录、不碰旧 `video.mp4`/`audio.m4a`）；建连及关闭异常同样优先保留暂停语义。`DownloadStreamTransferTest` 覆盖真实内存流与异常注入；DASH 阶段进度与续传尚未改；本地音轨防重的播放侧补丁见 §7.4（下载替换事务仍未改）。
+
 ### 7.28 顶部工具条滚动自动收回（26.10.05 批次 8 新增）
 
 - **能力在基类 `activity/base/RefreshListActivity.kt`，默认关闭**：子类调 `setupAutoHideBars(vararg bars: View?)` 才生效（不调 = 零影响，所以对其它几十个列表页安全）。`activity_simple_refresh.xml` 里的 `filterBar`/`sortBar`/`manageBar`/`groupBar` 是 `SwipeRefreshLayout` **之上的兄弟节点**，不在 RecyclerView 内，**不会随列表滚走**，只能手动改 `layoutParams.height` 做收放。**没做成 adapter 头部项**：那会重映射所有业务 adapter 的 `viewType`/`adapterPosition`（同 §7.23 的理由）。
@@ -932,6 +938,16 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   - `onCompletion` 立刻上报 `HistoryApi.PROGRESS_FINISHED = -1`（服务端约定的"已看完"），且退出路径的补报**必须继续报 -1**——改报当前位置会把服务端的"已看完"覆盖成"看到最后几秒"。`reportHistoryPgc` 的守卫是 `progress == 0`（**不是 `<= 0`**，否则 -1 被吃掉）。
   - `PlayerApi.getLastPlayProgress` 只在 **`last_play_cid == 请求 cid`** 时才采用 `last_play_time`；取不到该字段（0）也按"不属于这一集"处理，由观看记录兜底。这是"看着这一集点开另一集却从上一集位置起播"的闸门。观看记录兜底走 `HistoryApi.findProgressMsByAid(aid, epid)`，解析抽成纯函数 `parseHistoryProgressMs`（有单测）。
 - **历史卡片续播**：`adapter/video/VideoCardHolder.kt` 的 `media_bangumi` 分支在 `card.epid > 0` 时先 `BangumiApi.getEpisodeFromEpid`，成功就直接进 `JumpToPlayerActivity`（`card.progress` 是**秒**，要 ×1000 成 `PlayerData.progress` 的**毫秒 Int**），失败才退回详情页并提示。
+
+### 7.39 中央加载遮罩（`activity_simple_viewpager.xml` 的 `loading`）的收起时机（26.10.13）
+
+`res/layout/activity_simple_viewpager.xml` 里的 `loading` 是 **ViewPager 的兄弟节点**（不是页内元素），默认可见、盖在最上层，所以它一旦没收起，**当前页已经加载完的内容会被挡住、触摸也被吃掉**。收起统一走宿主的 `crossFade(...)`。
+
+- **`AnimationUtils.crossFade` 两个重载的参数名有误导**：`crossFade(A, B)`（2 参）内部转调 3 参 `crossFade(toHide, toShow, duration)`，所以 `crossFade(A, B)` 的语义是 **hide A / show B**（先传要隐藏的）。宿主里的 `crossFade(loading, fragmentView)` 即"收起遮罩、亮出页内容"。
+- **收起时机只能绑「本页内容装配完成」，绝不能绑任何慢请求**。`VideoInfoFragment.initView()` 曾把 `onFinishLoad()` 放在后台**取流预取**（`PlayerApi.getVideo`）之后 —— 取流是弱网下最慢的一步，而 `viewPager.offscreenPageLimit = fragmentList.size` 会把评论页**一并建好**（评论请求比取流快得多），于是出现"评论已出、加载图还盖在上面且挡触摸"，且带 `seekReply` 时 `currentItem = 1` 直接落在评论页，必然撞上。26.10.13 改为在 `initView()` 末尾收起；预取只填 `playerData`，未就绪时 `playClick`/`startDownloadFlow` 已有"视频信息还在加载中"兜底。
+- **每一条提前 `return` 的分支都要自己收尾**。`BangumiInfoFragment.initView()` 的"敬请期待"分支（没有可用季/集）原本直接 return 且没调 `onFinishLoad()` → 遮罩**永不收起**，用户永远停在加载图上。26.10.13 已补。
+- 走这个布局的宿主共三个：`VideoInfoActivity`（视频详情与番剧详情共用）、`OpusInfoActivity`、`DynamicInfoActivity`（后两者在 `adapter` 设好后就地收起，无此问题）。`LiveInfoActivity` 是另一套布局，且在数据到达**前**就收起，口径不同。
+- 新增宿主 / 新增提前返回分支时，按本条自检：**遮罩是否在所有路径上都会被收起**。
 
 ---
 

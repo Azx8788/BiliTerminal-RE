@@ -37,6 +37,12 @@
 
 ### 2.1 真机未验证（无设备 / 无登录态）
 
+- [ ] **本地音轨防重（§3.13）**：含内嵌音轨 MP4 + 残留 M4A 只播主音轨；纯视频 DASH + M4A 有声；纯音频不重复；反复切听视频/重试不叠声；暂停/恢复/拖进度正常；退出后静音；错误音频不崩。需用 Debug 包观察 `AudioTrack` 日志确认 IJK 轨道列表，UNKNOWN 应提示。下载双文件替换与音频专用模式残留问题仍待修，不能当本次已闭环。
+
+- [ ] **详情页中央加载遮罩收起时机（§3.11）待真机弱网复测**：用弱网（限速/弱信号）打开视频详情页并立即切到评论栏，评论出现后遮罩必须已消失且不挡触摸；再验番剧详情页的"敬请期待"番（无可用季/集）不再永久停在加载图。纯 UI 时序，JVM 单测覆盖不到。
+
+- [ ] **双击缩放复位与旋转解耦（§3.9）待手表真机确认**：开启优先恢复后，默认竖屏→横屏→双击与默认横屏→竖屏→双击均应暂停且不变方向；再验证放大后双击仅复位且不变方向、第二次双击暂停。覆盖双击快进开/关（开时用中间区域）、系统旋屏/软件旋屏、TextureView/SurfaceView；关闭优先恢复时放大后双击也应暂停。
+
 - [ ] **后台播放前台服务崩溃修复（§3.6）真机未复现**：代码已过两 flavor 构建 + 各 478 例单测，但未在低内存手表上跑过。触发用例：起后台播放后 5 秒内切回前台、快速进出播放页，反复若干次，观察是否再出 `RemoteServiceException: Context.startForegroundService() did not then call Service.startForeground()`。
 - [ ] **评论带图 12066**：`img_size` 小数截断是已确证的确定性缺陷，但**与 12066 的因果关系未建立**。
   - 12066 在本地快照与上游 collector 均无文档（`bilibili-API/docs/comment/action.md` 错误码表只到 12001-12052）。
@@ -126,7 +132,7 @@
 
 **别再重复排查（已排除）**：WebView 白底闪屏**不存在**；菜单按钮 `MaterialButton` 默认 `minHeight=48dip` **已达标**；`ui/widget/recycler/` 与 `fragment_empty.xml`、`BiliTerminalApp.kt` 是**死代码**（不当在用组件排查）。**不做**：裸 `Activity` 收编（`PlayerActivity`/`ImageViewerActivity`/`SplashActivity`/`GetIntentActivity`）——播放器保持黑色系统栏是有意为之，且 `PlayerActivity.kt` 3000 行，收益不抵回归风险（理由已进 `docs/architecture-map.md` §8.7.3）。**可接受**：`CardStyle`/`ButtonStyle` 强制 `clickable+focusable`；间距/圆角 token 已建但布局未全量改用；同构布局重复；布局层静态色已清干净（`@color/(card_dark|pink|divider_dark|pink_light)` 在 `res/layout` 0 处）。
 
-## 3. 最新状态快照（26.10.09 ~ 26.10.11）
+## 3. 最新状态快照（26.10.09 ~ 26.10.13）
 
 ### 3.1 自建反馈 / 公告 / 匿名统计 / 崩溃上报（§四十一）
 
@@ -325,6 +331,42 @@
 - **批次 5 历史卡片一键续播**（`24f7d8d`）：`VideoCardHolder` 的 `media_bangumi` 分支在 `card.epid > 0` 时直接 `BangumiApi.getEpisodeFromEpid` → `JumpToPlayerActivity`（带 `card.progress * 1000`；注意 `PlayerData.progress` 是 **Int 毫秒**），失败才退回详情页。
 - **批次 6 进度线**（`491d6d5`）：番剧心跳 15 秒 → **5 秒**（`PlayerActivity.progressReportIntervalMs` 改为按 `epid` 取值，投稿视频不变）；`onCompletion` 立即上报 `HistoryApi.PROGRESS_FINISHED = -1`（"已看完"），退出路径的补报保持 -1，`reportHistoryPgc` 守卫由 `progress <= 0` 改为 `== 0`；`PlayerApi.getLastPlayProgress` 要求 **`last_play_cid == 请求 cid`** 才采用 `last_play_time`（防"看着这一集点开另一集却从上一集位置起播"），观看记录兜底 `findProgressMsByAid(aid, epid)` 也带 epid 身份校验（解析抽成纯函数 `parseHistoryProgressMs`）。
 - **测试**：`HistoryApiTest`（9 例，含"oid 命中但 epid 不符必须丢弃"）、`BangumiApiTest` 扩到 16 例、`EpisodeCardAdapterTest` 4 例、`BangumiInfoFragmentTest` 4 例，全绿。真机项见 §2.1。
+
+### 3.9 双击缩放复位与横竖屏旋转冲突（26.10.12）
+
+- **代码已修**：删除 `handleDoubleTapAction()` 中“横屏双击回竖屏”的方向分支，普通双击与双击快进的中间区域共用 `PlayerDoubleTapPolicy`；仅开启优先恢复且实际比例偏离 1 时复位缩放与居中，未缩放或关闭优先恢复时播放/暂停，不改变方向。
+- **设置兼容**：保留 `player_doubletap_restore_screen` 存储键，名称与搜索索引同步为“有缩放时，双击优先恢复缩放”，描述明确“只转屏不算缩放、复位保持当前方向”。旧 `can_reset` 标志删除。
+- **验证**：`:app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest --no-configuration-cache` 全部 `BUILD SUCCESSFUL`；机器结果两 flavor 各 **54 suites / 515 tests / 0 failures / 0 errors / 0 skipped**。其中新增 `PlayerDoubleTapPolicyTest` 10 例，验证方向不参与判据、真实缩放/单轴缩放、复位后再双击、开关关闭、禁用缩放、比例浮点误差及直播。**纯判据单测不等于实际转屏与触摸事件回归**，手表真机结果未确认（§2.1）。
+
+### 3.10 设置页导航箭头改朝下（26.10.13）
+
+- **问题**：设置主页面的一级分组入口（`res/layout/cell_group_header.xml` 的 `group_arrow`）与分组内页的导航项（`res/layout/cell_setting_nav.xml` 的 `nav_arrow`）右侧箭头都是 `arrow_forward`（向右），用户反馈应朝下。
+- **改动**：两个布局的箭头 `android:src` 由 `@drawable/arrow_forward` 改为 `@drawable/arrow_down`；`activity/settings/SettingMainActivity.kt` 里两处硬编码 `setImageResource(R.drawable.arrow_forward)`（`addResult()` 的搜索结果卡片、`addGroup()` 的分组入口）同步改为 `arrow_down`，注释「箭头始终向前，表示跳转」改为「箭头朝下，表示进入下级」。
+- **注意**：`arrow_down.xml` 固有尺寸 16dp，比 `arrow_forward` 的 18dp 略小；两处 ImageView 都是 `wrap_content`，差异约 2dp，手表上不可辨。`arrow_down` 另被消息页 / 搜索页 / 媒体信息页等多处复用，**未改其固有尺寸**以免波及。
+- **验证**：`:app:assembleDebug` 两 flavor `BUILD SUCCESSFUL`（1m4s）。纯资源与静态设置，无逻辑分支，未加单测。
+
+### 3.11 弱网下详情页中央加载遮罩盖住已加载的评论（26.10.13）
+
+- **现象**：视频详情页切到评论栏，评论已经加载出来，但中央的「2233」加载图仍盖在列表上（还吃掉触摸）。**弱网下复现概率明显升高**，属偶发。
+- **根因**：`activity_simple_viewpager.xml` 的 `loading` 是 ViewPager 的兄弟节点、盖在最上层，由宿主的 `crossFade(loading, fragmentView)` 收起。而 `VideoInfoFragment.initView()` 把 `onFinishLoad()` 放在了后台**取流预取**（`PlayerApi.getVideo`）之后——取流是弱网下最慢的一步；同时 `viewPager.offscreenPageLimit = fragmentList.size` 会把评论页一并建好（评论请求快得多），带 `seekReply` 时还会直接 `currentItem = 1` 落在评论页。于是"评论已出、遮罩未收"。
+- **修法（`activity/video/info/VideoInfoFragment.kt`）**：`onFinishLoad()` 从取流预取的回调里移出，改到 `initView()` 末尾（内容装配完成即收起）；预取保留，只负责填 `playerData`，未就绪时 `playClick`/`startDownloadFlow` 已有"视频信息还在加载中"兜底。
+- **顺带修掉一处同类隐患（`activity/video/info/BangumiInfoFragment.kt`）**：`initView()` 的"敬请期待"分支（没有可用季/集）提前 `return` 且从未调 `onFinishLoad()` → 遮罩**永不收起**，用户永久停在加载图上。已在该分支补调用。
+- **未动**：`LiveInfoActivity`（另一套布局，且在数据到达前就收起，口径不同）；`OpusInfoFragment.onFinishLoad`（声明为 `Runnable?` 但全工程无人赋值，是死字段，清理不属本次范围）。
+- **验证**：`:app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest --no-configuration-cache` 全部 `BUILD SUCCESSFUL`（1m15s），两 flavor 各 **55 suites / 534 tests / 0 failures / 0 errors / 0 skipped**（本用例数含工作区其他未提交的 `service/download/DownloadStreamTransferTest.kt`）。改动是 UI 时序（View 可见性），**无纯 JVM 单测可覆盖**，真机弱网复测见 §2.1 与回归清单第 248 条。技术口径已记入 `docs/architecture-map.md` §7.39。
+
+### 3.12 下载完整性 C3：高速单连接不能将残片报成功（26.10.13）
+
+- **已修范围**：`DownloadService.downFileSpeedSingle`（含分片失败回退）接入 `service/download/DownloadStreamTransfer.kt`。真实 EOF + 非空 + 已知长度相等才成功；GET 长度优先 HEAD，HEAD 错误页长度不作媒体大小，未知长度不伪造为 1。
+- **保护**：网络读取与文件写入失败分开，资源关闭成功后才发布阶段完成；非暂停失败清理本次目标，暂停保留临时文件；不删除旧媒体成品、不更改库结构、锁、默认引擎和续传行为。契约见 `docs/architecture-map.md` §7.27。
+- **验证**：`DownloadStreamTransferTest` 新增 22 例真实内存流测试（完整/少一字节/超量/未知长度/空响应/1 字节/大长度/读写异常/flush/暂停/取消）；`:app:assembleDebug`、`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 全通过（最终调用 1m6s）；XML 实测每个 flavor **55 suites / 537 tests / 0 failures / 0 errors / 0 skipped**，本次类每版 **22 tests**。计数包含工作区既有其他修改。
+- **后续状态**：音频重复的播放侧已补 §3.13；DASH 多阶段进度归零、分片进度滞后及其余待办仍见 `docs/superpowers/specs/2026-10-13-download-bug-diagnosis.md`；**本次未在手表真机或真实 CDN 上验证**。
+
+### 3.13 本地音频重复：音轨判据与外部播放器生命周期（26.10.13）
+
+- **已修 B1 播放侧**：`PlayerActivity` 按当前 IJK `trackInfo` 选择唯一音源；内嵌音轨优先，只有确认纯视频才启外部音频，未知时提示且不盲目双播。纯判据 `player/LocalAudioTrackPolicy.kt`，契约见 `docs/architecture-map.md` §7.4。
+- **追加确证缺陷**：原 `audioPlayer = MediaPlayer().apply { prepare(); start() }` 在重建时覆盖旧引用而不释放；prepare 抛异常时新对象也尚未赋值。现先释放旧实例、创建即保存引用；重载/重试/切听视频/切页/错误/销毁清理，旧实例迟到回调不触发新播放，异步音频错误释放当前实例。
+- **安全边界**：没有删除、扫描或改写用户缓存；没有增加 MediaExtractor 扫描、网络访问、新依赖或修改下载事务/数据库。B1 的下载侧原子替换、audio_only 模式切换、A1/A2 进度仍未修。
+- **验证**：`:app:assembleDebug` + 两 flavor 全量单测通过（最终 1m11s），XML 每版 **56 suites / 549 tests / 0 failures / 0 errors / 0 skipped**；新增 `LocalAudioTrackPolicyTest` 每版12例，只证明纯判据，不证明真实解码/播放生命周期。**未跑手表真机**。
 
 ## 4. 历史章节索引
 

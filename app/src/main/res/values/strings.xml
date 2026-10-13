@@ -144,7 +144,8 @@
     <string name="desc_load_transition">打开此选项，图片和部分页面加载完成时会有渐入/渐出动画。</string>
     <string name="desc_fromlast">播放视频时如果有超过5秒的播放历史，将会自动从历史位置播放</string>
     <string name="desc_showonline">播放器右下角会显示当前视频的实时观看人数，在直播中则为观看过的人数和进入直播间提醒\n如果观看视频中途崩溃可以尝试关闭此开关\n该功能为内置播放器专属</string>
-    <string name="desc_scale">播放视频时可使用像查看照片一样的手势来缩放和移动视频，双击屏幕将恢复原大小\n对于单点触控的设备，可以双击屏幕并在第二次按下时不抬手，然后上下拖动来缩放\n！若无法缩放，请切换下面的“显示方式”！\n特别感谢：凉腕播放器</string>
+    <string name="desc_scale">播放视频时可使用像查看照片一样的手势来缩放和移动视频；开启“有缩放时，双击优先恢复缩放”后，双击可恢复原大小且保持当前屏幕方向\n对于单点触控的设备，可以双击屏幕并在第二次按下时不抬手，然后上下拖动来缩放\n！若无法缩放，请切换下面的“显示方式”！\n特别感谢：凉腕播放器</string>
+    <string name="desc_player_doubletap_restore_scale">开启后，画面有缩放时双击优先恢复原大小和居中位置；未缩放时双击播放/暂停。只切换横竖屏不算缩放，恢复缩放也不会改变当前方向。开启双击快进快退时，左右两侧仍用于快退/快进。</string>
     <string name="desc_audio_only">开启后，进入播放器时默认使用听视频模式。\n禁用视频解码，只播放音频</string>
     <string name="desc_doublemove">大屏幕设备上会更好用，手表上可能会造成操作不便</string>
     <string name="desc_display">！如果视频播放异常/闪退/未响应/无法缩放，请尝试切换该选项！\n已知：KidoX3只能Surface，小天才只能Texture，部分设备需要使用Texture才能进行缩放</string>

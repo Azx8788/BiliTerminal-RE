@@ -97,6 +97,12 @@
 9. **弹幕池是栈语义**：`bilibili-API/docs/danmaku/danmaku_xml.md:3` 原文——"实时弹幕池容量有限（根据视频类型 500-8000 条不等），占满后再发送会使实时弹幕池底部的弹幕压入历史弹幕池（类似于堆栈）"；弹幕池类型 `0 普通 / 1 字幕 / 2 特殊(代码/BAS) / 3 互动池`。
 10. **登录方式**：官方扫码登录（Web）为 `passport-login/web/qrcode/generate` + `/poll`；**TV 端另有独立链路** `x/passport-tv-login/qrcode/auth_code` + `/poll`（备用域 `passport.snm0516.aisee.tv`）。→ 手表**无键盘，密码/短信登录不可行**；**TV 端扫码比 Web 端扫码更贴合"无键盘设备授权"的心智模型**，建议手表端引导用户用 TV 端链路的二维码。密码登录还需先取 `passport-login/web/key`（返回 hash 盐 + 公钥，**有效期仅 20 秒**）。
 11. **反向纠偏：SponsorBlock 不是 B 站的方案。** SponsorBlock 官方 README 原文定义其目标是"skip sponsor segments in **YouTube** videos"，支持 Invidious，**未提及 bilibili**。→ 本项目的"空降/跳过片头片尾"应走 `view_points` / `pbp/data` / 自建众包，不要引入 SponsorBlock 依赖。
+12. **`fnval=1`（非 DASH）取回的是「音视频合一」的 MP4，不是纯视频；它的清晰度天花板就是 720P。**（26.10.13 匿名实测，稿件 `av170001` / `cid=279786`）
+    - **实测**：`qn=64&fnval=1&platform=pc` → `durl[0].url` 下回来是 `format=hdmp4`，容器内 **`trak=2`**（`hdlr` 里同时有 `vide` 与 `soun`，且 `mp4a`+`esds` 存在）→ **视频轨 + 音频轨两条**。
+    - **对照**：`fnval=16` 的 `dash.video[].baseUrl` 是 `trak=1` 的**纯视频**；`dash.audio[].baseUrl` 是 `trak=1` 的**纯音频**。
+    - **降级行为**：用 `fnval=1` 请求 `qn=80` 会被**降级返回 `quality=64`**——1080P 及以上只有 DASH 拿得到。这正是"720P 及以下走非 DASH 老接口"这个分界的来源。
+    - **对代码的含义**：`DownloadService` 里「`qn<=64` → `getVideo`（`fnval=1`）取单文件、`useDash=false`」以及「MP4 分支下载完要删掉同目录残留的 `audio.m4a`」都是**正确**的；**反过来把这条流当成"纯视频"再挂一路外部音轨，就会两轨同时出声**（即 §3.13 修的音频重复）。
+    - **未覆盖**：`platform=html5`（播放侧 mtvPlayer 分支）实测同样是 `trak=2`，与 `pc` 一致；但只测了 1 个稿件、未登录，大会员内容与其它稿件未复验。
 
 ## 4. 按接口可行性收敛的「值得做 / 不值得做」
 

@@ -7,7 +7,6 @@ import kotlin.math.min
 class ViewScaleGestureListener(private val view: View) : ScaleGestureDetector.SimpleOnScaleGestureListener() {
 
     @JvmField var scaling: Boolean = false
-    @JvmField var can_reset: Boolean = false
 
     override fun onScale(detector: ScaleGestureDetector): Boolean {
         if (view.visibility == View.GONE) {
@@ -21,7 +20,6 @@ class ViewScaleGestureListener(private val view: View) : ScaleGestureDetector.Si
         view.scaleX = newScale
         view.scaleY = newScale
 
-        can_reset = newScale != 1.0f
         return true
     }
 
