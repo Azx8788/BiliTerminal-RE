@@ -2,8 +2,9 @@
 name: rebili-version-release
 description: >-
   在 RE:哔哩终端（ReBiliClient）仓库发版：递增版本号、把旧“本次更新”移入历史更新日志、
-  写入新版本日志、用 Gradle 构建签名发行 APK，并由 CI 通知中转服务把发行版同步到 Gitee、产出下载直链。
-  当用户要求“发版/出包/更新日志/构建发行版/把更新日志写入历史”等属于本仓库的操作时使用本技能。
+  写入新版本日志、用 Gradle 构建签名发行 APK，由 CI 通知中转服务把发行版同步到 Gitee、产出下载直链，
+  最后把新版本同步到官网静态部分（更新日志页、下载兜底链接、JSON-LD 版本号、sitemap）。
+  当用户要求“发版/出包/更新日志/构建发行版/把更新日志写入历史/同步官网”等属于本仓库的操作时使用本技能。
 ---
 
 # RE:哔哩终端（ReBiliClient）发版工作流
@@ -124,6 +125,49 @@ description: >-
 - **还要回读 Gitee 的附件清单**（`/repos/zisekongling/bili-terminal-re/releases/tags/<tag>` 的 `assets`）：**每个发行渠道都要有 4 个包 + `md5sums.txt`**。Gitee 上少包 = 中转服务端白名单没更新（见 §4），客户端会回落 GitHub 源。26.10.11 就是回读时发现只有普通版、共存版一个都没有。
 - 向用户汇报：改了哪些文件、发行 APK 的路径/大小、**Release 说明是否含完整更新日志**、CI 里 Gitee 同步是否成功（**含每个渠道的附件是否齐**）、`release-links.txt` 里的直链。
 
+### 6. 同步官网静态部分
+
+发版只完成了一半：官网还有一批**静态**内容不会自己变，要同步过去。
+
+| 要同步的 | 为什么 |
+| --- | --- |
+| `changelog.html` / `changelog-legacy.html` | 预生成的更新日志页，不会自己更新 |
+| `index.html` 的静态兜底（版本号 + 10 条 Gitee 直链） | `/api/release` 挂掉时页面退化为它 |
+| `index.html` 的 JSON-LD `softwareVersion` | 搜索引擎读的是这个静态值 |
+| `sitemap.xml` 的 `lastmod` | 新鲜度信号（Bing 网站管理员指南第 3/19 条） |
+
+> 首页的**下载清单与版本号本身**由 `/api/release` 实时拉取，发版后自动更新，
+> **不需要**人工干预。上表是它之外的静态部分。
+
+**站点仓库**：`D:\Users\ASUS\Desktop\DEVELOP\bili-terminal-site`（与客户端仓库同级，独立仓库）
+
+```bash
+cd D:/Users/ASUS/Desktop/DEVELOP/bili-terminal-site
+python tools/sync-release.py          # 同步（有变更才写文件；无变更则明确报告）
+python tools/sync-release.py --check  # 只检查：有变更则退出码 1
+python tools/sync-release.py --dry-run # 只打印将做的改动
+git add -A && git commit -m "chore: 同步发行版 <tag>" && git push
+```
+
+推送后 Netlify 自动部署。脚本会从 **Gitee 与 GitHub 两个源**各取一次 Release，
+按「日期 + tag 序号」取较新者 —— 因为中转服务同步到 Gitee 有约 1 分钟延迟，
+刚发完版只信 Gitee 会同步成旧版本。取到后依次：
+
+1. 把新版本追加进 `data/releases.json`（更新日志页的数据源）
+2. 替换 `index.html` 里 14 处版本号（10 处 Gitee 直链 + 1 处 JSON-LD + 3 处展示）
+3. 更新 `sitemap.xml` 的 `lastmod`
+4. 重跑 `tools/gen-pages.py` 重新生成更新日志页
+
+**顺序**：本步要在 §4 之后做（Gitee 上有新版本才同步得准）。脚本已做双源比对，
+即使中转还没同步完也不会同步成旧版本，但**先确认 §5 的 Gitee 附件回读通过**再跑更稳。
+
+**已自动化**：站点仓库有 `.github/workflows/sync-release.yml`，
+**每天定时**（北京时间 02:20）自动跑同一套同步并提交，也可在 Actions 页面手动触发。
+所以本步是**兜底 + 想立刻生效时的手动通道**：CI 没跑成、或用户马上要看新版页面时用。
+
+**验证**：同步后回读 `https://biliterminal.zsapp.asia/changelog.html`，
+确认新版本条目在**最上面**，且 `index.html` 的 `softwareVersion` 已更新。
+
 ## 约定与坑
 - 一律**中文**文案与注释；遗留页文案硬编码、不改 `strings.xml`（设置页为字符串驱动例外，用 `desc_*`）。
 - `update_log_items`、`versionCode` 尾码规律（`YYMMDD0`；同一天发第二个包时尾位递增为 `YYMMDD1`）、Gitee 直链这类与既有约定/外部资源强相关的内容，不确定就先确认再改。
@@ -132,3 +176,6 @@ description: >-
 - `:app:verifyVersionConsistency` 只校验 build.gradle 与 strings.xml 更新日志锚点两处；改了版本号就要同步那个锚点，否则 CI 会红。
 - Gitee 会在发行版里**自动附带** `{tag}.zip` / `{tag}.tar.gz` 两个源码归档（tag 落在 `master` 上产生），
   客户端选包必须按精确文件名匹配（普通版 `app-<abi>-release.apk`、共存版 `app-coexist-<abi>-release.apk`，见 `util/UpdateRelease.apkNamePrefix`），不能用"第一个附件"。
+- **官网是另一个独立仓库**（`D:\Users\ASUS\Desktop\DEVELOP\bili-terminal-site`），不在本仓库内，
+  发版后要同步它的静态部分，见 §6。官网页面内容由 `tools/gen-pages.py` 生成 ——
+  **直接手改生成的 HTML 会在下次生成时被覆盖**，要改内容就改脚本里的数据再重跑。
