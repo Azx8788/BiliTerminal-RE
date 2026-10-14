@@ -44,6 +44,55 @@ public class NetWorkUtil {
     private static volatile String cachedCookies = null;
 
     /**
+     * HTTP 追踪总开关（26.10.14，由 [com.RobinNotBad.BiliClient.BiliTerminal.applyLogSwitches] 写入）。
+     *
+     * <p>原实现只在 `get()` / `post()` 里记 URL 和 POST 正文，**不记状态码、不记响应体、不记耗时**：
+     * 风控拦截返回 HTML、接口返回 `code=-412`、请求根本没发出去，这三种情况在日志里长得一模一样，
+     * 只能靠复现和猜。打开这个开关后每次请求都会落一行
+     * `方法 脱敏URL -> 状态码 (耗时ms) + 响应体摘要`，落盘到 `logs/http.log`。
+     *
+     * <p>Release 构建恒为 false（赋值处被 `BuildConfig.DEBUG` 折叠），因此发布包零开销、零泄漏。
+     */
+    public static volatile boolean HTTP_TRACE = false;
+
+    /** 追踪时最多预览多少字节的响应体：够看清 `code` / `message`，又不至于把大响应全读一遍。 */
+    private static final long HTTP_TRACE_MAX_BODY = 4096;
+
+    /**
+     * URL 查询串里需要脱敏的参数名。
+     *
+     * <p>`access_key` / `csrf`(bili_jct) 都是**可直接冒用身份的凭证**——写进日志等于把会话明文
+     * 留在设备与 logcat 里（与审计 S2「只记 Cookie 键名、不记值」同一条原则）。
+     */
+    private static final String[] SENSITIVE_QUERY_KEYS = {
+            "access_key", "csrf", "bili_jct", "SESSDATA", "refresh_token", "token", "sign", "appkey"
+    };
+
+    /**
+     * 查询串里的**噪音**参数：值替换成 `…`，但保留键名。
+     *
+     * <p>这几个是 B 站 WBI 风控的浏览器指纹 blob（`dm_img_list` 单个就上千字符），对排障毫无价值，
+     * 却能让一行日志从 600 字符涨到 2200+。实测打开追踪后跑几个页面，日志就飙到 74KB——
+     * 按 2MB 滚动上限算，几十次页面加载就把历史冲掉了。
+     */
+    private static final String[] NOISE_QUERY_KEYS = {
+            "dm_img_list", "dm_img_inter", "dm_img_str", "dm_cover_img_str"
+    };
+
+    /** 追踪行里 URL 的长度上限，兜住未知的超长参数。 */
+    private static final int MAX_TRACE_URL_CHARS = 600;
+
+    /**
+     * 追踪行里请求体 / 响应体摘要的长度上限。
+     *
+     * <p>实测：即便把 WBI 指纹 blob 压掉，一行仍会到 1779 字符——大头就是响应体预览。
+     * 追踪日志的职责是「哪个接口、什么状态码、耗时多少、大致回了什么」，600 字符足够看清
+     * `code` / `message` 和头一两条数据；要看**完整**响应体请用调试桥的 `http` 命令
+     * （它会把 body 全文落到 `bridge-http-response.txt`）。
+     */
+    private static final int MAX_TRACE_BODY_CHARS = 600;
+
+    /**
      * 返回内存缓存的 cookie 字符串，避免每次请求都读 SharedPreferences。
      * 在 putCookie / setCookies / saveCookiesFromResponse 中更新。
      */
@@ -136,6 +185,7 @@ public class NetWorkUtil {
                         return response;
                     })
                     .addInterceptor(new CookieSaveInterceptor())
+                    .addInterceptor(new HttpTraceInterceptor())
                     .dns(new Inet4Selector())
                     .pingInterval(8, TimeUnit.SECONDS)
                     .connectTimeout(8, TimeUnit.SECONDS)
@@ -704,6 +754,177 @@ public class NetWorkUtil {
             saveCookiesFromResponse(response);
             return response;
         }
+    }
+
+    /**
+     * HTTP 请求/响应追踪（26.10.14）。
+     *
+     * <p>给 AI agent / 自动化测试用：一次请求对应日志里的一行，包含方法、脱敏后的 URL、状态码、
+     * 耗时和响应体摘要，同时进 logcat（tag 按 `Logu` 的既有约定是调用者，即
+     * `adb logcat -s "HttpTraceInterceptor>intercept"`）与 `logs/http.log`。
+     *
+     * <p>三条硬约束：
+     * <ul>
+     *   <li>开关关闭时**只做一次 boolean 读**就透传，绝不给正常请求加任何开销；</li>
+     *   <li>只预览文本类响应体（json/text/xml/html），视频、图片等二进制响应直接跳过——
+     *       否则每次播放视频都会白读一遍磁盘，还会拖慢流式下载；</li>
+     *   <li>自身任何异常都必须吞掉，追踪功能不能把一次本来正常的请求搞挂。</li>
+     * </ul>
+     */
+    private static class HttpTraceInterceptor implements Interceptor {
+        @NonNull
+        @Override
+        public Response intercept(@NonNull Chain chain) throws IOException {
+            if (!HTTP_TRACE) return chain.proceed(chain.request());
+
+            Request request = chain.request();
+            long start = System.currentTimeMillis();
+            Response response = chain.proceed(request);
+            long cost = System.currentTimeMillis() - start;
+
+            try {
+                StringBuilder sb = new StringBuilder();
+                sb.append(request.method())
+                        .append(' ')
+                        .append(maskUrl(request.url().toString()))
+                        .append(" -> ")
+                        .append(response.code())
+                        .append(" (").append(cost).append("ms)");
+
+                String requestBody = previewRequestBody(request);
+                if (requestBody != null) sb.append(" | req=").append(requestBody);
+
+                String responseBody = previewResponseBody(response);
+                if (responseBody != null) sb.append(" | res=").append(responseBody);
+
+                String line = sb.toString();
+                Logu.d("http", line);
+                Logu.appendToFile(Logu.HTTP_LOG_NAME, "H", line);
+            } catch (Exception ignored) {
+                // 追踪失败不影响请求本身
+            }
+            return response;
+        }
+    }
+
+    /**
+     * URL 脱敏 + 去噪 + 限长。
+     *
+     * <p>只动查询串，路径原样保留（agent 需要靠路径判断调的是哪个接口）：
+     * <ul>
+     *   <li>[SENSITIVE_QUERY_KEYS] 的值 → `***`（凭证，绝不能落盘）；</li>
+     *   <li>[NOISE_QUERY_KEYS] 的值 → `…`（WBI 指纹 blob，几百到上千字符且无排障价值）；</li>
+     *   <li>整串超过 [MAX_TRACE_URL_CHARS] 时截断，防止未知的超长参数把日志撑爆。</li>
+     * </ul>
+     */
+    static String maskUrl(String url) {
+        if (url == null) return "";
+        int q = url.indexOf('?');
+        if (q < 0) return truncateUrl(url);
+        String head = url.substring(0, q + 1);
+        String[] params = url.substring(q + 1).split("&");
+        StringBuilder sb = new StringBuilder(head);
+        for (int i = 0; i < params.length; i++) {
+            if (i > 0) sb.append('&');
+            String param = params[i];
+            int eq = param.indexOf('=');
+            if (eq < 0) {
+                sb.append(param);
+                continue;
+            }
+            String key = param.substring(0, eq);
+            String replacement = null;
+            for (String s : SENSITIVE_QUERY_KEYS) {
+                if (s.equalsIgnoreCase(key)) {
+                    replacement = "***";
+                    break;
+                }
+            }
+            if (replacement == null) {
+                for (String s : NOISE_QUERY_KEYS) {
+                    if (s.equalsIgnoreCase(key)) {
+                        replacement = "…";
+                        break;
+                    }
+                }
+            }
+            sb.append(key).append('=').append(replacement != null ? replacement : param.substring(eq + 1));
+        }
+        return truncateUrl(sb.toString());
+    }
+
+    private static String truncateUrl(String url) {
+        if (url.length() <= MAX_TRACE_URL_CHARS) return url;
+        return url.substring(0, MAX_TRACE_URL_CHARS) + "…(url truncated)";
+    }
+
+    /** 预览请求体；multipart/文件体与超大请求体一律跳过（读了也没用，还可能很贵）。 */
+    private static String previewRequestBody(Request request) {
+        RequestBody body = request.body();
+        if (body == null || body.isDuplex() || body.isOneShot()) return null;
+        try {
+            long length = body.contentLength();
+            if (length <= 0 || length > HTTP_TRACE_MAX_BODY) return null;
+            MediaType type = body.contentType();
+            if (type != null && "multipart".equalsIgnoreCase(type.type())) return null;
+            okio.Buffer buffer = new okio.Buffer();
+            body.writeTo(buffer);
+            return compact(buffer.readUtf8(), MAX_TRACE_BODY_CHARS);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 预览响应体。
+     *
+     * <p>用 `peekBody` 而不是读 `body.string()`：前者会克隆一份缓冲，**不会消费原始流**，
+     * 调用方照常能读到完整响应；后者会把流读干，调用方拿到空 body。
+     */
+    private static String previewResponseBody(Response response) {
+        ResponseBody body = response.body();
+        if (body == null) return null;
+        MediaType type = body.contentType();
+        String subtype = type == null ? "" : type.subtype().toLowerCase(Locale.ROOT);
+        boolean textLike = subtype.contains("json")
+                || subtype.startsWith("text")
+                || subtype.contains("xml")
+                || subtype.contains("javascript")
+                || subtype.contains("html");
+        if (!textLike) return null;
+        try {
+            long declared = body.contentLength();
+            long len = (declared > 0 && declared < HTTP_TRACE_MAX_BODY) ? declared : HTTP_TRACE_MAX_BODY;
+            String text = response.peekBody(len).string();
+            return compact(text, MAX_TRACE_BODY_CHARS);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 压成单行：agent 按行 grep 日志时，一条请求必须正好占一行。
+     *
+     * @param limit 结果长度上限；超限截断并标注
+     */
+    private static String compact(String text, int limit) {
+        if (text == null) return "";
+        String s = text.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ');
+        StringBuilder sb = new StringBuilder(s.length());
+        boolean lastSpace = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == ' ') {
+                if (lastSpace) continue;
+                lastSpace = true;
+            } else {
+                lastSpace = false;
+            }
+            sb.append(c);
+        }
+        String result = sb.toString().trim();
+        if (result.length() > limit) result = result.substring(0, limit) + "…(truncated)";
+        return result;
     }
 
 }

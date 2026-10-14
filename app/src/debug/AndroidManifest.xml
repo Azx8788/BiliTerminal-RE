@@ -6,6 +6,8 @@
   发布包里。它的入口在 Release 下已被 BuildConfig.DEBUG 常量折叠掉（见 SettingsIndex /
   SettingGroupActivity），这里再把清单声明限定到 debug 源集，R8 就能把整个类 strip 掉，
   release APK 里既不注册也不含该类代码。
+
+  DebugBridge 是给 AI agent / 自动化脚本用的可编程控制通道（26.10.14），同理只在此声明。
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
@@ -16,11 +18,33 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application>
+
+        <!--
+          exported=true 是**刻意**的：这是全应用唯一一个能被 adb 拉起的测试页。
+          非导出的组件 adb shell（uid 2000，不是 root）无法启动，而手表上的 UI 自动化
+          又慢又不可靠，所以必须留一条外部可达的路。
+
+          安全边界靠 android:permission="android.permission.DUMP" 兜住：DUMP 是签名级权限，
+          普通第三方应用拿不到，因此同设备上的其他应用依然进不来。adb shell 持有该权限
+          （dumpsys 就靠它），所以 agent 能正常使用。
+        -->
         <activity
             android:name=".activity.settings.TestActivity"
-            android:exported="false"
+            android:exported="true"
             android:label="测试页面"
+            android:permission="android.permission.DUMP"
             android:screenOrientation="locked" />
+
+        <!--
+          DebugBridge：无 intent-filter，只能由显式组件名触发（am broadcast -n <包名>/.debug.DebugBridge）。
+          没有 intent-filter 意味着不存在被隐式广播"顺带命中"的可能，攻击面只保留显式指定这一条路。
+          权限与 token 两层校验见类注释。
+        -->
+        <receiver
+            android:name=".debug.DebugBridge"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+
     </application>
 
 </manifest>

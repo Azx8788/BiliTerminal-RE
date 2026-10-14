@@ -86,6 +86,9 @@
   - 需覆盖的真机用例已写进 `docs/review/device-test-plan.md`（§1.2 设备侧 + T12 平台 API 兼容）：任一含 `TextClock` 的页面（43 个布局里都有，4.4 上原本会因 4 参 `TextView` 构造直接崩）、列表页 `AsyncLayoutInflaterX.fadeIn`（`activity/base/BaseActivity.kt:435`）、任一写 SharedPreferences 的操作（登录态刷新 / 设置项开关）、发评论或回复（`activity/reply/WriteReplyActivity.kt:177`）、设置页各图标（验证 `res/drawable-v21` 之外的兜底色可接受）、通知（三处 `NotificationChannel` 均有 `SDK_INT >= O` 闸，预期低版本不弹且不崩）。
   - 逐项静态结论与依赖下限见 `docs/architecture-map.md` §1.1。
 
+- [ ] **调试桥（§3.14）未真机验证**：`DebugBridge` 的 `am broadcast` 能否回显结果、`appops set <包名> SYSTEM_ALERT_WINDOW allow` 后 `start` 能否真的拉起 `exported=false` 的页面、`http` 命令在风控下是否可用、日志落盘路径是否可 `adb pull` / `run-as` 取到——全部只过了编译与静态核实。逐条验证清单见 `docs/review/agent-test-guide.md` §2 与 §6。
+  - 风险最高的一条：个别精简 ROM 的 `adb shell` 可能不持有 `DUMP` 权限，那样导出组件会被 AMS 拒绝，调试桥整体不可用。兜底方案见手册 §6（`adb root`，或 `run-as <包名> am broadcast`——同 uid 不受导出限制）。
+
 - [ ] **番剧界面补齐（§3.8）未真机验证**：季切 tab、两行选集卡片、追番按钮、全量选集弹窗、历史卡片一键续播、番剧心跳 5 秒 + 看完上报 -1 全部只过了编译 + JVM 单测。真机要看的：① 多季番能切到第二季/剧场版并出集；② 从别的季切回来回到这一季上次看的那一集；③ 一集播完后重进/从历史进来是接下一集而不是停在本集末尾；④ 历史里的番剧卡片点一下直接起播且位置对；⑤ 未登录点追番要提示，不能静默失败。
 
 ### 2.2 功能与工程待办
@@ -411,6 +414,57 @@
 - **追加确证缺陷**：原 `audioPlayer = MediaPlayer().apply { prepare(); start() }` 在重建时覆盖旧引用而不释放；prepare 抛异常时新对象也尚未赋值。现先释放旧实例、创建即保存引用；重载/重试/切听视频/切页/错误/销毁清理，旧实例迟到回调不触发新播放，异步音频错误释放当前实例。
 - **安全边界**：没有删除、扫描或改写用户缓存；没有增加 MediaExtractor 扫描、网络访问、新依赖或修改下载事务/数据库。B1 的下载侧原子替换、audio_only 模式切换、A1/A2 进度仍未修。
 - **验证**：`:app:assembleDebug` + 两 flavor 全量单测通过（最终 1m11s），XML 每版 **56 suites / 549 tests / 0 failures / 0 errors / 0 skipped**；新增 `LocalAudioTrackPolicyTest` 每版12例，只证明纯判据，不证明真实解码/播放生命周期。**未跑手表真机**。
+
+### 3.14 Debug 包自动化测试基建：调试桥 + 可观测性 + Agent 模式（26.10.14）
+
+起因：`docs/review/device-test-plan.md` 的 88 条真机用例一条未执行，根因不是没人想测，而是 debug 包**没给自动化留任何入口**——`TestActivity` 是 `exported=false`（adb shell 是 uid 2000、非 root，拉不起非导出组件）、全应用仅两个导出组件且 `GetIntentActivity` 只认 4 种 `type`、日志开关改完要重启、`Logu` 的 tag 是 `类名>方法名`（`logcat -s` 筛不出全量）、`NetWorkUtil` 不记状态码/响应体/耗时、UETool 在 debug 下启动时会跳系统设置页并 `return` 掉启动主流程。**完整用法见 `docs/review/agent-test-guide.md`，取舍见 `docs/architecture-map.md` §7.40。**
+
+- **新增 `app/src/debug/java/.../debug/DebugBridge.kt`**：exported 的 `BroadcastReceiver`，`am broadcast -n <包名>/.debug.DebugBridge` 驱动。命令：`ping`/`agent`/`get`/`set`/`remove`/`dump`/`start`/`activities`/`http`/`log`/`logs`/`logclear`/`trail`/`top`。`goAsync()` + `setResultData` 回传，结果同时落 `logs/bridge-last.txt`（个别 ROM 的 `am` 不转发 receiver 结果）。**`start` 走进程内 `startActivity`，因此能拉起全部 `exported=false` 的页面**——这是 UI 自动化做不到的；受 Android 10+ 后台启动限制，需 `appops set <包名> SYSTEM_ALERT_WINDOW allow`（结果里会提示）。
+- **新增 `BiliTerminal.AGENT_TEST_MODE` + `applyLogSwitches()`**（`SettingsKeys.DEV_AGENT_MODE` / `DEV_LOG_FILE`）：日志级别、落盘、HTTP 追踪、跳过 UETool 四件事的**唯一落地处**，且改完即生效（原实现只在 `Application.onCreate` 读一次，改完要重启）。`agentMode = debugBuild && 开关`，release 下被编译期常量折叠。
+- **`Logu`**：新增异步落盘（业务线程 O(1) 入队 + `rebili-log-writer` 守护线程，队列 4096 满则计数丢弃）与单文件 2MB 上限；新增 `readTail` / `clearFile` / `getLogDir`。**刻意不做同步写**——`Logu.d` 会被 UI 线程调用。
+  - **logcat 的 tag 一律没动，仍是 `类名>方法名`**：改的过程中一度统一成常量 `ReBili`，随后发现这会作废 `docs/review/device-test-plan.md` D3-11~D3-14 四条写死的 `adb logcat -s "PlayerActivity>onPrepared"` / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"` 诊断命令（`api/NoteApi.java` 的 `BiliNote` 也是同一套契约），**已回退**。logcat 输出与改动前逐字节一致，「一次抓全」改用 `adb logcat --pid=$(adb shell pidof -s <包名>)` 或读落盘日志。
+- **`NetWorkUtil.HTTP_TRACE` + `HttpTraceInterceptor`**：每次请求落一行 `方法 脱敏URL -> 状态码 (耗时ms) | req=… | res=…`，URL 里 `access_key`/`csrf`/`bili_jct` 等值替换成 `***`。只预览文本类响应（二进制跳过），用 `peekBody` 而非 `body.string()`（后者会把流读干）。
+- **`SplashActivity.ensureUEToolOverlayPermission()`**：Agent 模式下整体跳过——原来未授权会 `return` 掉启动主流程并跳系统设置页，授权后悬浮窗还会盖住界面吞掉点击。
+- **`TestActivity` 改为 `exported="true"`**（debug 清单内），两个导出组件都挂 `android:permission="android.permission.DUMP"`：DUMP 是签名级权限，普通第三方应用拿不到，adb shell 持有（`dumpsys` 就靠它），本应用天然放行。**别摘掉它**——那等于让同设备任何应用都能 dump 登录态。
+- **验证**：`:app:assembleDebug` 通过（49s，无新增编译告警）；`:app:assembleRelease` 通过（2m14s）；两 flavor 单测 **56 suites / 554 tests / 0 failures / 0 errors / 0 skipped**（基线 549 + 新增 5 例 `NetWorkUtilTest.maskUrl_*` 安全回归，锁住「URL 里的 `access_key`/`csrf` 值必须打码」）。静态核实边界：**release 合并清单里 `DebugBridge` 与 `TestActivity` 均 0 命中**，`app-standard-arm64-v8a-release.apk` 的 `classes.dex` 里 `DebugBridge` 字符串 0 命中（清单里那处 `android.permission.DUMP` 来自 `androidx.profileinstaller` 的 `ProfileInstallReceiver`，与本次改动无关，改动前就在）。
+
+#### 3.14.1 真机实测（26.10.14，Android 12 / x86_64 模拟器，`coexistDebug`）
+
+首轮真机跑通，**并实测抓出 3 个只有上手才会暴露的缺陷**（已全部修复并复验）：
+
+1. **`start` 短类名解析漏子包**：原先靠一张硬编码包名表挨个 `Class.forName` 猜，实测 `VideoInfoActivity` 报「找不到」——它在 `activity.video.info` 下，多一层子包就漏。改为**从 PackageManager 的清单匹配简单名**（实测 104 个页面无重名，匹配无歧义），再也不会过期。
+2. **`start` 静默失效**：只加 `FLAG_ACTIVITY_NEW_TASK` 时，若目标页恰好是某个已存在任务的栈根，系统**复用任务而不新建实例**——`startActivity` 只是把任务提到前台，栈顶仍停着别的页，而命令照样返回 `OK`。现默认叠 `FLAG_ACTIVITY_CLEAR_TOP`（要压栈不清栈用 `--ez keepstack true`）。
+3. **教程页盖住目标页**（全新安装必现）：`BaseActivity.autoTriggerTutorial()` 在 `Tutorials.forPage(javaClass)` 有未读教程时启动 `TutorialPagerActivity`，GUIDE 类还要求「翻到最后一页 + 停留 3 秒」才能点已阅，靠 UI 自动化点掉成本极高。新增 `notutorials` 命令，走官方 API（`Tutorials.all` + `TutorialStore.markRead`）一次标记 11 篇为已读。
+
+另外两处实测调整：`appops` 在 Android 12 上不存在，手册改用 `cmd appops`；HTTP 追踪的 WBI 指纹参数（`dm_img_list` 等）与响应体预览会撑爆日志（单行 2200+ 字符），已加去噪与限长。
+
+**实测结论**：`am broadcast` 的 result data 回显正常；`cmd appops set … SYSTEM_ALERT_WINDOW allow` 的效果有系统日志为证（`W ActivityTaskManager: Background activity start for <包名> allowed because SYSTEM_ALERT_WINDOW permission is granted.`）；`am start -n` 拉非导出页面确实被拒（`SecurityException: … not exported from uid 10045`）；**12 个页面（8 个无参 + 4 个带 extras）批量回归 12/12 PASS**；HTTP 追踪确实抓到了**应用自身**发出的请求（推荐页 `rcmd` 返回真实数据），不只是调试桥的 `http` 命令；并实拍到风控现场（`-> 412 (43ms) | res=<!DOCTYPE html> … <title>出错啦! - bilibili.com</title>`），正是改造前「风控 HTML / `-412` / 请求没发出去」三者不可分辨的那种场景。
+
+**实测又改了两处**：① 日志取回路径——`adb shell cat` 与 `adb pull` 可用，**`run-as` 读外部目录报 `Permission denied`**（它只进得了应用内部数据目录，外部 `Android/data/.../files/` 不在其挂载命名空间），手册已改；② HTTP 追踪去噪与限长（WBI 指纹参数值换 `…`、URL 600 字符、响应体预览 600 字符），实测单行 2200+ → 949~1130 字符，同样工作量 `http.log` 75KB → 17KB。
+
+**仍未覆盖**：真手表（圆屏/表冠）、Android 10 及以下、`http` 命令在真实登录态下的表现、`run-as am broadcast` 这条兜底路径。
+
+
+### 3.15 线上崩溃两条：WebView 建不出来 / 系统设置页不存在（26.10.14）
+
+同一台设备（`xiaomi grasslte M2505W1`，SDK 34，即小米手表）在 2026-10-13 23:15 连报两条，**都是「设备能力缺失」却把整个应用带崩**，本可优雅降级。
+
+**① `CaptchaWebViewActivity` — `Error inflating class android.webkit.WebView`**
+
+- **现场**：`Unable to start activity ComponentInfo{…/CaptchaWebViewActivity}: InflateException: Binary XML file line #59 in …:layout/activity_captcha_webview: Error inflating class android.webkit.WebView`，根因是 `WebViewFactory.getProvider()` 抛 `UnsupportedOperationException`。
+- **判据**：`WebViewFactory.getProvider()` 里那句 `throw new UnsupportedOperationException("For security reasons, WebView is not allowed in privileged processes")` 只在**进程 uid 是 root(0) / system(1000)**（或应用声明了 `android.uid.system` 的 `sharedUserId`）时命中——框架层从 5.1 起就禁止在特权进程里创建 WebView。**本工程全仓库没有任何 `sharedUserId` 声明**，所以是那台手表把应用跑在了特权进程里。另有一种可能性较低的解释是 ROM 改过 WebView 实现，但**无论哪种，应用都不该崩**。
+- **为什么崩得这么彻底**：`activity_captcha_webview.xml` 第 55~59 行**写死了一个 `<WebView>`**，inflate 阶段就抛异常，异常直接冒到 `ActivityThread` 把整个应用带崩——而这个页面是完全可降级的叶子页。
+- **修法**：布局里改成 `FrameLayout` 容器（`@+id/webViewContainer`），WebView 改**运行期创建**：进页面前先 `isWebViewAvailable()` 探一次（建一个再 `destroy()`，捕获 `Throwable`），探不通就提示「请改用扫码登录或 Cookie 登录」并以新增的 `RESULT_UNAVAILABLE` 收尾；`initWebView()` 里再兜一层 try/catch（探针过了不代表后续构造一定成功）。
+- **为什么是「提示改用扫码」而不是「想办法建出来」**：`LoginActivity` 三个 tab 是 **扫码 / 密码 / 短信**，扫码登录（默认第一个 tab）**完全不依赖 WebView**，另有 `SpecialLoginActivity` 的 Cookie 登录。给一条走得通的路，比让用户对着崩溃报告发呆强。两个密码/短信 Fragment 原来只报「验证已取消」，会把「设备不支持」误报成「用户自己取消了」，现按 `RESULT_UNAVAILABLE` 分开报。
+
+**② `FileUtil.requestStoragePermission` — `ActivityNotFoundException`**
+
+- **现场**：`Unable to start activity ComponentInfo{…FeedbackActivity}: android.content.ActivityNotFoundException: No Activity found to handle Intent { act=android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION dat=package: }`。
+- **判据**：`FileUtil.requestStoragePermission()` 直接 `activity.startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION))`，**没有任何兜底**。手表 ROM 普遍不带完整设置应用，这个 action 没有对应 Activity 是常态；异常从调用页的 `onCreate` 冒出去就是「Unable to start activity」。**这不是 `FeedbackActivity` 自己的问题**——全工程三个调用点（`DownloadActivity`、`VideoInfoFragment`、`LocalListActivity`）都会踩。
+- **修法**：三级降级——① 带包名直达本应用页面 → ② 通用的 `ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION` 列表页 → ③ 只弹提示教用户手动授权。`startSettings()` 吞掉所有异常（不只 `ActivityNotFoundException`：部分 ROM 该页存在但未导出，抛的是 `SecurityException`，处理方式相同）。
+
+**验证**：`:app:assembleDebug` + 两 flavor 单测 + `:app:assembleRelease` 全绿。**两条都未在出问题的那台手表上复验**（本机 adb 上已无在线设备），也**未做「WebView 缺失」的模拟测试**——可用的复现手段是 `adb shell pm disable-user com.android.webview` 后走一遍验证码页，届时预期是「提示 + 优雅退出」而不是崩溃。
+
 
 ## 4. 历史章节索引
 

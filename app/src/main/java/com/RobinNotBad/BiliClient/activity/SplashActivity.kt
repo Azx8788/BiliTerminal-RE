@@ -239,9 +239,14 @@ class SplashActivity : Activity() {
      * - 未授权 → 跳转系统设置授权页并返回 true，在 onActivityResult 再继续启动
      *
      * Release 构建不做任何处理。
+     *
+     * 26.10.14：Agent 测试模式下**整个跳过**。这条流程对人工调试是便利，对自动化却是灾难——
+     * 未授权时会直接 `return` 掉启动主流程、把界面顶到系统设置页，agent 看到的就是"应用起不来"；
+     * 授权之后那个悬浮窗还会盖在界面上，遮住控件、吞掉点击。开关见 [BiliTerminal.AGENT_TEST_MODE]。
      */
     private fun ensureUEToolOverlayPermission(): Boolean {
         if (!BiliTerminal.isDebugBuild()) return false
+        if (BiliTerminal.AGENT_TEST_MODE) return false
         if (BiliTerminal.canDrawOverlaysCompat(this)) {
             // 已授权：直接显示 UETool 悬浮窗
             Handler(Looper.getMainLooper()).postDelayed({ BiliTerminal.showUEToolMenu() }, 300L)

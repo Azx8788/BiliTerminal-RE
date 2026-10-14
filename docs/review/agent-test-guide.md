@@ -1,0 +1,288 @@
+# Agent 自动化测试手册（Debug 包）
+
+> 面向对象：AI agent / 自动化脚本 / 需要脚本化验证真机行为的人。
+> 适用版本：26.10.14 起的 Debug 构建。Release 包**不含**本文描述的任何东西。
+> 配套：`docs/architecture-map.md`（架构与坑）、`docs/review/device-test-plan.md`（待执行的真机用例清单）。
+
+---
+
+## 1. 为什么需要这份手册
+
+`device-test-plan.md` 里那句「**全部用例一条都还没执行**」的根因不是没人想测，而是 debug 包**没有给自动化留任何入口**：
+
+| 原来的状况 | 对 agent 的后果 |
+| --- | --- |
+| `TestActivity` 是 `exported="false"` | adb shell（uid 2000，非 root）**拉不起来**；只能手点「设置 → 开发者工具 → 功能测试」 |
+| 全应用仅 `SplashActivity` / `GetIntentActivity` 导出，后者只认 4 种 `type` | 设置页、播放器、动态、消息……**一个都到不了** |
+| 日志开关存在 SharedPreferences，改完要重启 | 无法从外部改；手表上点设置项本身就很痛苦 |
+| `Logu` 的 tag 是 `类名>方法名` | 一次抓全得全量 grep，被别家进程噪音淹没（**注意：这个 tag 不能动**，见下） |
+| `NetWorkUtil` 不记状态码 / 响应体 / 耗时 | 「风控返回 HTML」「`code=-412`」「请求没发出去」在日志里长得一样 |
+| UETool 在 debug 下启动时申请悬浮窗权限 | 未授权会**直接 `return` 掉启动主流程**并跳到系统设置页；授权后悬浮窗还会盖住界面 |
+
+26.10.14 这一批改动就是针对上表逐条补的：**一个可编程控制通道 + 一套统一可观测性 + 一个总开关**。
+
+---
+
+## 2. 快速上手
+
+### 2.1 用哪个 flavor
+
+**用 `coexistDebug`，不要用 `standardDebug`。**
+
+- `standardDebug` 的包名是 `com.RobinNotBad.BiliClient`，与正式版**完全相同**。debug 签名与 release 签名不同，同包名不同签名只能先卸载正式版才能装，**用户数据（登录态、设置、缓存）全丢**。
+- `coexistDebug` 的包名是 `com.RobinNotBad.BiliClient.coexist`，与正式版**共存**，随便折腾。
+- 两者的**代码与资源完全相同**，只有包名与图标不同，所以测出来的结论对正式版一样成立。
+
+```bash
+./gradlew.bat :app:assembleDebug
+# 产物：app/build/outputs/apk/coexist/debug/app-coexist-universal-debug.apk
+adb install -r app/build/outputs/apk/coexist/debug/app-coexist-universal-debug.apk
+```
+
+### 2.2 四条准备命令
+
+```bash
+PKG=com.RobinNotBad.BiliClient.coexist
+BRIDGE="$PKG/com.RobinNotBad.BiliClient.debug.DebugBridge"
+T="--es token rebili-agent-bridge"
+
+# ① 允许后台启动 Activity（Android 10+ 的「后台启动限制」会让 start 命令被静默丢弃）
+adb shell cmd appops set $PKG SYSTEM_ALERT_WINDOW allow
+
+# ② 把全部教程标记为已读 —— 不做这步，教程页会盖在你拉起的页面上面
+adb shell am broadcast -n $BRIDGE $T --es cmd notutorials
+
+# ③ 打开 Agent 测试模式（日志全量 + 落盘 + HTTP 追踪 + 跳过 UETool 悬浮窗）
+adb shell am broadcast -n $BRIDGE $T --es cmd agent --ez on true
+
+# ④ 自检
+adb shell am broadcast -n $BRIDGE $T --es cmd ping
+```
+
+②③ 都立即生效，不需要重启应用。
+
+> **`appops` 要用 `cmd appops`**：实测 Android 12 上 `/system/bin/appops` 不存在
+> （报 `appops: inaccessible or not found`），必须走 `cmd` 包一层。
+>
+> **`cmd appops` 的效果有系统日志为证**（Android 12 实测）：
+> ```
+> W ActivityTaskManager: Background activity start for com.RobinNotBad.BiliClient.coexist
+>    allowed because SYSTEM_ALERT_WINDOW permission is granted.
+> ```
+> 不做这一步，`start` 会被静默丢弃——不报错、页面就是不出来。
+
+
+### 2.3 如果广播没有回显
+
+个别 ROM 的 `am` 不转发 receiver 的 result data（**Android 12 实测正常**）。每个命令的结果都会同时写到
+`<应用外部目录>/logs/bridge-last.txt`，回显为空时直接读它（`ping` 会打印 `logDir=` 的实际路径）：
+
+```bash
+LOG=/storage/emulated/0/Android/data/$PKG/files/logs
+
+adb shell cat $LOG/bridge-last.txt                    # 最简单（实测可用）
+adb pull $LOG/bridge-last.txt ./bridge-last.txt        # 拷到本地（实测可用）
+```
+
+> **别用 `run-as` 读这几个文件**：实测 `adb shell run-as <包名> cat /storage/emulated/0/...` 报
+> `Permission denied`。`run-as` 只进得了应用的**内部**数据目录，外部 `Android/data/.../files/`
+> 不在它的挂载命名空间里。上面两条（`adb shell cat` / `adb pull`）在 Android 12 上都能用。
+
+
+---
+
+## 3. 命令表
+
+全部命令都需要 `--es token rebili-agent-bridge`。用 `--es cmd help` 可打印同一张表。
+
+| 命令 | 参数 | 作用 |
+| --- | --- | --- |
+| `ping` | — | 包名 / flavor / 版本 / 各开关状态 / 日志目录 / 当前前台页 |
+| `agent` | `--ez on <bool>` | 开关 Agent 测试模式（立即生效，无需重启） |
+| `get` | `--es key` `[--es type]` | 读设置项，返回 `key=value` |
+| `set` | `--es key` `--es value` `[--es type]` | 写设置项（`type` 省略时按已存在的类型自动推断） |
+| `remove` | `--es key` | 删除设置项 |
+| `dump` | — | 列出全部设置项（敏感值打码，只报长度） |
+| `start` | `--es activity` `[--es extras "aid=2;seekReply=-1"]` `[--ez keepstack true]` | **进程内拉起任意 Activity**（含 `exported=false` 的）；默认 `CLEAR_TOP`，即目标页之上一律清掉 |
+| `activities` | — | 列出全部可启动的 Activity 全名 |
+| `notutorials` | — | 把全部教程标记为已读（不做的后果见 §6） |
+| `http` | `--es url` `[--es method]` `[--es data]` `[--es headers '<JSON>']` `[--ez appheaders false]` | 用**应用自己的登录态与请求头**发一次请求，响应体全文落盘 |
+| `log` | `[--es file]` `[--es bytes]` | 读日志尾部（默认 `rebili.log`，65536 字节） |
+| `logs` | — | 列出日志文件及大小 |
+| `logclear` | `[--es file]` | 清空日志 |
+| `trail` | — | 页面轨迹（最近 20 个页面，崩溃报告用的同一份数据） |
+| `top` | — | 当前前台 Activity 全类名 |
+| `help` | — | 命令表 |
+
+`type` 可选：`string`（默认）/ `int` / `long` / `bool` / `float`。
+
+---
+
+## 4. 常用场景配方
+
+### 4.1 直达任意页面
+
+```bash
+BRIDGE="am broadcast -n $PKG/com.RobinNotBad.BiliClient.debug.DebugBridge --es token rebili-agent-bridge"
+
+# 短类名即可，按清单匹配；也可以写全限定名
+adb shell $BRIDGE --es cmd start --es activity VideoInfoActivity --es extras "aid=2"
+adb shell $BRIDGE --es cmd start --es activity SettingGroupActivity --es extras "group_type=dev;group_title=开发者工具"
+adb shell $BRIDGE --es cmd start --es activity MenuActivity
+
+# 先看看有哪些页面可去（实测 104 个）
+adb shell $BRIDGE --es cmd activities
+```
+
+**`extras` 用 `key=value` 分号分隔，这是推荐写法**——纯数字自动转 `Long`，`true`/`false` 转 `Boolean`，其余按 `String`。
+
+也可以写 JSON，但**经 `adb shell` 传递时双引号会被设备端 shell 吃掉**，必须转义：
+
+```bash
+adb shell $BRIDGE --es cmd start --es activity VideoInfoActivity --es extras '{\"aid\":2}'
+# 不转义（'{"aid":2}'）会到不了应用侧：外层花括号还在、内层引号已被剥掉，JSONObject 直接解析失败
+```
+
+**`start` 默认会清掉目标页之上的所有页面**（`FLAG_ACTIVITY_CLEAR_TOP`）。这不是可有可无的细节：
+只加 `FLAG_ACTIVITY_NEW_TASK` 时，若目标页恰好是某个已存在任务的栈根，系统会**复用任务而不是新建实例**，
+于是 `startActivity` 只是把那个任务提到前台、栈顶仍停着别的页，而命令照样返回 `OK`。
+需要「压栈不清栈」（测返回栈行为）时加 `--ez keepstack true`。
+
+启动后务必用 `--es cmd top` 确认真的到了目标页——**`start` 返回 `OK` 只代表 `startActivity` 没抛异常，不代表页面真的到了前台**。
+
+### 4.2 改设置 / 造前置条件
+
+```bash
+adb shell $BRIDGE --es cmd set --es key dev_agent_mode --es value true --es type bool
+adb shell $BRIDGE --es cmd set --es key dpi --es value 1.2 --es type float
+adb shell $BRIDGE --es cmd get --es key player
+adb shell $BRIDGE --es cmd dump | head -40
+```
+
+这条链让 agent 能**完全绕过设置页 UI** 造出任意初始状态——比如把主题、DPI、播放器、弹幕开关直接写到位，再启动目标页面看渲染结果。
+
+### 4.3 验证接口是否真的通
+
+```bash
+adb shell $BRIDGE --es cmd http --es url "https://api.bilibili.com/x/web-interface/nav"
+# 返回：OK: 200 (312ms) bytes=1024 / file=<路径> / <响应体前 2000 字>
+```
+
+关键在于它**跑在应用进程里、用应用的 Cookie 与 `webHeaders`**——外部 `curl` 复刻不出风控认的这套身份，所以「登录态下接口是否可用」只能这样问。
+
+配合 `log --es file http.log` 能看到所有请求的 `方法 脱敏URL -> 状态码 (耗时ms)` 流水。
+
+### 4.4 崩溃/异常现场取证
+
+```bash
+adb shell $BRIDGE --es cmd trail          # 崩溃前走过哪些页面
+adb shell $BRIDGE --es cmd log --es bytes 40000
+adb shell $BRIDGE --es cmd log --es file http.log --es bytes 20000
+```
+
+因为日志会落盘，**即使 adb 连接中断、应用被杀，现场也还在**（这是 logcat 给不了的）。
+
+### 4.5 常规 logcat 过滤
+
+`Logu` 的 logcat tag **就是调用者**（`类名>方法名`），这是**既有诊断契约，不要改**——
+`docs/review/device-test-plan.md` 的 D3-11~D3-14 直接写死了 `adb logcat -s "PlayerActivity>onPrepared"`
+/ `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，全工程 269 处 `Logu.*` 调用点都吃这套约定，
+`api/NoteApi.java` 的 `adb logcat -s BiliNote` 也是同一思路。改成统一 tag 会把它们一次性作废。
+
+所以「一次抓全」要用**按进程过滤**，而不是改 tag：
+
+```bash
+PKG=com.RobinNotBad.BiliClient.coexist
+adb logcat --pid=$(adb shell pidof -s $PKG)      # 不看 tag，本进程全量（推荐）
+adb logcat -s "PlayerActivity>onPrepared"        # 单点诊断，沿用既有契约
+adb logcat -s "PlayerActivity>getExtras" "PlayerActivity>checkStall"
+```
+
+> 注意：工程里还有 38 个文件、110 处直接调 `android.util.Log`（tag 五花八门，`"debug"` 就占 51 处）。
+> 这些**不受 `Logu` 开关控制、也不会落盘**，属于尚未收口的历史遗留；要连它们一起看就用
+> `--pid` 那条，或 `adb logcat | grep`。
+>
+> 真正不依赖 adb 连接的做法是读落盘日志（见 §5）——那才是 agent 事后取证的主力手段。
+
+---
+
+## 5. 日志与落盘
+
+| 文件 | 内容 | 位置 |
+| --- | --- | --- |
+| `rebili.log` | `Logu` 的全部输出（`MM-dd HH:mm:ss.SSS 级别 调用者 \| 内容`，调用者即 logcat 的 tag） | 应用专属外部目录 `logs/` 下 |
+| `http.log` | 每次 HTTP 请求一行：`方法 脱敏URL -> 状态码 (耗时ms) \| req=… \| res=…` | 同上 |
+| `bridge-last.txt` | 最后一条调试桥命令的结果 | 同上 |
+| `bridge-http-response.txt` | 最后一条 `http` 命令的响应体全文 | 同上 |
+
+**目录位置**：优先 `getExternalFilesDir("logs")`（即 `/sdcard/Android/data/<包名>/files/logs`，无需任何存储权限），外部存储不可用时回退内部 `files/logs`。`ping` 命令会报出实际路径。
+
+**三个刻意的设计**：
+
+- **异步落盘**：业务线程只做一次 O(1) 入队，真正的 I/O 在名为 `rebili-log-writer` 的守护线程里。`Logu.d` 会被 UI 线程调用，同步写文件等于把卡顿直接带给用户。队列容量 4096，满了丢弃并计数（`ping` 会报 `droppedLogs=`）。
+- **单文件 2MB 上限**：超限时砍掉前半、只留后半。手表存储小，而 agent 关心的永远是「最近发生了什么」。
+- **Cookie / `access_key` / `csrf` 永不落盘**：HTTP 追踪里 URL 查询串的敏感参数替换成 `***`，沿用审计 S2 的「只记 Cookie 键名、不记值」。`dump` 对敏感键只报长度，确实要某个值用 `get --es key <键>` 精确取。
+- **WBI 指纹 blob 被压掉**：`dm_img_list` / `dm_img_inter` / `dm_img_str` / `dm_cover_img_str` 这几个查询参数的值替换成 `…`（键名保留）。它们是反爬用的浏览器指纹，单个上千字符且对排障无用——实测不过滤时一行追踪日志 2200+ 字符，跑几个页面 `http.log` 就 74KB，几十次加载就把 2MB 的滚动窗口冲掉。URL 另有 600 字符硬上限兜底。
+
+**实测体量参考**（Android 12 模拟器，跑完约 12 个页面）：`rebili.log` ≈ 35KB、`http.log` ≈ 17KB。
+去噪与限长之前 `http.log` 是 75KB（单行 2200+ 字符），**压掉了约 4 倍**。按 2MB 上限算，约上百次页面加载触发一次滚动，够用；要长时间跑批量用例，记得中途 `logclear`。
+
+**追踪能直接暴露风控**——这是它最实用的地方。实测抓到的真实一条：
+
+```
+GET https://api.bilibili.com/x/...&dm_img_list=…&dm_img_inter=…&dm_cover_img_str=… -> 412 (43ms)
+  | res=<!DOCTYPE html> … <title>出错啦! - bilibili.com</title>
+```
+
+改造前「风控返回 HTML」「`code=-412`」「请求根本没发出去」在日志里长得一模一样，只能靠猜；
+现在状态码、耗时、响应体三者齐备，一眼可辨。
+
+> **未登录 + 模拟器环境下接口会被风控**（上面那条就是）。依赖真实接口的用例要么先在应用里登录，
+> 要么把「返回 `-412` / doctype HTML」当作预期结果来断言，别误判成应用缺陷。
+
+
+---
+
+## 6. 已知限制与坑
+
+下表**每一条都是 Android 12 真机实测踩出来的**，不是推测。
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| **`start` 返回 `OK`，但 `top` 不是目标页** | ① 教程页盖在上面（见下一行）；② 只加 `NEW_TASK` 时若目标页是某个已存在任务的栈根，系统复用任务而不新建实例，栈顶仍是别的页 | 已修：`start` 默认叠 `CLEAR_TOP`；**并且永远用 `top` 复核**，别信 `OK` |
+| **教程页把刚拉起的页面盖住**（全新安装必现） | `BaseActivity.autoTriggerTutorial()` 在 `Tutorials.forPage(javaClass)` 有未读教程时启动 `TutorialPagerActivity`；GUIDE 类还要求「翻到最后一页 + 停留 3 秒」才能点「已阅」 | 先跑 `--es cmd notutorials`（§2.2 第 ② 步） |
+| `start` 命令完全没反应、也不报错 | Android 10+ 后台启动 Activity 限制，启动被**静默丢弃** | `adb shell cmd appops set <包名> SYSTEM_ALERT_WINDOW allow`；`ping` 的 `overlayGranted=` 可确认 |
+| `appops: inaccessible or not found` | Android 12 起 `/system/bin/appops` 不在 shell PATH | 用 `cmd appops`（见 §2.2） |
+| `extras` 里的 JSON 解析失败 | `adb shell` 把命令串交给设备端 shell 重新解析，双引号被剥掉 | 改用 `key=value` 写法（推荐），或转义成 `'{\"aid\":2}'` |
+| `am broadcast` 没有 `data="…"` 输出 | 部分 ROM 的 `am` 不转发 receiver 结果（**Android 12 实测正常**，属兜底） | 读 `logs/bridge-last.txt`；`adb shell cat` 或 `adb pull`，**别用 `run-as`**（见 §2.3） |
+| 接口大量返回 `-412` / doctype HTML | 未登录或模拟器环境触发风控，**不是应用缺陷** | 先在应用里登录；或把风控响应作为预期结果断言（见 §5） |
+| 广播报 `SecurityException` / 没有反应 | 发送方不持有 `DUMP` 权限（少见，个别精简 ROM；**Android 12 模拟器实测 shell 持有 DUMP，正常**） | 用 `adb root`；或 `adb shell run-as <包名> am broadcast -n <包名>/...`（同 uid 不受导出限制，**此路径未实测**） |
+| `http` 命令偶发超时 | 刻意把超时压到连接 5s / 读 8s 且不重试——它跑在广播的 `goAsync()` 窗口里，按默认的 8s+16s×5 次重试会直接把广播拖成 ANR | 属预期；长耗时请求不要走这个命令 |
+| 日志里 `Log.d` 之类的内容不见了 | 那是 38 个文件里的裸 `android.util.Log`，不走 `Logu`、不落盘 | 用 `adb logcat` 全量看，或后续收口 |
+| 装了 `standardDebug` 后正式版没了 | 包名相同、签名不同，安装时覆盖/卸载了正式版 | 改用 `coexistDebug`（见 §2.1） |
+
+---
+
+## 7. 设计原则（为什么是这些改动）
+
+改 debug 版本时遵循的四条原则，后续加调试能力时建议沿用：
+
+1. **只进 debug 源集**。`DebugBridge` 的类与清单声明都在 `app/src/debug/`，Release 编译时**这个类根本不存在**，R8 也无需靠规则去 strip。安全边界是「发布包不含它」，而不是「它自己判断是不是 debug」。
+2. **外部可达必须带权限**。导出的组件挂 `android:permission="android.permission.DUMP"`：DUMP 是签名级权限，普通第三方应用拿不到（同设备上的恶意应用读不到登录态），而 adb shell 持有（`dumpsys` 就靠它），本应用自己天然放行。比在 APK 里埋一个可被反编译读出的 token 强得多。
+3. **零侵入**。Agent 模式默认关闭；`Logu.LOG_TO_FILE` / `NetWorkUtil.HTTP_TRACE` 都只在 Agent 模式打开时才为 true，且赋值处被 `BuildConfig.DEBUG`（编译期常量）折叠，**Release 包的行为与改动前逐字节一致**。
+4. **可观测性优先于可操作性**。宁可多给一条 `log` / `trail` / `dump` 命令，也不要让 agent 靠「点了之后猜」。反过来，凡是「改完要重启」的开关都改成了立即生效——重启意味着上下文丢失与额外一轮等待，在自动化里代价极高。
+5. **不许动既有的诊断契约**。`Logu` 的 tag（= `类名>方法名`）、`NoteApi` 的 `BiliNote` 之类，都是被文档和源码注释写死的排障入口，改一个就会让一批既有指令静默失效。26.10.14 改 `Logu` tag 时踩过这个坑（已回退）：**动手前先 `grep 'logcat -s' docs/ app/src/`**。新增可观测性可以**加**通道（落盘、`--pid` 过滤、调试桥命令），不要**换**掉已有的。
+
+---
+
+## 8. 相关源码位置
+
+| 文件 | 说明 |
+| --- | --- |
+| `app/src/debug/java/com/RobinNotBad/BiliClient/debug/DebugBridge.kt` | 调试桥本体（命令分发） |
+| `app/src/debug/AndroidManifest.xml` | 调试桥与 `TestActivity` 的导出声明 + DUMP 权限 |
+| `app/src/main/java/com/RobinNotBad/BiliClient/util/Logu.java` | 异步落盘与尾部读取（**logcat 的 tag 刻意未动**，见 §4.5） |
+| `app/src/main/java/com/RobinNotBad/BiliClient/util/NetWorkUtil.java` | `HTTP_TRACE` 与 `HttpTraceInterceptor`、URL 脱敏 |
+| `app/src/main/java/com/RobinNotBad/BiliClient/BiliTerminal.kt` | `AGENT_TEST_MODE`、`applyLogSwitches()`、当前前台 Activity |
+| `app/src/main/java/com/RobinNotBad/BiliClient/activity/SplashActivity.kt` | Agent 模式下跳过 UETool 悬浮窗 |
+| `app/src/main/java/com/RobinNotBad/BiliClient/util/SettingsKeys.kt` | `DEV_AGENT_MODE` / `DEV_LOG_FILE` |

@@ -124,15 +124,49 @@ public class FileUtil {
                 ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
+    /**
+     * 跳系统设置申请「所有文件访问权限」（Android 11+）。
+     *
+     * <p>26.10.14 线上崩溃：小米手表（M2505W1 / SDK 34）上 `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`
+     * **没有对应的 Activity**，`startActivity` 抛 `ActivityNotFoundException`，异常冒到 `ActivityThread`
+     * 把发起页整个带崩（现场：`Unable to start activity ComponentInfo{…}`）。
+     * 手表 ROM 普遍不带完整设置应用，这个 action 缺失是常态，所以必须兜底而不是直接 startActivity。
+     *
+     * <p>三级降级：① 带包名直达本应用页面 → ② 通用的「所有文件访问」列表页 → ③ 只弹提示。
+     * 详见 docs/review/fix-progress.md §3.15。
+     */
     public static void requestStoragePermission(Activity activity) {
-        // Android 11+: 跳转到系统设置中的"所有文件访问权限"页面
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
-            intent.setData(Uri.parse("package:" + activity.getPackageName()));
-            activity.startActivity(intent);
+            if (startSettings(activity, new Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + activity.getPackageName())))) {
+                return;
+            }
+            if (startSettings(activity, new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))) {
+                return;
+            }
+            MsgUtil.showMsgLong("此设备打不开系统的「所有文件访问」设置页，请手动到 设置 → 应用 → 权限 里授予本应用存储权限");
         } else {
             // Android 10 及以下：请求旧存储权限
             ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
+        }
+    }
+
+    /**
+     * 试着拉起一个系统设置页。
+     *
+     * <p>吞掉所有异常而不是只吞 `ActivityNotFoundException`：部分 ROM 该 Activity 存在但未导出，
+     * 抛的是 `SecurityException`；两类都属于「这台设备去不了这个页面」，处理方式相同。
+     *
+     * @return 是否成功拉起
+     */
+    private static boolean startSettings(Activity activity, Intent intent) {
+        try {
+            activity.startActivity(intent);
+            return true;
+        } catch (Exception e) {
+            Log.w("storage-perm", "设置页拉不起来：" + intent.getAction() + " -> " + e.getClass().getSimpleName());
+            return false;
         }
     }
 

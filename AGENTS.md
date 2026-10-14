@@ -8,7 +8,7 @@
 
 改任何非平凡代码前先读 **`docs/architecture-map.md`**：真实分层、基类体系、43 个 API 类映射、UI 模板、逐条坑点。本文件只放每次都要遵守的约定。
 
-其他参考：**`docs/README.md`（文档总索引——先看它决定该读哪份）**、`bilibili-API/`（B 站接口文档快照）、`docs/bilibili-api-notes.md`（接口与风控常识，改 API 前读）、`docs/FEATURES.md`（用户可见功能总表）、`docs/superpowers/specs/`（功能设计文档，写新功能前读）、`docs/tutorial-system-redesign.md`（教程系统重做中——**改教程前先读它**，旧链路正在被替换）。**`docs/archive/` 里全是历史资料，记录的是当时、不是现状**，别照着它改代码。
+其他参考：**`docs/README.md`（文档总索引——先看它决定该读哪份）**、`bilibili-API/`（B 站接口文档快照）、`docs/bilibili-api-notes.md`（接口与风控常识，改 API 前读）、`docs/FEATURES.md`（用户可见功能总表）、`docs/review/agent-test-guide.md`（**用 adb / agent 驱动 Debug 包测试的手册**，加调试能力前先读）、`docs/superpowers/specs/`（功能设计文档，写新功能前读）、`docs/tutorial-system-redesign.md`（教程系统重做中——**改教程前先读它**，旧链路正在被替换）。**`docs/archive/` 里全是历史资料，记录的是当时、不是现状**，别照着它改代码。
 
 ## 项目概况
 
@@ -48,10 +48,12 @@
 
 ## 安全与清单硬约定（26.09.13 起）
 
-- **新增 Activity 一律 `android:exported="false"`**；只有确实要被外部应用/系统拉起（LAUNCHER、外链分享）才开 `true`，并说明理由。收官后全应用仅 `SplashActivity` 与 `GetIntentActivity` 导出。
+- **新增 Activity 一律 `android:exported="false"`**；只有确实要被外部应用/系统拉起（LAUNCHER、外链分享）才开 `true`，并说明理由。**Release 包**收官后全应用仅 `SplashActivity` 与 `GetIntentActivity` 导出；Debug 包另有两个仅供测试的导出组件（`TestActivity`、`debug/DebugBridge`），它们只存在于 debug 源集，不进发布包。
 - **只走 https**。新的自建接口不得用 `http://`；明文域名白名单在 `res/xml/network_security_config.xml`，默认禁止明文，只放行 `bilibili.com`/`hdslb.com`/`bilivideo.com`/`afdiancdn.com`。往白名单加域名要写原因。
 - **`android:allowBackup` 保持 `false`**，登录 Cookie 存于 SharedPreferences，绝不允许随备份/迁移外流。`:brotlij` 自带 `allowBackup="true"`，故主清单必须保留 `tools:replace="android:allowBackup"`（删了会清单合并失败）。
 - **调试页只进 Debug 包**。`TestActivity` 是范例：类留在 `src/main`，清单声明在 `app/src/debug/AndroidManifest.xml`，入口用**编译期常量** `BuildConfig.DEBUG` 包住（不是 `BiliTerminal.isDebugBuild()` 这种运行期判断），这样 R8 才能在 release 折叠分支并 strip 掉整个类。
+- **Debug 包的外部可达组件必须挂 `android:permission="android.permission.DUMP"`**（26.10.14 起）。给 agent 用的调试入口必然要 `exported="true"`（adb shell 是 uid 2000、非 root，拉不起非导出组件），但**裸导出等于把登录态送人**——DUMP 是签名级权限，普通第三方应用拿不到，而 adb shell 持有（`dumpsys` 就靠它）、本应用自己天然放行。类与清单一律放 `app/src/debug/`，安全边界是「发布包不含它」，不是「它自己判断是不是 debug」。用法与坑见 `docs/review/agent-test-guide.md`。
+- **调试能力的开关必须「改完即生效」**。日志级别、落盘、HTTP 追踪统一由 `BiliTerminal.applyLogSwitches()` 一处落地（读 `SettingsKeys.DEV_*`），改完开关要立刻调它——别让用户/agent 为了生效去重启应用，自动化流程里「重启」意味着上下文丢失加一轮等待。`Agent 测试模式`（`DEV_AGENT_MODE`）是这套的总开关，Release 下因 `BuildConfig.DEBUG` 是编译期常量而被整体折叠。
 
 ## 每次改完必须同步文档
 

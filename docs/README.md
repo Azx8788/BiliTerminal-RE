@@ -13,6 +13,7 @@
 | 改网络 / 接口 / 风控相关 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口常识与风控硬约束（错误码语义、取流有效期、弹幕协议取舍） |
 | 发版前上真机 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 与发行版同维护的回归清单（247 条），每条的来源小节都标在标题里 |
 | 补真机 / 联网联调 | [`review/device-test-plan.md`](review/device-test-plan.md) | T0–T15 + D0–D8，**88 条全部未执行**，是待执行计划 |
+| 用 adb / AI agent 驱动 Debug 包测试 | [`review/agent-test-guide.md`](review/agent-test-guide.md) | 调试桥（可编程控制通道）命令表、日志与 HTTP 追踪、UETool 干扰规避、用哪个 flavor |
 | 写新功能 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能 backlog（含实测过的接口地址、判据与仍未落地项） |
 | 改播放器 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并 S1–S3 已完成，**S4/S5/S6 未做** |
 | 优化播放器弱网 / 直播 / 长视频 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 同类产品与官方做法调研（ijkplayer 选项语义、FLV vs HLS、Media3 参数）+ P0–P2 建议清单，**尚未实施** |
@@ -31,6 +32,7 @@
 | [`review/fix-progress.md`](review/fix-progress.md) | 活台账：当前状态 + 未完成待办 + 最新快照 + §一~§四十三 索引 | 修完 bug / 关掉待办 / 每轮真机验证后 |
 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 发版前真机回归清单（247 条，含第十三节视觉面；条目只增不改，失效就地标注作废） | 每个发行版 |
 | [`review/device-test-plan.md`](review/device-test-plan.md) | 待执行的真机/联网测试计划（T/D 两组） | 执行时勾选 |
+| [`review/agent-test-guide.md`](review/agent-test-guide.md) | Debug 包的 agent 测试手册：调试桥命令、可观测性设施、已知限制与设计原则 | 增删调试能力 / 调试桥命令时 |
 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能路线图 + 从各报告回迁的仍未落地项 | 排期 / 落地后 |
 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并设计与 S4/S5/S6 待做项 | 动播放器时 |
 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 播放器弱网 / 直播 / 长视频：同类产品与官方做法调研 + P0–P2 建议清单（§2.4 是本仓库 `.so` 的选项存在性实测） | 动播放器网络 / 缓冲参数时 |

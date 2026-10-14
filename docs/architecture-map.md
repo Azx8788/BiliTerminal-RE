@@ -349,7 +349,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **`callTimeout` 有意不设**（`util/NetWorkUtil.java:144-145` 有注释）：这一个单例 OkHttpClient 同时跑 API 与大文件流式下载，而 `callTimeout` 覆盖「整个调用含读完 body」，会掐断正常的长下载。**别按「统一设超时」的直觉把它加上去**；要限时请用 `connectTimeout`/`readTimeout`。
 - **Cookie 管理**：内存缓存 `cachedCookies` + `webHeaders` 静态 `ArrayList`（**索引 1 存 Cookie 字符串**）。`putCookie`/`setCookies` 的 `synchronized` 与 `saveCookiesLocked()`（`saveCookiesFromResponse` 的加锁主体）共用同一把 `NetWorkUtil.class` 锁。
 - **csrf 唯一入口**（26.10.04 批次 2，台账 A1）：`currentCsrf()`（`:432`）＝ `pickCsrf(getCachedCookies(), 快照)`（`:443`，纯逻辑、有单测），优先取实时 Cookie 里的 `bili_jct`，取不到才退回 `SharedPreferencesUtil.csrf` 快照；`saveCookiesLocked()`（`:510` 附近）在落 Cookie 时**顺手回写**快照。**所有 POST 的 csrf 都必须调它，不要再直接读 `SharedPreferencesUtil.csrf`**——`bili_jct` 随 Cookie 刷新轮换，用旧快照会静默拿 `-111`（现象是「点赞/评论偶尔点了没反应」）。原来 14 个 `api/` 类里散布 41 处直接读快照的代码已全部收敛到这一处。
-- **风控重试**：`executeJsonWithRiskRetry` 对 `code == -352 / -412` 重试；`executeWithDoctypeRetry` 对返回 `<!doctype`（被风控拦成 HTML）的响应重试。重试次数/间隔读 SharedPreferences（`api_retry_max_times`、`api_retry_interval_seconds`）。
+- **HTTP 追踪**（26.10.14）：`HTTP_TRACE` 静态开关（默认 false，只有 Agent 测试模式会打开）控制 `HttpTraceInterceptor`，每次请求落一行 `方法 脱敏URL -> 状态码 (耗时ms) | req=… | res=…`。三条硬约束：开关关闭时只做一次 boolean 读就透传；**只预览文本类响应**（视频/图片等二进制跳过，否则每次播放都白读磁盘）；用 `peekBody` 而非 `body.string()`——后者会把流读干，调用方拿到空 body。URL 里 `access_key`/`csrf`/`bili_jct` 等查询参数值一律替换成 `***`（`maskUrl`，与审计 S2「只记 Cookie 键名」同一原则）。
+- **风控重试**：`executeJsonWithRiskRetry` 对 `code == -352 / -412` 重试；`executeWithDoctypeRetry` 对返回 `<!doctype`（被风控拦成 HTML）的响应重试。重试次数/间隔读 SharedPreferences（`api_retry_max_times`、`api_retry_interval_seconds`）。**注意调试桥的 `http` 命令不用这个默认重试**：它跑在广播的 `goAsync()` 窗口里，按 8s+16s×5 次重试会直接把广播拖成 ANR，所以另建了一个连接 5s / 读 8s 的短超时 client。
 - **隐私模式**：`getJsonPrivacy()` 用 `buildGuestCookieString()` 剔除 `SESSDATA/bili_jct/DedeUserID/sid` 等登录 Cookie。
 - **参数构造**：`FormData` 类，内部 `URLEncoder.encode`，默认**不**自动加 `access_key`（注释：web 接口带 access_key 会触发风控）。
 - **裸 deflate 解压**：`decompress(byte[])`（26.09.11 起为本工程唯一实现，原先
@@ -988,6 +989,44 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **每一条提前 `return` 的分支都要自己收尾**。`BangumiInfoFragment.initView()` 的"敬请期待"分支（没有可用季/集）原本直接 return 且没调 `onFinishLoad()` → 遮罩**永不收起**，用户永远停在加载图上。26.10.13 已补。
 - 走这个布局的宿主共三个：`VideoInfoActivity`（视频详情与番剧详情共用）、`OpusInfoActivity`、`DynamicInfoActivity`（后两者在 `adapter` 设好后就地收起，无此问题）。`LiveInfoActivity` 是另一套布局，且在数据到达**前**就收起，口径不同。
 - 新增宿主 / 新增提前返回分支时，按本条自检：**遮罩是否在所有路径上都会被收起**。
+
+### 7.40 Debug 包的自动化测试基建（26.10.14 新增）
+
+**完整用法见 `docs/review/agent-test-guide.md`**，这里只记改代码时必须知道的取舍。
+
+这一批解决的是「能编译、能跑单测，但没法自动验证真机行为」——`docs/review/device-test-plan.md` 里 88 条用例一条未执行，根因就是 debug 包没给自动化留入口。四个新增物：
+
+- **`debug/DebugBridge`（`app/src/debug/java/...`）**：exported 的 `BroadcastReceiver`，用 `am broadcast -n <包名>/.debug.DebugBridge` 驱动，命令 `ping`/`agent`/`get`/`set`/`remove`/`dump`/`start`/`activities`/`http`/`log`/`logs`/`logclear`/`trail`/`top`。**类与清单都在 debug 源集**，release 编译时该类根本不存在（不需要 R8 规则）。
+  - **`start` 是它最有价值的命令**：全应用除 `SplashActivity`/`GetIntentActivity` 外都是 `exported="false"`，adb（uid 2000、非 root）拉不起来；而**进程内 `startActivity` 不受 exported 限制**，等于把全部页面开放给 agent。但受 Android 10+ 后台启动限制，应用不可见时会被静默丢弃——需 `adb shell appops set <包名> SYSTEM_ALERT_WINDOW allow`（悬浮窗权限是该限制的豁免条件之一），`start` 的结果里会提示当前是否已授权。
+  - **`goAsync()` + `setResultData`**：`onReceive` 在主线程，`http` 命令要发网络请求，直接做会 ANR。`goAsync()` 把广播生命周期延到 `finish()`，真正的活在 `CenterThreadPool` 上跑。**结果同时写 `logs/bridge-last.txt`**——个别 ROM 的 `am` 不转发 receiver 结果，文件是兜底。
+- **`BiliTerminal.AGENT_TEST_MODE` + `applyLogSwitches()`**：Agent 测试模式总开关（`SettingsKeys.DEV_AGENT_MODE`）。**它是日志级别、落盘、HTTP 追踪、UETool 跳过四件事的唯一落地处**——改这些开关一律调 `applyLogSwitches()`，别在别处直接改 `Logu.*`。`agentMode = debugBuild && 开关`，`debugBuild` 是编译期常量，release 下 R8 把整段折叠，行为与改动前一致。
+  - **改完即生效**是硬要求：原实现里日志开关只在 `Application.onCreate` 读一次，改完要重启——自动化流程里「重启」= 上下文丢失 + 一轮额外等待。所以 `SettingGroupActivity.buildDevGroup()` 的每个开关都带回调。
+- **`Logu`**：新增**异步落盘**（业务线程 O(1) 入队，`rebili-log-writer` 守护线程写，队列 4096 满则丢弃并计数）与单文件 2MB 上限（超限砍前半留后半）。落盘位置 `getExternalFilesDir("logs")`，回退内部 `files/logs`。文件行格式 `MM-dd HH:mm:ss.SSS 级别 调用者 | 内容`。
+  - **logcat 的 tag 一律不动，仍是 `类名>方法名`**（26.10.14 一度改成统一常量 `ReBili`，已回退）。理由：这个 tag 是**既有诊断契约**——`docs/review/device-test-plan.md` D3-11~D3-14 写死了 `adb logcat -s "PlayerActivity>onPrepared"` / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，`api/NoteApi.java` 的 `adb logcat -s BiliNote` 是同一思路，全工程 269 处 `Logu.*` 调用点都吃它。**改 tag 等于一次性作废这批排障指令。**
+  - 「一次抓全」用**按进程过滤**而不是改 tag：`adb logcat --pid=$(adb shell pidof -s <包名>)`；真要事后取证就读落盘日志（调试桥 `log` 命令）。
+  - **别改成同步写**：`Logu.d` 会被 UI 线程调用，同步写文件等于把卡顿直接带给用户。落盘队列里放的是**任务**而非「文件名+内容」，这样写行 / flush / 清空三种操作全在同一条线程上串行，`BufferedWriter` 不会被跨线程碰。
+  - 工程里还有 38 个文件、110 处直接调 `android.util.Log`（tag 五花八门，`"debug"` 占 51 处），**不受 `Logu` 开关控制、也不落盘**，属尚未收口的历史遗留。
+- **`SplashActivity.ensureUEToolOverlayPermission()`**：Agent 模式下**整体跳过**。原来未授权时会 `return` 掉启动主流程并跳到系统设置页（agent 看到的就是"应用起不来"），授权后悬浮窗还会盖住界面吞掉点击——对人工是便利，对自动化是灾难。
+
+安全边界（三条，缺一不可）：**只进 debug 源集**（发布包不含）、**挂 `android:permission="android.permission.DUMP"`**（DUMP 是签名级权限，普通第三方应用拿不到，adb shell 持有，本应用天然放行）、**token 校验**（防误投递，不是安全边界——token 写在 APK 里可被反编译读出）。**别为了"方便"把 DUMP 权限摘掉**：那等于让同设备上任何应用都能 dump 登录态。
+
+---
+
+### 7.41 两条「设备能力缺失」型崩溃：WebView 与系统设置页（26.10.14）
+
+手表 ROM 与手机 ROM 的差别不只在屏幕大小，**还在于它可能根本没有某些系统组件**。这两条都是线上实测崩出来的，共同点是「本来可以优雅降级，却把整个应用带崩」。
+
+**① 不要在任何布局里写死 `<WebView>`。**
+`WebViewFactory.getProvider()` 在**进程 uid 为 root(0) / system(1000)**（或应用声明了 `android.uid.system` 的 `sharedUserId`）时会直接抛 `UnsupportedOperationException("For security reasons, WebView is not allowed in privileged processes")`——框架层从 5.1 起就禁止特权进程创建 WebView。本工程全仓库无 `sharedUserId` 声明，所以命中的是「那台手表把应用跑在了特权进程里」。
+**后果**：布局 inflate 阶段就抛 `InflateException`，异常冒到 `ActivityThread` 直接崩应用。
+**正确姿势**（见 `activity/settings/login/CaptchaWebViewActivity.kt`）：布局只放 `FrameLayout` 容器，WebView 运行期创建，创建前先探一次（建一个再 `destroy()`，捕获 `Throwable`），失败就提示 + `finish`，别让它成为致命路径。
+**注意 `CookieManager.getInstance()` 同样会触发 provider 创建**，所以它必须放在「确认 WebView 可用」之后。
+另：`WebView` 目前全工程**只有 `activity_captcha_webview.xml` 一处**（已改成容器），新增任何 WebView 页面都按上面的姿势来。
+
+**② 跳系统设置页一律要兜底。**
+`Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` 这类 action **在手表 ROM 上常常没有对应 Activity**，`startActivity` 抛 `ActivityNotFoundException`，从调用页的 `onCreate` 冒出去就是 `Unable to start activity ComponentInfo{…}`。
+**正确姿势**（见 `util/FileUtil.requestStoragePermission`）：带包名的专属页 → 通用列表页 → 只弹提示，三级降级；`startActivity` 包在 try/catch 里，且要吞**所有** `Exception`（部分 ROM 该页存在但未导出，抛 `SecurityException`，处理方式相同）。
+全工程 `Settings.ACTION_*` 跳转只有两处：`FileUtil`（已兜底）与 `BiliTerminal.requestOverlayPermission`（悬浮窗，**只在 Debug 构建的 UETool 流程里调用**，release 不可达）。
 
 ---
 

@@ -577,11 +577,27 @@ class SettingGroupActivity : RefreshListActivity() {
 
         title("调试日志")
         val debugBuild = BiliTerminal.isDebugBuild()
-        switch("允许Logu.v", getString(R.string.setting_lab_logv), SettingsKeys.DEV_LOGV, debugBuild)
-        switch("允许Logu.d", "", SettingsKeys.DEV_LOGD, debugBuild)
-        switch("允许Logu.i", "", SettingsKeys.DEV_LOGI, debugBuild)
+        switch("允许Logu.v", getString(R.string.setting_lab_logv), SettingsKeys.DEV_LOGV, debugBuild) { applyLogSwitchesNow() }
+        switch("允许Logu.d", "", SettingsKeys.DEV_LOGD, debugBuild) { applyLogSwitchesNow() }
+        switch("允许Logu.i", "", SettingsKeys.DEV_LOGI, debugBuild) { applyLogSwitchesNow() }
         switch("详细显示数据解析报错", getString(R.string.setting_lab_jsonerr_detailed), SettingsKeys.DEV_JSONERR_DETAILED, debugBuild)
         switch("详细显示列表报错", getString(R.string.setting_lab_recyclererr_detailed), SettingsKeys.DEV_RECYCLERERR_DETAILED, debugBuild)
+
+        // 26.10.14：Agent 测试模式。此前日志开关改完要重启应用才生效（applyLogSwitches 只在
+        // Application.onCreate 跑一次），人工调试能忍、自动化不能忍——所以这里的每个开关都
+        // 回调 applyLogSwitchesNow() 立即生效。
+        title("Agent 测试")
+        switch("Agent 测试模式", getString(R.string.desc_dev_agent_mode), SettingsKeys.DEV_AGENT_MODE, false) { applyLogSwitchesNow() }
+        switch("日志落盘", getString(R.string.desc_dev_log_file), SettingsKeys.DEV_LOG_FILE, true) { applyLogSwitchesNow() }
+    }
+
+    /**
+     * 立即把日志/追踪开关写进运行期状态。
+     *
+     * 让「改设置」与「生效」之间不需要重启：agent 通过调试桥改完开关后同样会调 [BiliTerminal.applyLogSwitches]。
+     */
+    private fun applyLogSwitchesNow() {
+        BiliTerminal.applyLogSwitches()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

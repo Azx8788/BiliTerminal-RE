@@ -238,4 +238,18 @@ object SettingsKeys {
     const val DEV_LOGI = "dev_logi"
     const val DEV_JSONERR_DETAILED = "dev_jsonerr_detailed"
     const val DEV_RECYCLERERR_DETAILED = "dev_recyclererr_detailed"
+
+    /**
+     * Agent 测试模式总开关（26.10.14）。
+     *
+     * 给 AI agent / 自动化脚本用的一键开关：打开后一次性把「测试期间该关的干扰关掉、该开的观测打开」——
+     * 日志与 HTTP trace 全量打开并落盘、跳过 UETool 悬浮窗的权限跳转与界面遮挡。
+     * 它**只在 Debug 构建下生效**（见 `BiliTerminal.applyLogSwitches`），Release 包读到 true 也会被忽略。
+     *
+     * 默认 false：不改变任何既有用户的行为。
+     */
+    const val DEV_AGENT_MODE = "dev_agent_mode"
+
+    /** Agent 模式下是否把日志与 HTTP trace 落盘（默认开）。落盘位置见 `Logu.getLogDir()`。 */
+    const val DEV_LOG_FILE = "dev_log_file"
 }

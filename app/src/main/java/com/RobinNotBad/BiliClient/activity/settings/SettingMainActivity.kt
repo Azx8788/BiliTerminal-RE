@@ -61,7 +61,7 @@ class SettingMainActivity : InstanceActivity() {
         header.findViewById<ImageView>(R.id.group_icon).setImageResource(R.drawable.icon_search)
         header.findViewById<TextView>(R.id.group_title).text = entry.name
         header.findViewById<TextView>(R.id.group_desc).text = entry.desc
-        header.findViewById<ImageView>(R.id.group_arrow).setImageResource(R.drawable.arrow_down)
+        header.findViewById<ImageView>(R.id.group_arrow).setImageResource(R.drawable.arrow_forward)
         header.setOnClickListener { entry.open(this) }
         settingsContainer.addView(header)
     }
@@ -92,8 +92,8 @@ class SettingMainActivity : InstanceActivity() {
         header.findViewById<ImageView>(R.id.group_icon).setImageResource(iconRes)
         header.findViewById<TextView>(R.id.group_title).text = title
         header.findViewById<TextView>(R.id.group_desc).text = desc
-        // 箭头朝下，表示进入下级
-        header.findViewById<ImageView>(R.id.group_arrow).setImageResource(R.drawable.arrow_down)
+        // 箭头始终向前，表示跳转
+        header.findViewById<ImageView>(R.id.group_arrow).setImageResource(R.drawable.arrow_forward)
 
         header.setOnClickListener {
             if (target != null) {

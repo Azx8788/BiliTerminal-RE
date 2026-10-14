@@ -24,6 +24,7 @@ import com.RobinNotBad.BiliClient.util.CrashTrail
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgNotifier
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.PerformanceManager
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
@@ -50,6 +51,29 @@ class BiliTerminal : Application() {
 
         @JvmField
         var DPI_FORCE_CHANGE = false
+
+        /**
+         * Agent 测试模式总开关（26.10.14）。
+         *
+         * <p>由 [applyLogSwitches] 按「Debug 构建 + `dev_agent_mode`」计算，Release 下恒为 false。
+         * 打开后的效果：日志与 HTTP 追踪全量打开并落盘、启动时跳过 UETool 悬浮窗的权限跳转与界面遮挡。
+         *
+         * <p>它解决的是「agent 没法点 UI」这件事：手表屏幕上要进设置页翻三四个层级才能开日志，
+         * 自动化点击既慢又不可靠；现在一条 adb 命令即可。
+         *
+         * <p>标 `@Volatile`：这个值可能在后台线程（调试桥的 `agent` 命令）被改，而主线程的
+         * `SplashActivity` 要立刻读到——不加就可能"改了但这次启动没生效"。
+         */
+        @JvmField
+        @Volatile
+        var AGENT_TEST_MODE = false
+
+        /** 当前处于 resumed 状态的 Activity（弱引用，不阻止回收）。给调试桥的 `top` 命令用。 */
+        private var currentActivityRef: WeakReference<Activity> = WeakReference(null)
+
+        /** 取当前前台 Activity；应用不在前台时返回 null。 */
+        @JvmStatic
+        fun getCurrentActivity(): Activity? = currentActivityRef.get()
 
         private var instance: WeakReference<InstanceActivity> = WeakReference(null)
 
@@ -199,6 +223,39 @@ class BiliTerminal : Application() {
             intent.putExtra("mid", mid)
             context.startActivity(intent)
         }
+
+        /**
+         * 日志开关（两个进程都要设：崩溃页自己也会打日志）
+         *
+         * <p>26.10.14 起这里同时负责「Agent 测试模式」的落地：开关本身只是 SharedPreferences 里的一个布尔，
+         * 真正影响行为的三处（[Logu] 的日志级别与落盘、[NetWorkUtil.HTTP_TRACE]、[AGENT_TEST_MODE]）
+         * 都在这里一次性写入，保证「改开关」与「生效」是同一处代码——agent 通过调试桥改完立即调本方法即可。
+         */
+        @JvmStatic
+        fun applyLogSwitches() {
+            val debugBuild = isDebugBuild()
+
+            // Agent 模式只在 Debug 构建下有意义：release 里 debugBuild 是编译期常量 false，
+            // R8 会把整段折叠掉，开关即使被写进 SharedPreferences 也不产生任何效果。
+            val agentMode = debugBuild && SharedPreferencesUtil.getBoolean(SettingsKeys.DEV_AGENT_MODE, false)
+            AGENT_TEST_MODE = agentMode
+
+            Logu.AGENT_MODE = agentMode
+            Logu.LOGV_ENABLED = agentMode || SharedPreferencesUtil.getBoolean(SettingsKeys.DEV_LOGV, debugBuild)
+            Logu.LOGD_ENABLED = agentMode || SharedPreferencesUtil.getBoolean(SettingsKeys.DEV_LOGD, debugBuild)
+            Logu.LOGI_ENABLED = agentMode || SharedPreferencesUtil.getBoolean(SettingsKeys.DEV_LOGI, debugBuild)
+
+            // 落盘默认随 Agent 模式打开（dev_log_file 默认 true）：agent 常在没有 adb 连接的场景下
+            // 事后取证，只靠 logcat 会什么都拿不到。release 下 agentMode 恒 false，永不落盘。
+            Logu.LOG_TO_FILE = agentMode && SharedPreferencesUtil.getBoolean(SettingsKeys.DEV_LOG_FILE, true)
+
+            // HTTP 追踪只在 Agent 模式下开：它会给每次请求做一次响应体 peek，属于纯观测开销。
+            NetWorkUtil.HTTP_TRACE = agentMode
+
+            if (agentMode) {
+                Logu.i("BiliTerminal", "Agent 测试模式已开启：日志全量+落盘=${Logu.LOG_TO_FILE}，HTTP追踪=${NetWorkUtil.HTTP_TRACE}")
+            }
+        }
     }
 
     /**
@@ -218,16 +275,6 @@ class BiliTerminal : Application() {
         }
     } catch (e: Exception) {
         packageName
-    }
-
-    /**
-     * 日志开关（两个进程都要设：崩溃页自己也会打日志）
-     */
-    private fun applyLogSwitches() {
-        val debugBuild = isDebugBuild()
-        Logu.LOGV_ENABLED = SharedPreferencesUtil.getBoolean("dev_logv", debugBuild)
-        Logu.LOGD_ENABLED = SharedPreferencesUtil.getBoolean("dev_logd", debugBuild)
-        Logu.LOGI_ENABLED = SharedPreferencesUtil.getBoolean("dev_logi", debugBuild)
     }
 
     /**
@@ -306,6 +353,9 @@ class BiliTerminal : Application() {
                     // （见 CrashTrail）。记在 resumed 而不是 created：从返回栈重入某个页面时
                     // created 不会重放，记在 created 会让轨迹断掉。
                     CrashTrail.record(activity.javaClass.simpleName)
+                    // 26.10.14：同时留一个弱引用给调试桥——agent 靠它回答「现在停在哪个页面」，
+                    // 这是纯 UI 自动化做不到的（手表上 uiautomator 又慢又常拿不到窗口）。
+                    currentActivityRef = WeakReference(activity)
                 }
 
                 override fun onActivityPaused(activity: Activity) {}

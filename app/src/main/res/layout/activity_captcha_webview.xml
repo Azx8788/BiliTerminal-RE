@@ -52,8 +52,14 @@
 
     </LinearLayout>
 
-    <WebView
-        android:id="@+id/captchaWebView"
+    <!--
+      这里刻意**不**直接写 <WebView>：设备/ROM 建不出 WebView 时，inflate 阶段就会抛
+      InflateException（Error inflating class android.webkit.WebView）把整个应用带崩。
+      改成一个容器 + 运行期创建，创建失败只提示、不崩。判据与现场见
+      docs/review/fix-progress.md §3.15。
+    -->
+    <FrameLayout
+        android:id="@+id/webViewContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />

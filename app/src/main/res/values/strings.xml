@@ -43,6 +43,8 @@
     <string name="setting_lab_recyclererr_detailed">由于开发者技术稀烂（？），软件中的各种列表可能会偶尔出现报错且难以避免。\n虽然是偶尔出现，但很烦人很恶心。\n所以被逼疯的开发者把这个报错catch掉了，只留下一个“此错误无需上报”的提示框和这个用于调试的开关。</string>
     <string name="setting_lab_logv">打开此开关，将会允许输出verbose等级的log，仅对Logu生效。\n下面那两个开关同理，管的分别是debug和info等级\n*非开发者不需要看懂这段话，一般人不需要动这个开关。大量的日志输出可能会降低性能。\n——不过其实终端的代码里从一开始就是Log.e到处飞，很多地方根本没做限制（从小天才和小电视播放器学来的坏习惯），现在在逐步替换……</string>
     <string name="setting_lab_media_session">启用后可在通知栏和锁屏界面控制播放。\n仅部分设备可正常使用。</string>
+    <string name="desc_dev_agent_mode">给 AI agent / 自动化脚本用的一键开关。\n打开后：日志全量输出、HTTP 请求与响应写入日志、启动时不再弹 UETool 悬浮窗。\n仅 Debug 构建有效，且只在开发者工具分组里出现。</string>
+    <string name="desc_dev_log_file">把日志与 HTTP 追踪写入文件，便于脱离 adb 连接后事后取证。\n位置：应用专属外部目录的 logs/ 下。\n仅在 Agent 测试模式打开时生效。</string>
 
     <string name="text_update">下载的APK保存在: %s\n\n你可以使用pm install或其他方法自己安装，或在下方选择一个安装器进行安装\n若安装出现问题请删除安装包重试，仍然无法安装请反馈给开发者</string>
     <string name="text_update_success">终端的每个版本都可能会新增一些兼容性相关的设置项。\n如果你遇到了某些奇葩问题，请先在设置里找一找相关的兼容性选项，视频放不了、无法加载图片的问题都有可能解决哦~</string>

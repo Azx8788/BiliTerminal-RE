@@ -64,6 +64,10 @@ class PasswordLoginFragment : Fragment() {
                 val validate = result.data!!.getStringExtra(CaptchaWebViewActivity.RESULT_VALIDATE)
                 val seccode = result.data!!.getStringExtra(CaptchaWebViewActivity.RESULT_SECCODE)
                 doPasswordLogin(validate!!, seccode!!)
+            } else if (result.resultCode == CaptchaWebViewActivity.RESULT_UNAVAILABLE) {
+                // 设备建不出 WebView，人机验证根本没打开。报「验证已取消」会让用户以为是自己点错了，
+                // 这里直接指一条走得通的路（扫码登录不需要 WebView）。
+                setStatusText("此设备无法显示人机验证，请改用扫码登录")
             } else {
                 setStatusText("验证已取消")
             }

@@ -71,6 +71,9 @@ class SMSLoginFragment : Fragment() {
                 geetestSeccode = result.data!!.getStringExtra(CaptchaWebViewActivity.RESULT_SECCODE)
                 captchaReady = true
                 doSendSms()
+            } else if (result.resultCode == CaptchaWebViewActivity.RESULT_UNAVAILABLE) {
+                // 同 PasswordLoginFragment：把「设备不支持」和「用户取消」分开报，并给出可走的路
+                setStatusText("此设备无法显示人机验证，请改用扫码登录")
             } else {
                 setStatusText("验证已取消")
             }
