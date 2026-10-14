@@ -192,6 +192,17 @@ object SettingsKeys {
     const val TELEMETRY_LAST_REPORT_DAY = "terminal_telemetry_last_day"
 
     /**
+     * 设备级去重键：`sha256(ANDROID_ID + 固定盐)` 的截断值，见 `TerminalApi.getDeviceKey()`。
+     *
+     * 用途**只有**一个：让同一台手机同时装「普通版 + 共存版」时被算作**一台设备**，
+     * 而不是两台。两个 flavor 用同一个签名，系统给的 ANDROID_ID 相同，所以哈希也相同。
+     *
+     * 原始 ANDROID_ID **绝不上报、也不落盘**，这里只存哈希。
+     * 恢复出厂设置或切换系统用户会得到新值，此时视为一台新设备（可接受）。
+     */
+    const val TELEMETRY_DEVICE_KEY = "terminal_device_key"
+
+    /**
      * 自建公告源已读到的最大 id。与上游 api.biliterminal.cn 的 `app_announcement_last`
      * 分开计数：自建源的自增 id 统一带 10 亿偏移，两者互不影响。
      */

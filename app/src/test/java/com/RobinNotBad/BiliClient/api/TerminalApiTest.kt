@@ -42,7 +42,8 @@ class TerminalApiTest {
     @Test
     fun buildPingPayload_carriesInstallIdAndDevice() {
         val payload = TerminalApi.buildPingPayload(
-            "abc123", 2610090, "26.10.09", false, 34, "Xiaomi", "diting", "arm64-v8a"
+            "abc123", 2610090, "26.10.09", false, 34, "Xiaomi", "diting", "arm64-v8a",
+            "devkey123", false
         )
         assertEquals("abc123", payload.getString("install_id"))
         assertEquals(2610090, payload.getInt("version_code"))
@@ -52,17 +53,21 @@ class TerminalApiTest {
         assertEquals("Xiaomi", payload.getString("brand"))
         assertEquals("diting", payload.getString("device"))
         assertEquals("arm64-v8a", payload.getString("abi"))
+        assertEquals("设备键必须带上（同机两版去重靠它）", "devkey123", payload.getString("device_key"))
+        assertFalse("普通版 is_coexist 应为 false", payload.getBoolean("is_coexist"))
     }
 
     @Test
     fun buildPingPayload_nullStringsBecomeEmpty() {
-        val payload = TerminalApi.buildPingPayload(null, 0, null, true, 0, null, null, null)
+        val payload = TerminalApi.buildPingPayload(null, 0, null, true, 0, null, null, null, null, true)
         assertEquals("install_id 为 null 时应落成空串", "", payload.getString("install_id"))
         assertEquals("", payload.getString("version_name"))
         assertEquals("", payload.getString("brand"))
         assertEquals("", payload.getString("device"))
         assertEquals("", payload.getString("abi"))
+        assertEquals("device_key 为 null 时应落成空串而不是 null", "", payload.getString("device_key"))
         assertTrue("beta 应为 true", payload.getBoolean("is_beta"))
+        assertTrue("共存版 is_coexist 应为 true", payload.getBoolean("is_coexist"))
     }
 
     // ---------- 反馈载荷 ----------
@@ -70,18 +75,19 @@ class TerminalApiTest {
     @Test
     fun buildFeedbackPayload_normalizesCategoryAndDefaults() {
         val payload = TerminalApi.buildFeedbackPayload(
-            "abc123", "BUG", "播放器闪退", null, 0, 2610090, "26.10.09", 34, "Xiaomi", "diting"
+            "abc123", "devkey123", "BUG", "播放器闪退", null, 0, 2610090, "26.10.09", 34, "Xiaomi", "diting"
         )
         assertEquals("非法分类应被收敛", "other", payload.getString("category"))
         assertEquals("content 不可以被裁剪或改写", "播放器闪退", payload.getString("content"))
         assertEquals("未填联系方式应为空串", "", payload.getString("contact"))
         assertEquals("未勾选附带账号时 mid 应为 0", 0L, payload.getLong("mid"))
+        assertEquals("devkey123", payload.getString("device_key"))
     }
 
     @Test
     fun buildFeedbackPayload_keepsSelectedMid() {
         val payload = TerminalApi.buildFeedbackPayload(
-            "abc123", "bug", "内容", "qq:123", 123456L, 1, "v", 34, "b", "d"
+            "abc123", "devkey123", "bug", "内容", "qq:123", 123456L, 1, "v", 34, "b", "d"
         )
         assertEquals(123456L, payload.getLong("mid"))
         assertEquals("qq:123", payload.getString("contact"))
@@ -93,6 +99,7 @@ class TerminalApiTest {
     fun buildCrashPayload_hasRicherFieldsThanUpstream() {
         val payload = TerminalApi.buildCrashPayload(
             /* installId    = */ "abc123",
+            /* deviceKey    = */ "devkey123",
             /* mid          = */ 0L,
             /* exception    = */ "java.lang.NullPointerException",
             /* message      = */ "Attempt to invoke virtual method",
@@ -114,6 +121,7 @@ class TerminalApiTest {
             /* uptimeSec    = */ 3600L
         )
         assertEquals("abc123", payload.getString("install_id"))
+        assertEquals("devkey123", payload.getString("device_key"))
         assertEquals("java.lang.NullPointerException", payload.getString("exception"))
         assertEquals("Attempt to invoke virtual method", payload.getString("message"))
         assertEquals("出错线程必须带上", "main", payload.getString("thread"))
@@ -203,11 +211,36 @@ class TerminalApiTest {
     @Test
     fun feedbackPayload_containsNoCookieOrToken() {
         val payload = TerminalApi.buildFeedbackPayload(
-            "abc123", "bug", "内容", "", 0, 1, "v", 34, "b", "d"
+            "abc123", "devkey123", "bug", "内容", "", 0, 1, "v", 34, "b", "d"
         )
         val text = payload.toString().lowercase()
         for (forbidden in listOf("sessdata", "bili_jct", "dedeuserid", "cookie", "csrf")) {
             assertFalse("载荷里不应出现 $forbidden", text.contains(forbidden))
         }
+    }
+
+    /**
+     * 设备键必须是**哈希**而不是原始 ANDROID_ID。
+     *
+     * 这里直接钉住实现契约：载荷里只出现 sha256 的前 32 位十六进制，
+     * 既不是 16 位十六进制的裸 ANDROID_ID，也不长于 32 位。
+     */
+    @Test
+    fun deviceKeyShape_looksLikeTruncatedSha256() {
+        val raw = "9774d56d682e549c"          // 典型的裸 ANDROID_ID 形状
+        val key = TerminalApi.hashDeviceKey(raw)
+        assertEquals("应为 sha256 截断后的 32 位", 32, key.length)
+        assertTrue("应为小写十六进制", key.matches(Regex("[0-9a-f]{32}")))
+        assertFalse("绝不能是原始 ANDROID_ID", key.contains(raw))
+        assertEquals("同输入必须稳定复现", key, TerminalApi.hashDeviceKey(raw))
+        assertTrue("不同输入应得到不同键",
+            key != TerminalApi.hashDeviceKey("9774d56d682e549d"))
+    }
+
+    /** 拿不到 ANDROID_ID 时必须落成空串，服务端才会回落到 install_id 计数。 */
+    @Test
+    fun deviceKey_blankInputYieldsEmpty() {
+        assertEquals("", TerminalApi.hashDeviceKey(null))
+        assertEquals("", TerminalApi.hashDeviceKey(""))
     }
 }

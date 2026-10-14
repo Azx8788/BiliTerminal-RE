@@ -411,14 +411,43 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 反馈 / 崩溃带「已处理」开关（26.10.11 加）：`GET /admin/api/feedback|crash[?pending=1]` 多回一个
   `handled`，`POST /admin/api/{feedback,crash}/handled` ← `{id, handled?}`。
   **它只是后台的阅读状态**——不删数据、不影响客户端上报（`handled` 列一直存在，此前无接口可改）。
+- **单独回复**（26.10.14 加）：`POST /admin/api/feedback/reply` ← `{id, content, title?}`。
+  做法是**把回复写成一条定向公告**（`announcements.target_install_id` / `target_device_key` 非空），
+  并顺手把原反馈标成已处理。**客户端零改动** —— 可见性靠 `X-Install-Id` 头判定，
+  而 `TerminalApi.headers()` 本来就一直带着它。
+  - **可见性必须下推到 SQL 的 `WHERE`**（见 `_VISIBLE_SQL`）。若捞出来再在 Python 里过滤，
+    `LIMIT 100` 会被「对当前用户不可见的定向公告」占满，该用户的公开公告就**永远拉不到**
+    —— 游标不推进 → 每次查同一段 → 永久饥饿。`selftest.py` §17 专门钉这条。
+  - 定向公告复用同一个 `ANN_ID_OFFSET` 和同一个客户端游标，**不需要独立 id 空间**：
+    正因为可见性下推了，被过滤掉的 id 在该用户的查询里「根本不存在」。
+- **删除**（26.10.14 加）：`POST /admin/api/{feedback,crash}/delete` ← `{id}`。硬删、不可逆，
+  兜底是每日备份（保留 14 天）。**不给 `installs` 开删除口** —— 删安装行会让唯一设备数与
+  当日新增回退，那是数据失真，不是清理。
+- **设备视图**（26.10.14 加）：`GET /admin/api/devices[?coexist=&version=&brand=&q=&limit=&offset=]`。
+  **按 `dev_key` 聚合，一行一台设备** —— 一台双版本手机在 `installs` 里是两行，平铺会被读成两台设备。
 - 接口（成功一律 `code=0`，HTTP 恒 2xx）：
   - `GET /terminal/health`
   - `GET /terminal/announcement/get_list[?from=<id>]` → `{code:0,data:[{id,ctime,title,content}]}`。
     `id` 是自增 id **+ 1000000000**，故意和上游公告 id 空间错开；
     不带 `from` 是列表页（倒序），带 `from` 是启动弹窗的差量（只回 `id>from`，正序）。
-  - `POST /terminal/telemetry/ping` ← `{install_id, version_code, version_name, is_beta, sdk, brand, device, abi}`
-  - `POST /terminal/feedback/submit` ← `{install_id, category, content, contact?, mid?, version_code, version_name, sdk, brand, device}`
-  - `POST /terminal/upload/stack` ← 崩溃载荷（见下）
+    **会按 `X-Install-Id` 过滤定向公告**（公开公告人人可见）。
+  - `POST /terminal/telemetry/ping` ← `{install_id, device_key, version_code, version_name, is_beta, sdk, brand, device, abi, is_coexist}`
+  - `POST /terminal/feedback/submit` ← `{install_id, device_key, category, content, contact?, mid?, version_code, version_name, sdk, brand, device}`
+  - `POST /terminal/upload/stack` ← 崩溃载荷（见下，含 `device_key`）
+
+**数据与迁移（26.10.14 加）**
+- 库结构变更走 `init_db()` 里手写的 `migrate()`（`PRAGMA user_version` 记进度），
+  **没有 Alembic**。每步先探测现状再动手，**幂等**，跑一半挂了重跑不炸。
+- 迁移前必须 `sqlite3 .backup` 备份（**不能用 `cp`**：WAL 下会丢 `-wal` 里的最近写入）。
+- `daily_active` 的主键从 `(install_id, day)` 换成了 `(dev_key, day)`（SQLite 改不了主键，只能
+  建新表→搬数据→换名）。搬的时候按当时的 `installs.device_key` 折算，查不到的回落 `install_id`，
+  所以**迁移前后行数不变**。
+- **统计口径**：版本分布 = **当前在用版本**的快照，升级后旧版本计数减少是**期望行为**。
+  26.10.14 用户明确确认过，**不要**再引入 `install_versions` 那类历史版本表。
+- 写入一律**空值不覆盖**（`_db_ping` 里的 `CASE WHEN`）：客户端某次上报空 `abi`，
+  不该把库里的有效值刷成空 —— 那会让分布图凭空冒出 `(未知)` 分组、原分组同时 -1，
+  这正是「统计异常波动」的主要来源。`is_beta` / `is_coexist` 同理用「没报就保留」，
+  否则老客户端会把共存版误刷成普通版。
 
 **客户端**
 - `api/TerminalApi.java` 是这条链路唯一的出口：`BASE_URL = https://rebiliterminal.zsapp.asia/terminal`。
@@ -458,10 +487,21 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
    默认分别是 `true` / `true` / `false`，都能在设置里关。**以后再往上报载荷里加字段，
    先把 `about_to_uncle`、`text_setup_introduction`、`privacy_consent_message`、以及三条
    `desc_setting_*` 说明一起改掉，并把 `PRIVACY_VERSION` +1。**
+   26.10.14 加 `device_key` 时就是这么办的（`PRIVACY_VERSION` 1 → 2）：那三处原文写的是
+   「不读取 ANDROID_ID 等任何设备唯一标识」，而新方案正是拿它派生哈希，属于实质变化，
+   不改文案就是自相矛盾。改完老用户会重看一次同意弹窗，这是**有意的**。
 3. **账号 ID 默认不带**。`mid` 只在 `FEEDBACK_ATTACH_MID` 打开时才有值，关掉时传 `0`
    （服务端那条记录里根本不会有这个值，不是「传了但不显示」）。
 4. `install_id` 是首次调用 `getInstallId()` 时生成的随机 UUID（`SettingsKeys.TELEMETRY_INSTALL_ID`），
-   与账号无关、不读 `ANDROID_ID` 或任何设备指纹，卸载重装即换新。
+   与账号无关，卸载重装即换新。
+   **26.10.14 起另有 `device_key`**（`TerminalApi.getDeviceKey()`，存 `SettingsKeys.TELEMETRY_DEVICE_KEY`）：
+   它是 `sha256(ANDROID_ID + 固定盐)` 的截断值，**只上报哈希，原始 ANDROID_ID 不上报也不落库**。
+   存在的唯一理由是普通版与共存版包名不同、`install_id` 天然是两个值，必须有设备级标识才能合并成一台。
+   两个 flavor 用同一签名 → 系统给的 `ANDROID_ID` 相同 → 哈希相同。
+   **若将来两个 flavor 换成不同签名，这个去重会立刻失效**，换签名前先想清楚。
+   取不到就返回空串，服务端 `dev_key_of()` 回落 `install_id`，统计不中断。
+   盐是 `TerminalApi.DEVICE_KEY_SALT`，**改它等于把所有设备变成新设备**（唯一设备数会翻倍）。
+   纯函数 `hashDeviceKey()` 可在 JVM 单测里直接验证形状（不碰 Android 运行时）。
 5. 启动链路里 `TerminalApi.checkAnnouncement()` 与 `TelemetryReporter.reportIfNeeded()` 都**各自包了异常**：
    自建服务器挂了不能影响启动（`SplashActivity` 那一整段本来就有「任何失败都退化成进本地列表页」的约定）。
 6. **服务端别把 sqlite3 直接写在 `async def` 里**。业务函数是 `async def`（要 `await request.body()`），

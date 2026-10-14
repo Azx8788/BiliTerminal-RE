@@ -53,6 +53,7 @@ object CrashReporter {
 
         return TerminalApi.buildCrashPayload(
             /* installId = */ TerminalApi.getInstallId(),
+            /* deviceKey = */ TerminalApi.getDeviceKey(),
             /* mid = */ mid,
             /* exception = */ exception,
             /* message = */ message,

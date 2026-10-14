@@ -132,7 +132,51 @@
 
 **别再重复排查（已排除）**：WebView 白底闪屏**不存在**；菜单按钮 `MaterialButton` 默认 `minHeight=48dip` **已达标**；`ui/widget/recycler/` 与 `fragment_empty.xml`、`BiliTerminalApp.kt` 是**死代码**（不当在用组件排查）。**不做**：裸 `Activity` 收编（`PlayerActivity`/`ImageViewerActivity`/`SplashActivity`/`GetIntentActivity`）——播放器保持黑色系统栏是有意为之，且 `PlayerActivity.kt` 3000 行，收益不抵回归风险（理由已进 `docs/architecture-map.md` §8.7.3）。**可接受**：`CardStyle`/`ButtonStyle` 强制 `clickable+focusable`；间距/圆角 token 已建但布局未全量改用；同构布局重复；布局层静态色已清干净（`@color/(card_dark|pink|divider_dark|pink_light)` 在 `res/layout` 0 处）。
 
-## 3. 最新状态快照（26.10.09 ~ 26.10.13）
+## 3. 最新状态快照（26.10.09 ~ 26.10.14）
+
+### 3.0 控制台 v2 与共存版统计（26.10.14）
+
+一次性做完 5 项需求，横跨自建后端（`server/`）与 APK 遥测链路。**已部署上线并验证。**
+
+**后端 / 前端**（`server/rebiliterminal_api.py`、`server/console.html`）
+
+- **数据稳定性**：`_db_ping` 改成**空值不覆盖**（`CASE WHEN`）—— 修掉「客户端某次上报空 `abi`，
+  分布图凭空冒出 `(未知)` 分组、原分组同时 -1」这个主要波动源；分布查询加次级排序键
+  （`ORDER BY 2 DESC, 1 ASC`）消除同数时的顺序抖动；`today_new` 从滚动 24h 改成自然日，与图表对齐。
+  **版本分布保持「当前在用版本」语义 —— 升级后旧版本计数减少是期望行为**，用户 26.10.14 明确确认，
+  故**未**引入历史版本表（`install_versions` / `daily_snapshot` 都没做，迁移也不回填历史）。
+- **单独回复**：`POST /admin/api/feedback/reply` 把回复写成一条**定向公告**。客户端**零改动**
+  —— 可见性靠 `X-Install-Id` 头判定，而 `TerminalApi.headers()` 本来就一直带着它。
+  **关键坑**：可见性必须下推到 SQL `WHERE`，否则 `LIMIT 100` 会被不可见公告占满，
+  导致公开公告**永久饥饿**（游标不推进 → 每次查同一段）。自测 §17 专门钉这条。
+- **删除**：`feedback/delete`、`crash/delete`，复用既有两道 CSRF 防线。**不给 `installs` 开删除口**
+  （删安装行会让唯一设备数与当日新增回退）。
+- **设备视图**：`GET /admin/api/devices` 按 `dev_key` 聚合，**一行一台设备**，直接标
+  「仅标准版 / 仅共存版 / 两个都装」。平铺 `installs` 会把双版本手机读成两台设备。
+- **前端**：设计令牌统一、卡片层次、手写 SVG 图表加悬停准线与浮层、骨架屏、hash 路由、
+  键盘快捷键、搜索筛选、批量操作、乐观更新、详情抽屉、CSV 导出。
+  **仍是零外部依赖单文件**（后端按 mtime 缓存吐出，改前端不用重启进程）。
+- **迁移**：新增 `migrate()`（`PRAGMA user_version` + 幂等步骤，先探测现状再动手）；
+  `daily_active` 主键从 `(install_id, day)` 重建为 `(dev_key, day)`。
+  生产库已迁移：**迁移前后行数一条不差**（installs 22 / daily_active 40 / feedback 1 / crash 32 /
+  announcements 2，`user_version` 0 → 1）；迁移前已 `.backup` 备份为
+  `data.db.bak-20261014-160444-premigrate`（**不能用 `cp`**，WAL 下会丢 `-wal` 里的最近写入）。
+- 自测从 56 项扩到 **92 项**，本地与生产服务器均全绿。
+
+**APK 侧**（`api/TerminalApi.java`、`util/SettingsKeys.kt`、`res/values/strings.xml`）
+
+- 新增 `device_key = sha256(ANDROID_ID + 固定盐)` 的截断值，用于把同机两版合并成**一台设备**。
+  **只上报哈希，原始 ANDROID_ID 不上报也不落库。** 两个 flavor 用同一签名 → `ANDROID_ID` 相同 →
+  哈希相同；**将来换不同签名会让去重失效**。取不到就发空串，服务端 `dev_key_of()` 回落 `install_id`。
+- 上报新增 `device_key` / `is_coexist`（后者取 `BuildConfig.COEXIST`，构建配置 26.10.11 就已存在）。
+- **隐私文案三处同步改掉**（`privacy_consent_message` / `about_to_uncle` / `text_setup_introduction`）：
+  原文写的是「不读取 ANDROID_ID 等任何设备唯一标识」，与新的哈希方案直接矛盾，不改就是自相矛盾。
+  `PRIVACY_VERSION` **1 → 2**，老用户会重看一次同意弹窗（**有意为之**）。
+- 单测：`TerminalApiTest.kt` 同步新签名，并新增 `hashDeviceKey` 的形状断言
+  （32 位小写十六进制、同输入稳定复现、绝不含原始 ANDROID_ID）。两个 flavor 各
+  **56 suites / 558 tests / 0 failed**。
+
+设计文档：`docs/superpowers/specs/2026-10-14-console-v2-design.md`（含实施后的修订说明）。
 
 ### 3.1 自建反馈 / 公告 / 匿名统计 / 崩溃上报（§四十一）
 

@@ -1,9 +1,12 @@
 package com.RobinNotBad.BiliClient.api;
 
+import android.content.Context;
 import android.os.Build;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.RobinNotBad.BiliClient.BiliTerminal;
 import com.RobinNotBad.BiliClient.BuildConfig;
 import com.RobinNotBad.BiliClient.model.Announcement;
 import com.RobinNotBad.BiliClient.model.ApiResult;
@@ -18,6 +21,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.UUID;
@@ -64,14 +69,24 @@ public class TerminalApi {
     };
 
     /**
+     * 设备键的固定盐。改它等于把所有设备变成"新设备"（唯一设备数会翻一倍），**别随便改**。
+     * 它不需要保密（就写在客户端里），作用只是让这个哈希不与别处对 ANDROID_ID 的哈希撞车。
+     */
+    public static final String DEVICE_KEY_SALT = "rebiliterminal-device-key-v1";
+
+    /**
      * 当前隐私说明版本号。
      *
      * <p>只要用户可见的隐私文案（收集什么、不收集什么、怎么关）有实质变化，就必须 +1：
      * 老用户升级后会**重新看到一次**确认弹窗（见 {@link #needsPrivacyConsent()}）。
      * 改这个号的时候，`strings.xml` 里的 {@code privacy_consent_message}、
      * {@code about_to_uncle}、{@code text_setup_introduction} 三处要一起改。
+     *
+     * <p><b>v2（26.10.14）</b>：新增设备级去重键 {@link #getDeviceKey()}。此前那三处文案
+     * 都写着"不读取 ANDROID_ID 等任何设备唯一标识"，而新方案正是要拿它派生出哈希，
+     * 属于**实质变化**，所以必须升版并同步改掉那三句 —— 否则就是自相矛盾。
      */
-    public static final int PRIVACY_VERSION = 1;
+    public static final int PRIVACY_VERSION = 2;
 
     private TerminalApi() {
     }
@@ -101,9 +116,17 @@ public class TerminalApi {
         return TimeUtil.formatDate(millis);
     }
 
+    /**
+     * 启动上报的载荷。
+     *
+     * <p>{@code device_key} 用于把同一台手机上的普通版与共存版合并成一台设备；
+     * {@code is_coexist} 让后台能分开看两个版本的装机量。两者服务端都有默认值，
+     * 所以老客户端不带它们也能正常计数。
+     */
     public static JSONObject buildPingPayload(String installId, int versionCode, String versionName,
                                               boolean isBeta, int sdk, String brand,
-                                              String device, String abi) throws JSONException {
+                                              String device, String abi, String deviceKey,
+                                              boolean isCoexist) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
         data.put("version_code", versionCode);
@@ -113,15 +136,19 @@ public class TerminalApi {
         data.put("brand", safe(brand));
         data.put("device", safe(device));
         data.put("abi", safe(abi));
+        data.put("device_key", safe(deviceKey));
+        data.put("is_coexist", isCoexist);
         return data;
     }
 
-    public static JSONObject buildFeedbackPayload(String installId, String category, String content,
-                                                  String contact, long mid, int versionCode,
-                                                  String versionName, int sdk, String brand,
-                                                  String device) throws JSONException {
+    public static JSONObject buildFeedbackPayload(String installId, String deviceKey, String category,
+                                                  String content, String contact, long mid,
+                                                  int versionCode, String versionName, int sdk,
+                                                  String brand, String device) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
+        // 冗余一份设备键：后台要按设备统计反馈数，而 feedback 未必能和 installs 关联上
+        data.put("device_key", safe(deviceKey));
         data.put("category", normalizeCategory(category));
         data.put("content", safe(content));
         data.put("contact", safe(contact));
@@ -141,15 +168,17 @@ public class TerminalApi {
      * 匿名 install_id、异常类名与消息（与堆栈分开）、出错线程、崩溃前的页面轨迹、
      * 系统版本 / product / model / ABI / 内存 / 运行时长。堆栈本身仍是主体。
      */
-    public static JSONObject buildCrashPayload(String installId, long mid, String exception,
-                                               String message, String thread, String stack,
-                                               String log, String extra, int versionCode,
-                                               String versionName, int sdk, String release,
-                                               String brand, String device, String product,
-                                               String model, String abi, long ramTotal,
-                                               long ramAvail, long uptimeSec) throws JSONException {
+    public static JSONObject buildCrashPayload(String installId, String deviceKey, long mid,
+                                               String exception, String message, String thread,
+                                               String stack, String log, String extra,
+                                               int versionCode, String versionName, int sdk,
+                                               String release, String brand, String device,
+                                               String product, String model, String abi,
+                                               long ramTotal, long ramAvail,
+                                               long uptimeSec) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
+        data.put("device_key", safe(deviceKey));
         data.put("mid", mid);
         data.put("exception", safe(exception));
         data.put("message", safe(message));
@@ -230,6 +259,70 @@ public class TerminalApi {
             SharedPreferencesUtil.putString(SettingsKeys.TELEMETRY_INSTALL_ID, id);
         }
         return id;
+    }
+
+    /**
+     * 设备级去重键：{@code sha256(ANDROID_ID + 固定盐)} 的前 32 位。
+     *
+     * <p><b>为什么需要它</b>：普通版与共存版的包名不同，{@link #getInstallId()} 存在各自包内的
+     * SharedPreferences 里，天然是两个值。只靠 install_id，一台手机装两个版本就会被算成两台设备。
+     *
+     * <p><b>为什么它有效</b>：Android 8.0+ 的 ANDROID_ID 按 (应用签名, 用户, 设备) 派生，
+     * 而两个 flavor 用的是**同一个签名**，所以取值相同；8.0 以下它是设备级唯一值，同样相同。
+     * <b>若将来两个 flavor 改用不同签名，这个去重会立刻失效</b> —— 换签名前先想清楚。
+     *
+     * <p><b>隐私</b>：原始 ANDROID_ID 只在内存里过一下，**绝不上报、也不落盘**，存下来的只有
+     * 加盐哈希。取不到就返回空串，服务端会回落到 install_id 计数（不会把所有人挤进同一个空分组）。
+     * 恢复出厂或切换系统用户会得到新值，此时视为一台新设备，可接受。
+     */
+    public static String getDeviceKey() {
+        String cached = SharedPreferencesUtil.getString(SettingsKeys.TELEMETRY_DEVICE_KEY, "");
+        if (!TextUtils.isEmpty(cached)) return cached;
+        String raw = "";
+        try {
+            Context context = BiliTerminal.context;
+            if (context != null) {
+                raw = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+            }
+        } catch (Exception e) {
+            // 某些定制 ROM 会抛异常；拿不到就算了，统计不能因此崩
+            Log.w("debug-terminal", "read ANDROID_ID failed: " + e);
+        }
+        if (TextUtils.isEmpty(raw)) return "";
+        String key = hashDeviceKey(raw);
+        if (TextUtils.isEmpty(key)) return "";
+        SharedPreferencesUtil.putString(SettingsKeys.TELEMETRY_DEVICE_KEY, key);
+        return key;
+    }
+
+    /**
+     * 把原始 ANDROID_ID 折算成设备键：{@code sha256(id + 盐)} 的前 32 位十六进制。
+     *
+     * <p>抽成独立方法，是为了让 JVM 单测能直接验证它的**形状**（确实是哈希、长度固定、
+     * 同输入稳定复现），而不用碰 Android 运行时。因此这里**不得**使用任何 {@code android.*} 类
+     * —— 单测里那些类都是 not mocked，一碰就炸。
+     */
+    static String hashDeviceKey(String rawAndroidId) {
+        if (rawAndroidId == null || rawAndroidId.length() == 0) return "";
+        String key = sha256(rawAndroidId + DEVICE_KEY_SALT);
+        return key.length() > 32 ? key.substring(0, 32) : key;
+    }
+
+    /** 十六进制小写 SHA-256；失败返回空串（调用方按"没有设备键"处理）。 */
+    private static String sha256(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            Log.w("debug-terminal", "sha256 failed: " + e);
+            return "";
+        }
     }
 
     /** 匿名统计是否开启。默认开，但**必须先就当前版本隐私说明点过「同意」**，未同意一律不上报。 */
@@ -376,7 +469,9 @@ public class TerminalApi {
                     Build.VERSION.SDK_INT,
                     Build.BRAND,
                     Build.DEVICE,
-                    firstAbi());
+                    firstAbi(),
+                    getDeviceKey(),
+                    BuildConfig.COEXIST);
             return post("/telemetry/ping", payload).optInt("code", -1) == 0;
         } catch (Exception e) {
             // 遥测是尽力而为：任何失败都不能影响用户使用，也不能弹窗打扰。
@@ -394,7 +489,7 @@ public class TerminalApi {
     public static ApiResult submitFeedback(String category, String content, String contact, long mid) {
         try {
             JSONObject payload = buildFeedbackPayload(
-                    getInstallId(), category, content, contact, mid,
+                    getInstallId(), getDeviceKey(), category, content, contact, mid,
                     BuildConfig.VERSION_CODE, BuildConfig.VERSION_NAME,
                     Build.VERSION.SDK_INT, Build.BRAND, Build.DEVICE);
             JSONObject result = post("/feedback/submit", payload);
