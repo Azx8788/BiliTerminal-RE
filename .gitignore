@@ -52,3 +52,12 @@ __pycache__/
 # 不再随客户端仓库分发。png/ 因 readme 界面预览仍在引用，故不在此忽略）
 /index.html
 /legacy.html
+
+# 控制台 / 自建后端（26.10.14 起移出版本库）
+# 这套东西（FastAPI 后端 + console.html + selftest + nginx 配置 + systemd 单元）
+# 直接部署到服务器 /opt/rebiliterminal-api/，**改完即生效**：改前端只需覆盖文件
+# （后端按 mtime 缓存吐出），改后端重启一下服务即可。
+# 它有自己的发布节奏，跟 APK 发版没有关系 —— 混进发版提交只会让「这次发了什么」失真。
+server/
+# 控制台的设计文档同理（描述的正是 server/ 那套东西）
+docs/superpowers/specs/2026-10-14-console-v2-design.md
