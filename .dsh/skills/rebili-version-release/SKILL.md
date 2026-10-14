@@ -121,7 +121,7 @@ description: >-
 ### 5. 校验
 - strings.xml 保持 XML 合法（本次只改数组文本）。
 - 版本号改过就必须让 `:app:verifyVersionConsistency` 通过（校验 build.gradle 与 strings.xml 更新日志锚点）。
-- **Release 建好后必须回读它的说明正文**（`https://api.github.com/repos/PurpleEthereality/BiliTerminal-RE/releases/latest` 的 `body`），确认 `update_log_current` 的全部条目都在里面。若正文只有 `### APK 校验值（MD5）` + `<!-- update: … -->` + `**Full Changelog**`，就是省略了更新说明 —— 见 §4 的硬要求，必须补上。**别只看 `conclusion=success` 就收工**：工作流全绿也不代表说明写了。
+- **Release 建好后必须回读它的说明正文**（`https://api.github.com/repos/zisekongling/BiliTerminal-RE/releases/latest` 的 `body`），确认 `update_log_current` 的全部条目都在里面。若正文只有 `### APK 校验值（MD5）` + `<!-- update: … -->` + `**Full Changelog**`，就是省略了更新说明 —— 见 §4 的硬要求，必须补上。**别只看 `conclusion=success` 就收工**：工作流全绿也不代表说明写了。
 - **还要回读 Gitee 的附件清单**（`/repos/zisekongling/bili-terminal-re/releases/tags/<tag>` 的 `assets`）：**每个发行渠道都要有 4 个包 + `md5sums.txt`**。Gitee 上少包 = 中转服务端白名单没更新（见 §4），客户端会回落 GitHub 源。26.10.11 就是回读时发现只有普通版、共存版一个都没有。
 - 向用户汇报：改了哪些文件、发行 APK 的路径/大小、**Release 说明是否含完整更新日志**、CI 里 Gitee 同步是否成功（**含每个渠道的附件是否齐**）、`release-links.txt` 里的直链。
 

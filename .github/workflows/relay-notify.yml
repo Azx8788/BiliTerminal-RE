@@ -43,7 +43,7 @@ jobs:
             echo "::warning::未配置 Secrets.RELAY_URL / Secrets.RELAY_SECRET，跳过 Gitee 中转同步"
             exit 0
           fi
-          BODY=$(printf '{"repository":{"full_name":"PurpleEthereality/BiliTerminal-RE"},"release":{"tag_name":"%s"}}' "$TAG")
+          BODY=$(printf '{"repository":{"full_name":"zisekongling/BiliTerminal-RE"},"release":{"tag_name":"%s"}}' "$TAG")
           printf '%s' "$BODY" > /tmp/relay.json
           SIG=$(openssl dgst -sha256 -hmac "$RELAY_SECRET" -binary /tmp/relay.json | xxd -p -c256)
           for i in 1 2 3; do
