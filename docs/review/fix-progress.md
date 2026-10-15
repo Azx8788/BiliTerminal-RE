@@ -465,6 +465,74 @@
 
 **验证**：`:app:assembleDebug` + 两 flavor 单测 + `:app:assembleRelease` 全绿。**两条都未在出问题的那台手表上复验**（本机 adb 上已无在线设备），也**未做「WebView 缺失」的模拟测试**——可用的复现手段是 `adb shell pm disable-user com.android.webview` 后走一遍验证码页，届时预期是「提示 + 优雅退出」而不是崩溃。
 
+### 3.16 点进视频详情页不进观看记录（26.10.15）
+
+**现象（用户实测）**：点进视频详情页，观看记录里什么都没有；但只要播一下这个视频，记录就出现了。先前描述成"只有点进已经记录过的视频才会记录"——同一个根因的两面：`progress > 0` 的稿件会被重新上报一遍，`progress == 0` 的新稿件整条请求根本不发。
+
+**根因**：`activity/video/info/VideoInfoFragment.kt` 的 `initView()` 里，26.10.02（`fd947f0`，P8 playerData 可见性那一批）给详情页的观看记录上报加了 `if (data.progress > 0)` 闸门，注释说"报 0 会把服务端该分P的续播进度覆盖掉"。闸门挡的是真问题（多P视频：上次看第 3P、详情页预取第 1P，报 `(aid, cid1, 0)` 会把第 3P 的续播抹成 0），但把"新稿件登记"连带挡掉了——`PlayerApi.getVideo` 对没有记录的稿件恰好会归一化出 `cidHistory = cid`、`progress = 0`。播放器那侧 `PlayerActivity` 自己会上报，所以"播了才有记录"，缺口只在详情页这一处。
+
+**修法**：判据从"有没有进度"换成"上报目标是不是本次打开的这一P"——`shouldReportHistoryOnEnter(cidHistory, cid) = cid != 0 && cidHistory == cid`，上报的 cid 由 `cidHistory` 改为 `data.cid`。新稿件 `cidHistory == cid` → 报 0 登记；本P有进度 → 原样回写；别的P → 跳过、续播不动。口径见 `docs/architecture-map.md` §7.38。
+
+**真机验证（26.10.15 12:41，MuMu Nebula 模拟器，Android 12 / SDK 32 / x86_64，adb `127.0.0.1:7555`，已登录）**：测试对象用接口 `x/web-interface/view?bvid=` 解析得到（未硬编码任何 av），先用 `x/web-interface/history/cursor` 翻页确认**不在**历史记录里，再进详情页。结果：
+
+- 调试桥 `http` 与 logcat 双通道确认 `POST https://api.bilibili.com/x/v2/history/report` 请求体 `aid=117052639545707&cid=40676492842&progress=0&platform=pc&csrf=…`，响应 **`{"code":0,"message":"OK"}`**；
+- 再查 `history/cursor`，目标已出现在**第二页**（`view_at=1792039303` 恰为请求时刻，`progress=0` → App 内显示"还没看过"），确认服务端真的落库，而非仅发出请求；
+- 判据链同时被佐证：`PlayerApi` 日志 `history-report>0,40676492842` 即"服务端无记录 → `cidHistory` 归一化成本 P → 判据放行"。
+
+**踩过的两个坑**（重测时务必避开）：① 首个对照组选了个**已被记录**的 av（`170001`，failover：`progress>0` 时旧代码照样上报，A/B 因此无效）——必须先用 `history/cursor` 比对确认目标不在记录里；② 调试桥 `start --es extras 'bvid=…'` **不生效**，会回落成 `aid=114514` 并发 `稿件不可可见`（`TerminalContext.fetchVideoInfoByAidOrBvId` 的分支问题），必须传 `aid=`。
+
+**仍未覆盖**：多P 视频"进度属于别的分P"的真机断言（需要一个看到第 3P 的账号）、番剧详情页的登记（未实现，见 §7.38）。
+
+### 3.17 真实多P 切P 失败卡死 + 虚拟合集切集后进度写错稿件（26.10.15）
+
+**现象**：在真实多P 视频里切P（手动选集或"自动下一P"）**直接失败、播放器卡在原地**。
+
+**根因（真机复现，日志见下）**：`activity/player/PlayerActivity.kt` 的 `switchToOnlinePage` 用 `aid != cids[pageIndex] && cidValue > 0 && pagenames.size > 1` **猜**这份 `pagenames/cids` 是不是"收藏夹虚拟合集"。这个猜测在两种模式下都错：
+
+- **真实多P**：`cids` 存的是真 cid，av 号与 cid 永不相等 → 恒判为虚拟合集 → 把 cid 当 aid 去 `x/web-interface/view?aid=<cid>` → `62002 稿件不可见` → `playerData.cid` 落 0 → 取流 `playurl?avid=<cid>&cid=0` → `-400 请求错误` → 抛异常被 catch，播放器卡住。
+- **虚拟合集**：`cids` 存的是各视频的 **aid**，但 Activity 的 `aid` 字段只在 `:412` 从 Intent 读一次，切集后**只同步了 `cid`、没同步 `aid`** → 进度上报变成 `reportHistory(视频1的aid, 视频N的cid)`，**把 N 的进度写进 1 的记录**（污染 3.16 刚修好的历史上报链路）。
+
+**修法**（`PlayerData` + `PlayerApi` + `PlayerActivity` + `FavoriteVideoListActivity`，共 4 处）：给 `PlayerData` 加显式字段 `virtualCollection`（进 Parcelable，因为要过 `startGettingUrl` 那一跳）→ `jumpToPlayer` 透传成 Intent extra → 播放器读进 `isVirtualCollectionMode` 取代猜测 → **并在切页后同步 `aid`**（与既有的 `cid` 同步并列）。
+
+**真机验证（26.10.15 14:16，同一台 MuMu Nebula）**：
+
+| 场景 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 真实多P（170001，10P）P1→P2 | `view?aid=275431`(cid 当 aid) → 62002 → `playurl?avid=275431&cid=0` → -400，**卡在 03:19** | `playurl?avid=170001&cid=275431` → 200，P2 正常播；周期上报 `aid=170001 cid=275431` code=0 |
+| 收藏夹虚拟合集切集 | 可切，但上报 `aid=`第一个视频、`cid=`第N个视频 | `view?aid=117422627490443` → 200；上报 `aid=117422627490443 cid=42657383242` **双正确** |
+
+> 复现手法（不依赖点按 UI）：调试桥 `set --es key player_default_autonext --es value on --es type string` 打开"自动下一P"，把进度拖到末尾（点 `1400,2372`，即 `videoprogress` 条），`onCompletion` 会自动触发 `switchToPage` —— 与手动选集是同一条代码路径。**注意三态设置先看模式键**：只写 `player_last_autonext` 没用，`resolveTriState` 见模式为 `off`（默认）就直接返回 false。
+
+**仍未覆盖**：番剧（`epid != 0`）切集走的是 `switchToOnlinePage` 的同一分支，但番剧不进虚拟合集、`cids` 也是真 cid，预期不受影响，未单独跑。
+
+### 3.18 收藏夹连播遇到「真实合集」自动套一层（26.10.15）
+
+**需求**：在收藏夹虚拟合集里连播到一条**属于某个真实合集**（`ugc_season`）的视频时，直接以该合集起播；并在选集卡片里能看出"现在在哪一层"、能回主合集。
+
+**关键成本结论（推翻了先前的判断）**：这件事**零额外请求**。`PlayerActivity.switchToOnlinePage` 的虚拟合集分支本来就要调 `VideoInfoApi.getVideoInfo(aid)` 拿首个 cid，而它内部的 `getInfoByJson` **已经解析了 `ugc_season` → `videoInfo.collection`**（`VideoInfoApi.java:41-48 → :118 → :244-246`）。原来这份数据解析完就扔，只用 `cids[0]`。收藏夹入口 `playFavoriteVirtualCollection` 同理。
+
+**实现**（4 处）：
+- `model/Collection.toPlaylist(Collection)`：**纯函数 + 6 例 JVM 单测**。跨节展平成有序 `(aid, cid, title)`；`sections` 为空时退回 `cards`（"收藏的合集"只填 cards）；aid/cid 缺失的脏数据跳过。
+- `PlayerData` 加 `collectionId` / `collectionTitle` / `returnPlaylist`（一层返回栈），三者都进 Parcelable。
+- `PlayerActivity`：`switchToOnlinePage` 里检测 `collection` → `enterCollectionPlaylist()` 整体换播放列表并压栈；`returnToCallerPlaylist(advance)` 弹栈；合集播完在 `onCompletion` 里自动弹栈（受 `auto_next_enabled` 管，与"自动下一P"同一档语义）。
+- `FavoriteVideoListActivity.playFavoriteVirtualCollection`：首条即合集也直接以合集起播，收藏夹列表压成返回栈。
+- 选集卡片：标题改为「合集 · 名（i/n）」或「收藏夹名（i/n）」，并新增一行「← 返回主合集」（仅当 `returnPlaylist != null` 时可见）。
+
+**设计取舍**：合集播放列表沿用"cids 装 aid"的形状（与收藏夹虚拟合集一致），切集时反查 cid——那次请求本来就要发，所以不额外增加开销，也免了给播放器加第三种模式。合集里每一集是**不同的视频**，所以起播时 `aid`/`cid` 都要换成那一集的。
+
+**踩到的坑（真机复现后修）**：点「返回主合集」会**立刻又被切回合集**——返回的位置正是触发切换的那条合集视频。加 `suppressedCollectionId` 按**合集**抑制（不是全局抑制，否则别的合集也永远切不进去了）。显式操作压过隐式自动化。
+
+**真机验证（26.10.15 15:00~15:07，MuMu Nebula）**：
+| 场景 | 结果 |
+| --- | --- |
+| 收藏夹点「这次把荧妹也调小了一点」（属《原神》合集 336 集，位于合集第 336 集） | `jumpToPlayer: 视频标题>原神`，选集卡片标题 `合集 · 原神（336/336）` + 「← 返回主合集」 |
+| 点「返回主合集」 | `MsgUtil: 返回主合集`，标题变回 `这次把荧妹也调小了一点（9/20）`，「← 返回主合集」消失，不再被切回 |
+| 合集播完 | 进《登 神 の 路》（3 集）播到末尾 → `MsgUtil: 合集播放完毕，继续收藏夹` → 接着放收藏夹下一条（`【纸绘MV】d0tc0mmie…`） |
+
+**未覆盖**：`returnPlaylist` 只存一层，多层嵌套（合集里的视频又在另一个合集里）不处理；`PageSelectorAdapter` 对合集仍显示「P1/P2…」而不是「第 1 集」（纯文案，未改）；没有开关能关掉这个自动切换（用户明确要求"遇到就切"，若要开关需另加）。
+
+
+
 
 ## 4. 历史章节索引
 

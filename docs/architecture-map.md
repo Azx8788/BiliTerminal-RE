@@ -978,6 +978,10 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   - 心跳间隔按类型分：`progressReportIntervalMs` 是 `get() = if (epid != 0L) 5000L else 15000L`；**投稿视频仍是 15 秒**。
   - `onCompletion` 立刻上报 `HistoryApi.PROGRESS_FINISHED = -1`（服务端约定的"已看完"），且退出路径的补报**必须继续报 -1**——改报当前位置会把服务端的"已看完"覆盖成"看到最后几秒"。`reportHistoryPgc` 的守卫是 `progress == 0`（**不是 `<= 0`**，否则 -1 被吃掉）。
   - `PlayerApi.getLastPlayProgress` 只在 **`last_play_cid == 请求 cid`** 时才采用 `last_play_time`；取不到该字段（0）也按"不属于这一集"处理，由观看记录兜底。这是"看着这一集点开另一集却从上一集位置起播"的闸门。观看记录兜底走 `HistoryApi.findProgressMsByAid(aid, epid)`，解析抽成纯函数 `parseHistoryProgressMs`（有单测）。
+- **进投稿视频详情页要"登记"一条观看记录，判据是"这一P是不是本次打开的分P"，不是"有没有进度"**（`activity/video/info/VideoInfoFragment.kt` 的纯函数 `shouldReportHistoryOnEnter(cidHistory, cid)`，有单测）：
+  - 详情页本身就是一次"打开观看"。`PlayerApi.getVideo` 之后**无条件不报**会让从没看过的视频永远进不了观看记录（用户 26.10.15 实测：点进详情页历史里什么都不多，只有真的播放了才出现一条——播放器那侧 `PlayerActivity` 自己会上报，所以这个缺口只有详情页这一处）。
+  - 但也不能无条件报（26.10.02 的 `if (progress > 0)` 就是拿"有没有进度"当判据，把新视频的登记一起挡掉了）。`progress == 0` 有两种相反语义：`cidHistory == cid` 是"服务端对这个稿件**没有记录**"（getVideo 把 `last_play_cid == 0` 归一化成 `cidHistory = cid`、`progress = 0`），报 0 只是登记、无进度可覆盖；`cidHistory != cid` 则是"进度属于**别的分P**"（多P视频：上次看第 3P，详情页预取第 1P），报 0 会把第 3P 的续播抹成 0。
+  - 所以判据收敛成一条 `cid != 0 && cidHistory == cid`：上报的 cid 用 `data.cid`（详情页打开的那一P），不用 `cidHistory`。
 - **历史卡片续播**：`adapter/video/VideoCardHolder.kt` 的 `media_bangumi` 分支在 `card.epid > 0` 时先 `BangumiApi.getEpisodeFromEpid`，成功就直接进 `JumpToPlayerActivity`（`card.progress` 是**秒**，要 ×1000 成 `PlayerData.progress` 的**毫秒 Int**），失败才退回详情页并提示。
 
 ### 7.39 中央加载遮罩（`activity_simple_viewpager.xml` 的 `loading`）的收起时机（26.10.13）
@@ -1029,6 +1033,34 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 全工程 `Settings.ACTION_*` 跳转只有两处：`FileUtil`（已兜底）与 `BiliTerminal.requestOverlayPermission`（悬浮窗，**只在 Debug 构建的 UETool 流程里调用**，release 不可达）。
 
 ---
+
+### 7.42 播放列表（pagenames/cids）的两种语义与切页契约（26.10.15）
+
+`PlayerData.pagenames` / `cids` 这一个通道被**两种完全不同的东西**复用，切页逻辑必须知道自己是哪一种：
+
+| | 真实多P | 收藏夹「虚拟合集」 |
+| --- | --- | --- |
+| 来源 | `VideoInfo.toPlayerData(i)`（`x/web-interface/view` 的 `pages[]`） | `FavoriteVideoListActivity.playFavoriteVirtualCollection` |
+| `pagenames[i]` | 第 i 个分P 的标题 | 收藏夹第 i 条视频的标题 |
+| `cids[i]` | 第 i 个分P 的 **cid** | 第 i 条视频的 **aid**（切页时现查它的首个 cid） |
+| 切页动作 | `playerData.aid` 不变、`cid = cids[i]` | `playerData.aid = cids[i]`，再 `x/web-interface/view` 反查 cid |
+
+- **必须显式标记，禁止靠 `aid != cids[i]` 猜**（26.10.15 修的就是这个）：真实多P 下 av 号与 cid 永不相等，判据恒真 → 把 cid 当 aid 查 → `62002 稿件不可见` → cid 落 0 → 取流 `-400` → **切P 失败、播放器卡死**。标记走 `PlayerData.virtualCollection` → `jumpToPlayer` 的 `virtual_collection` extra → 播放器 `isVirtualCollectionMode`。新增任何"把一串视频当分P 播"的功能，都要顺手打这个标记。
+- **切页后 `aid` 与 `cid` 必须一起同步**（`switchToOnlinePage` 的 `runOnUiThread` 块）。只同步 `cid` 会让虚拟合集的进度上报变成 `reportHistory(第一个视频的 aid, 第 N 个视频的 cid)`——**把 N 的进度写进 1 的记录**。
+- 本地缓存文件夹的"虚拟合集"走的是另一条路（`switchToLocalPage`，`videoUrlList` 从 Intent 拿），不碰这两个字段，所以不需要标记。
+- 真机复现/验证手法与日志见 `docs/review/fix-progress.md` §3.17。
+
+### 7.43 收藏夹连播遇到真实合集：自动套一层（26.10.15）
+
+连播到一条属于 `ugc_season` 的视频时，**整个播放列表换成该合集**（官方顺序、完整剧集），并在选集卡片上分层显示。
+
+- **零额外请求**：`switchToOnlinePage` 的虚拟合集分支本来就要 `VideoInfoApi.getVideoInfo(aid)` 拿首个 cid，而它内部已经解析了 `ugc_season` → `videoInfo.collection`。**别再为这件事新增请求**；反过来，改动 `getInfoByJson` 时别把 `collection` 的解析去掉。
+- **合集播放列表复用"cids 装 aid"的形状**（与收藏夹虚拟合集一致，`virtualCollection = true`），所以切集分支一行没改。**不要**给它单独造"aid 数组 + cid 数组"的第三种模式——那次 `getVideoInfo` 反查本来就要发。
+- **`collectionId` 是防抖键**：每切一集都会重新查到同一个 `collection`，没有它就会"正在放合集 C 的第 5 集时又切进 C"把位置重置。
+- **`returnPlaylist` 是一层返回栈**：不压栈的话，合集动辄上百集，收藏夹里排在后面的条目永远轮不到（等于被吞了）。播完自动弹回（受 `auto_next_enabled` 管），用户也能在选集卡片点「← 返回主合集」手动弹。
+- **手动返回必须按合集抑制**（`suppressedCollectionId`）：返回的位置正是触发切换的那条合集视频，不抑制会被立刻又切回去，按钮形同虚设（真机复现过）。只抑制**这一个**合集，别做成全局——否则收藏夹里别的合集也永远切不进去。**显式操作压过隐式自动化**，这条原则以后遇到类似冲突照用。
+- 展平逻辑是纯函数 `model/Collection.toPlaylist`（有单测）：跨节按节顺序、节内按集顺序；`sections` 为空时退回 `cards`（"收藏的合集"只填 cards）。
+- 台账与真机记录见 `docs/review/fix-progress.md` §3.18；接口侧结论见 `docs/bilibili-api-notes.md` §5。
 
 ## 8. UI 基建速查（新增页面临摹用）
 

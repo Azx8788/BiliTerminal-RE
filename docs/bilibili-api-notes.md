@@ -124,3 +124,15 @@
 **明确不值得做**：创作中心、会员购、漫画、课堂、发布动态/评论/弹幕（需输入）、礼物面板/舰长榜（涉消费决策）、收藏夹批量整理、关注/粉丝列表管理、登录密码/短信、风纪委员与入站考试。
 
 **一个额外结论**：从接口可行性看，**腕上场景的终点不是"把 B 站功能搬过来"，而是"把 B 站内容变成一条可离线消费的队列"**——稍后再看 + 历史续播 + 音频轨 + AI 字幕，这四样凑齐就是手表上最完整的产品形态，其余都是锦上添花。
+
+## 5. UGC 合集（`ugc_season`）与收藏夹的归属探测（26.10.15 实测）
+
+**问题**：在收藏夹里怎么知道"这条视频属于某个 UP 的合集"？结论是**列表接口不给，只能逐条反查**。
+
+- `x/v3/fav/resource/list` 的单条 media 字段（实测全集）：`attr / bv_id / bvid / cnt_info / cover / ctime / duration / fav_time / id / intro / link / media_list_link / ogv / page / pubtime / season / title / type / ugc / upper`。
+  - **没有 `ugc_season`**；`season` 字段存在但**恒为 null**（那是 OGV/番剧用的，不是 UGC 合集）。
+  - 顺带两个**目前没解析、但有用**的字段：`ugc.first_cid`（该视频首个 cid）、`page`（分P 数）。解析 `ugc.first_cid` 可以让"收藏夹虚拟合集"切集时省掉一次 `view?aid=` 反查。
+- 只能对每条调 `x/web-interface/view?aid=` 看 `data.ugc_season` 是否存在。**命中率不低**：默认收藏夹第 1 页 20 条里 **6 条**在合集里（30%）。
+- `view?aid=` 的 `ugc_season` **带完整剧集**（实测 `ep_count=336`，`sections[].episodes[]` 也正好 336 条，分 9 节），且每条 episode 带 `aid`/`cid`/`title` —— 所以**一次请求就能拿到整个合集的官方顺序与真 cid**，足以直接构造播放列表。
+- **但响应体很大**：上述 336 集那个 `view` 响应 **494 KB**。→ 收藏夹列表层逐条预取合集归属不可行（20 条最坏 ~10MB，手表弱网不能接受）。要探测就**按需探测**（用户主动要，或只对当前可见的几条懒加载）。
+- 本项目已有的解析可直接复用：`api/VideoInfoApi.java` 的 `analyzeUgcSeason` → `model/Collection`（`sections[].episodes[]`，`Collection.Episode` 有 `aid`/`cid`/`title`）。合集详情页入口见 `docs/architecture-map.md` §7.38。
