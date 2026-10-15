@@ -12,6 +12,7 @@ import com.RobinNotBad.BiliClient.model.VideoCard
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.RobinNotBad.BiliClient.util.TerminalContext
 import com.RobinNotBad.BiliClient.util.TerminalDialog
 
 class WatchLaterActivity : RefreshListActivity() {
@@ -29,9 +30,6 @@ class WatchLaterActivity : RefreshListActivity() {
     private lateinit var filterUnfinished: TextView
     private var clearWatchedEntry: TextView? = null
     private var unselectedColor = 0
-
-    private var longClickPosition = -1
-    private var longClickTimestamp: Long = 0
 
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -164,34 +162,61 @@ class WatchLaterActivity : RefreshListActivity() {
         filterUnfinished.setTextColor(if (showUnfinishedOnly) ColorScheme.PRIMARY else unselectedColor)
     }
 
-    /** 连点两次长按删除（沿用原有交互，C18 只加筛选，不改删除手势） */
+    /**
+     * 长按条目 → 管理菜单（视频详情 / 移除稍后再看）。
+     *
+     * 原来是「4 秒内连按两次长按」才删，且没有任何弹窗。那样做有两个问题：
+     * ① 本页**没有任何入口进视频详情页**——点击条目会直接起播，也没有收藏夹那样的
+     *    「虚拟合集」开关可以关回去，用户想看某条的信息只能干瞪眼；
+     * ② 手势不可发现，第一次长按只得到一句 toast，不知道长按能删。
+     *
+     * 「移除」是破坏性操作，菜单里标危险色，且再走一次确认（见 [confirmRemove]）。
+     */
     private fun onItemLongClick(position: Int) {
-        val timestamp = System.currentTimeMillis()
-        if (longClickPosition == position && timestamp - longClickTimestamp < 4000) {
-            if (position < 0 || position >= shownList.size) return
-            val card = shownList[position]
+        val card = shownList.getOrNull(position) ?: return
+        TerminalDialog.menu(
+            context = this,
+            title = card.title,
+            items = listOf("视频详情", "移除稍后再看"),
+            danger = setOf(1)
+        ) { which ->
+            when (which) {
+                0 -> TerminalContext.getInstance()
+                    .enterVideoDetailPage(this, card.aid, card.bvid, "video")
+                1 -> confirmRemove(card, position)
+            }
+        }.show()
+    }
+
+    /** 「移除稍后再看」——破坏性且不可撤销，先过二次确认，确认按钮走危险色。 */
+    private fun confirmRemove(card: VideoCard, position: Int) {
+        TerminalDialog.confirm(
+            context = this,
+            title = "移除稍后再看",
+            message = "确定把《${card.title}》从稍后再看里移除吗？",
+            confirmText = "移除",
+            confirmIsDanger = true
+        ) {
             CenterThreadPool.run {
                 try {
                     val result = WatchLaterApi.delete(card.aid)
-                    longClickPosition = -1
-                    if (result == 0) runOnUiThread {
-                        MsgUtil.showMsg("删除成功")
-                        shownList.removeAt(position)
-                        allList.remove(card)
-                        adapter?.notifyItemRemoved(position)
-                        adapter?.notifyItemRangeChanged(position, shownList.size - position)
-                        if (shownList.isEmpty()) showEmptyView()
-                    } else {
-                        runOnUiThread { MsgUtil.showMsg("删除失败，错误码：" + result) }
+                    runOnUiThread {
+                        if (result == 0) {
+                            MsgUtil.showMsg("已移除")
+                            // shownList 是筛选后的视图、allList 是接口全集，两边都要同步删
+                            if (position in shownList.indices) shownList.removeAt(position)
+                            allList.remove(card)
+                            adapter?.notifyItemRemoved(position)
+                            adapter?.notifyItemRangeChanged(position, shownList.size - position)
+                            if (shownList.isEmpty()) showEmptyView()
+                        } else {
+                            MsgUtil.showMsg("移除失败，错误码：$result")
+                        }
                     }
                 } catch (e: Exception) {
                     report(e)
                 }
             }
-        } else {
-            longClickPosition = position
-            longClickTimestamp = timestamp
-            MsgUtil.showMsg("再次长按删除")
-        }
+        }.show()
     }
 }
