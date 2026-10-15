@@ -10,6 +10,7 @@ import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
 import com.RobinNotBad.BiliClient.adapter.video.VideoCardAdapter
 import com.RobinNotBad.BiliClient.api.FavoriteApi
 import com.RobinNotBad.BiliClient.api.PlayerApi
+import com.RobinNotBad.BiliClient.model.Collection
 import com.RobinNotBad.BiliClient.model.PlayerData
 import com.RobinNotBad.BiliClient.model.VideoCard
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
@@ -281,9 +282,16 @@ class FavoriteVideoListActivity : RefreshListActivity() {
             toggleSelected(position)
             return true
         }
-        // 自己的收藏夹：长按弹管理菜单（复制/移动/取消收藏）
+        // 自己的收藏夹：长按弹管理菜单（详情/复制/移动/多选/取消收藏）
         if (writable) {
             showManageMenu(position)
+            return true
+        }
+        // 别人的收藏夹（只读）：写操作一概不给，但**看信息是只读的**，所以只弹「视频详情」。
+        // 之前这里直接 return false，长按回落成"快速缓存"，用户在这个页面连详情页都进不去
+        // （点击又会被虚拟合集连播接管）。
+        if (readOnly) {
+            showReadOnlyMenu(position)
             return true
         }
         // 拿不到 media_id 的老链路：保留原有的连点两次长按删除
@@ -316,9 +324,27 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         return false
     }
 
+    /** 别人收藏夹（只读）的长按菜单：只有「视频详情」这一项。 */
+    private fun showReadOnlyMenu(position: Int) {
+        val card = videoList.getOrNull(position) ?: return
+        TerminalDialog.menu(
+            context = this,
+            title = card.title,
+            items = listOf("视频详情")
+        ) {
+            TerminalContext.getInstance().enterVideoDetailPage(this, card.aid, card.bvid, "video")
+        }.show()
+    }
+
     private fun showManageMenu(position: Int) {
         val card = videoList.getOrNull(position) ?: return
         val actions = ArrayList<Pair<String, () -> Unit>>()
+        // 默认点击在虚拟合档下是「整个收藏夹连播」，用户想去某一条的详情页时没有入口，
+        // 只能关掉虚拟合集开关——所以这里补一个直达详情页的项。
+        // 放第一位：它是唯一「看信息」而非「改收藏夹结构」的动作。
+        actions.add("视频详情" to {
+            TerminalContext.getInstance().enterVideoDetailPage(this, card.aid, card.bvid, "video")
+        })
         actions.add("复制到…" to { showTargetFolderPicker(card, false) })
         actions.add("移动到…" to { showTargetFolderPicker(card, true) })
         // 多选的入口。原来靠列表顶上一整行常亮的「多选」按钮，用户反馈那一行平时白占地方，
@@ -482,6 +508,37 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                 playerData.pagenames = pagenames
                 playerData.cids = cids
                 playerData.currentPageIndex = startPageIndex
+                // 标记"cids 里装的是 aid 不是 cid"：播放器切集时必须靠这个标志走对分支，
+                // 否则会把 aid 当 cid（或反过来）去取流
+                playerData.virtualCollection = true
+
+                // 点开的这一条若属于某个真实合集，就直接以合集起播（"任何时候遇到合集视频都切"，
+                // 包括第一条）。上面这次 getVideoInfo 本来就要发，ugc_season 是白拿的。
+                // 收藏夹这条播放列表压成返回栈，合集播完或用户点「返回主合集」时回来。
+                val collection = videoInfo?.collection
+                val collectionItems = if (collection != null) Collection.toPlaylist(collection) else emptyList()
+                if (collection != null && collectionItems.size > 1) {
+                    // 显式赋值而不是 apply{}：本函数里的 pagenames/cids 是**局部变量**，
+                    // 在 apply 里会遮蔽接收者的同名字段，写出来就成了"给 val 重新赋值"
+                    val back = PlayerData(PlayerData.TYPE_VIDEO)
+                    back.title = "$folderName（虚拟合集）"
+                    back.pagenames = ArrayList(pagenames)
+                    back.cids = ArrayList(cids)
+                    back.currentPageIndex = startPageIndex
+                    back.virtualCollection = true
+                    playerData.returnPlaylist = back
+                    playerData.collectionId = collection.id.toLong()
+                    playerData.collectionTitle = collection.title ?: ""
+                    playerData.title = collection.title ?: "合集"
+                    playerData.pagenames = ArrayList(collectionItems.map { it.title })
+                    playerData.cids = ArrayList(collectionItems.map { it.aid })
+                    val idx = collectionItems.indexOfFirst { it.aid == firstAid }
+                    playerData.currentPageIndex = if (idx >= 0) idx else 0
+                    // 合集里每一集是**不同的视频**，aid/cid 都要跟着换成那一集的
+                    val ep = collectionItems[playerData.currentPageIndex]
+                    playerData.aid = ep.aid
+                    playerData.cid = ep.cid
+                }
 
                 // 在主线程启动播放
                 runOnUiThread {

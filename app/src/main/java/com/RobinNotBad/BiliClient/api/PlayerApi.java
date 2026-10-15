@@ -483,6 +483,12 @@ public class PlayerApi {
                         intent.putExtra("cids", cidArray);
                     }
                     intent.putExtra("currentPageIndex", playerData.currentPageIndex);
+                    // cids 里装的是 cid 还是 aid 必须显式告诉播放器：两种模式的切P 逻辑完全不同，
+                    // 靠 aid != cids[i] 猜在真实多P 下恒真（av 号永不等于 cid），会把 cid 当 aid 查
+                    intent.putExtra("virtual_collection", playerData.virtualCollection);
+                    intent.putExtra("collection_id", playerData.collectionId);
+                    intent.putExtra("collection_title", playerData.collectionTitle);
+                    intent.putExtra("return_playlist", playerData.returnPlaylist);
                 }
                 break;
 

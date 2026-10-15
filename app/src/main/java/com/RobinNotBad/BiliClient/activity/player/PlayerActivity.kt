@@ -53,6 +53,7 @@ import com.RobinNotBad.BiliClient.api.VideoInfoApi
 import com.RobinNotBad.BiliClient.event.SnackEvent
 import com.RobinNotBad.BiliClient.model.HighEnergyData
 import com.RobinNotBad.BiliClient.model.InteractionVideoData
+import com.RobinNotBad.BiliClient.model.Collection
 import com.RobinNotBad.BiliClient.model.PlayerData
 import com.RobinNotBad.BiliClient.model.Subtitle
 import com.RobinNotBad.BiliClient.model.SubtitleLink
@@ -344,6 +345,39 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     // 未登录只提示一次，否则每次周期上报都会刷一条日志
     private var notLoggedInWarned: Boolean = false
 
+    /**
+     * 本次的 pagenames/cids 是不是"收藏夹虚拟合集"。
+     *
+     * 由构建方通过 Intent 显式告知（见 [PlayerData.virtualCollection]）。**不要改回
+     * `aid != cids[i]` 那种猜测**：真实多P 的 av 号与 cid 永不相等，会恒判为虚拟合集，
+     * 切P 时把 cid 当 aid 去查 → 62002 → cid 落 0 → 取流 -400 → 切P 失败卡住。
+     */
+    private var isVirtualCollectionMode: Boolean = false
+
+    /** 当前播放列表对应的真实合集 id（`ugc_season.id`）；0 = 不是合集。见 [syncToCollection]。 */
+    private var collectionId: Long = 0L
+
+    /** 当前合集的标题，只用于选集卡片上显示"现在在哪一层"。 */
+    private var collectionTitle: String? = null
+
+    /**
+     * 用户按过「返回主合集」的那个合集 id → 本次播放内不再自动切进**这一个**合集。
+     *
+     * <p>不加这个抑制按钮就是失效的：返回的位置正是**触发切换的那条合集视频**，
+     * 一回到收藏夹列表，`switchToOnlinePage` 立刻又检测到合集、又切回去（26.10.15 真机复现）。
+     *
+     * <p>只抑制这一个合集而不是全部：用户拒绝的是"被切进这个合集"，收藏夹里后面若还有
+     * **别的**合集的视频，仍然该按"遇到就切"处理。显式操作压过隐式自动化。
+     * 只在本次播放会话内有效，退出重进即恢复。
+     */
+    private var suppressedCollectionId: Long = 0L
+
+    /**
+     * 一层返回栈：从收藏夹连播自动切进合集时，收藏夹那条播放列表存在这里，
+     * 合集播完后再弹回来继续。见 [returnToCallerPlaylist]。
+     */
+    private var returnPlaylist: PlayerData? = null
+
     private var pagenames: ArrayList<String>? = null
     private var cids: ArrayList<Long>? = null
     private var currentPageIndex = 0
@@ -445,6 +479,14 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 cids = ArrayList()
             }
             currentPageIndex = intent.getIntExtra("currentPageIndex", 0)
+            // 由构建方显式告知，不再靠 aid != cids[i] 猜（真实多P 下那个判据恒真，会把 cid 当 aid）
+            isVirtualCollectionMode = intent.getBooleanExtra("virtual_collection", false)
+            // 当前播放列表是不是"某个真实合集"（见 enterCollectionPlaylist）
+            collectionId = intent.getLongExtra("collection_id", 0L)
+            collectionTitle = intent.getStringExtra("collection_title")
+            // 一层返回栈：从收藏夹自动切进合集时存下收藏夹那条列表，合集播完再弹回来
+            @Suppress("DEPRECATION")
+            returnPlaylist = intent.getParcelableExtra("return_playlist")
         }
 
         initialEdgeId = intent.getLongExtra("edgeId", 0)
@@ -1067,6 +1109,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 ijkPlayer!!.start()
             } else if (auto_next_enabled && hasMultiplePages() && currentPageIndex < pagenames!!.size - 1) {
                 switchToPage(currentPageIndex + 1)
+            } else if (auto_next_enabled && returnPlaylist != null) {
+                // 合集放完了 → 弹回收藏夹接着放。跟"自动下一P"一样属于自动前进，所以同样受
+                // auto_next_enabled 管；关掉自动播放的用户不该被这里偷偷换掉播放列表。
+                returnToCallerPlaylist(advance = true)
             } else {
                 isPlaying = false
                 try { audioPlayer?.pause() } catch (_: Exception) {}
@@ -2928,6 +2974,32 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
             pageSelectorRecycler.layoutManager = CustomLinearManager(this)
             pageSelectorRecycler.adapter = adapter
+
+            // 标题要说清"现在在哪一层"：同一个"第 3 集"，在收藏夹连播里和在合集里指的是不同的东西
+            val size = pagenames!!.size
+            findViewById<TextView>(R.id.page_selector_title).text = when {
+                collectionId != 0L ->
+                    "合集 · ${collectionTitle ?: ""}（${currentPageIndex + 1}/$size）"
+                isVirtualCollectionMode ->
+                    "${videoTitle ?: "收藏夹连播"}（${currentPageIndex + 1}/$size）"
+                else -> "选择分P"
+            }
+
+            // 「返回主合集」只在"从收藏夹切进来的合集层"出现——这是用户中途想回去的唯一入口，
+            // 否则得等上百集播完才会自动返回（见 returnToCallerPlaylist）
+            val backEntry = findViewById<TextView>(R.id.page_selector_back)
+            if (returnPlaylist != null) {
+                backEntry.visibility = View.VISIBLE
+                backEntry.setOnClickListener {
+                    layout_card_bg.visibility = View.GONE
+                    card_page_selector.visibility = View.GONE
+                    returnToCallerPlaylist(advance = false)
+                }
+            } else {
+                backEntry.visibility = View.GONE
+                backEntry.setOnClickListener(null)
+            }
+
             layout_card_bg.visibility = View.VISIBLE
             card_page_selector.visibility = View.VISIBLE
         }
@@ -2965,18 +3037,33 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 val playerData = PlayerData()
                 val cidValue = cids!![pageIndex]
 
-                // 判断是虚拟合集模式（aid != 当前页的cid值，说明cids存的是aid）
-                val isVirtualCollection = aid != cidValue && cidValue > 0 && pagenames!!.size > 1
-
-                if (isVirtualCollection) {
-                    // 虚拟合集模式：通过aid获取视频信息
+                if (isVirtualCollectionMode) {
+                    // 虚拟合集模式：cids 里存的是每个视频的 **aid**，要拿它反查该视频的首个 cid
                     playerData.aid = cidValue
                     playerData.cid = 0 // 需要从API获取
                     val videoInfo = com.RobinNotBad.BiliClient.api.VideoInfoApi.getVideoInfo(cidValue)
+                    // 自动切合集：这次 getVideoInfo 本来就要发（为了拿首个 cid），而它的响应里
+                    // 已经带回了整个 ugc_season（实测 336 集带 aid/cid），等于白拿。
+                    // 之前这份数据是解析完就扔的（只用了 cids[0]）。
+                    val collection = videoInfo?.collection
+                    if (collection != null
+                        && collection.id.toLong() != collectionId
+                        && collection.id.toLong() != suppressedCollectionId
+                    ) {
+                        val items = Collection.toPlaylist(collection)
+                        // 只有一集的"合集"不值得套一层，否则用户会莫名看到选集卡片换了个标题
+                        if (items.size > 1) {
+                            runOnUiThread {
+                                if (!destroyed) enterCollectionPlaylist(collection, items, cidValue, pageIndex)
+                            }
+                            return@run
+                        }
+                    }
                     if (videoInfo != null && videoInfo.cids.isNotEmpty()) {
                         playerData.cid = videoInfo.cids[0]
                     }
                 } else {
+                    // 真实多P：cids 里就是真 cid，aid 不变
                     playerData.aid = aid
                     playerData.cid = cidValue
                 }
@@ -2996,6 +3083,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     // 都用这个字段，finish() 回传给上一页的也是它。不同步的话切P后弹幕、
                     // 字幕、看点以及观看进度上报全都还挂在切P前的那个 cid 上。
                     if (playerData.cid > 0) cid = playerData.cid
+                    // aid 同理，而且**虚拟合集下必须同步**：cids 装的是 aid，切到第 N 个视频后
+                    // aid 还停在第一个视频上，进度上报就会变成 reportHistory(视频1, 视频N的cid)——
+                    // 把 N 的进度写到 1 的记录里（26.10.15 修）
+                    if (playerData.aid > 0) aid = playerData.aid
                     doSwitchPage(newTitle, playerData.videoUrl, playerData.danmakuUrl, pageIndex)
                 }
             } catch (e: Exception) {
@@ -3005,6 +3096,79 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 }
             }
         }
+    }
+
+    /**
+     * 把播放列表整体换成某个真实合集（`ugc_season`），从 [startAid] 那一集开始播。
+     *
+     * <p>与"收藏夹虚拟合集"共用同一套数据形状（`cids` 里装 aid、切集时反查 cid），
+     * 所以切页逻辑一行都不用改；差别只在于多了 [collectionId] 这个身份，用来防止
+     * "正在放合集 C 的第 5 集时又切进 C"把位置重置。
+     *
+     * <p>切进来时把**收藏夹那条播放列表**压进 [returnPlaylist]（只压一层）：
+     * 否则合集动辄上百集，收藏夹里排在后面的条目永远轮不到，等于被吞了。
+     *
+     * @param triggeringIndex 触发这次切换的条目在**收藏夹那条列表**里的下标
+     */
+    private fun enterCollectionPlaylist(
+        collection: Collection,
+        items: List<Collection.PlaylistItem>,
+        startAid: Long,
+        triggeringIndex: Int
+    ) {
+        if (collectionId == 0L) {
+            val back = PlayerData()
+            back.title = videoTitle ?: ""
+            back.pagenames = ArrayList(pagenames ?: emptyList())
+            back.cids = ArrayList(cids ?: emptyList())
+            // 记住触发的那一条：手动"返回主合集"回到它，合集播完自动返回则用它 +1
+            back.currentPageIndex = triggeringIndex
+            back.virtualCollection = true
+            back.collectionId = 0L
+            returnPlaylist = back
+        }
+        collectionId = collection.id.toLong()
+        collectionTitle = collection.title
+        pagenames = ArrayList(items.map { it.title })
+        cids = ArrayList(items.map { it.aid })
+        isVirtualCollectionMode = true
+        val target = items.indexOfFirst { it.aid == startAid }.coerceAtLeast(0)
+        currentPageIndex = target
+        MsgUtil.showMsg("进入合集：${collection.title ?: ""}")
+        switchToOnlinePage(target, pagenames!![target])
+    }
+
+    /**
+     * 弹出一层返回栈，回到切进合集之前的那条播放列表。
+     *
+     * @param advance true 用于"合集播完了"（接着放触发条的**下一条**）；
+     *                false 用于用户在选集卡片里点「返回主合集」（回到触发的那一条本身）
+     */
+    private fun returnToCallerPlaylist(advance: Boolean) {
+        val back = returnPlaylist ?: return
+        val backPages = back.pagenames
+        val backCids = back.cids
+        if (backPages.isNullOrEmpty() || backCids.isNullOrEmpty()) return
+
+        // 手动返回 = 用户明确说"别把我切进这个合集"：不抑制的话，返回的位置正是触发切换的
+        // 那条合集视频，会被立刻又切回去，按钮形同虚设
+        if (!advance) suppressedCollectionId = collectionId
+
+        val resume = (back.currentPageIndex + if (advance) 1 else 0)
+            .coerceIn(0, backPages.size - 1)
+
+        reportProgressNow(true, "返回主合集前")
+
+        pagenames = ArrayList(backPages)
+        cids = ArrayList(backCids)
+        isVirtualCollectionMode = back.virtualCollection
+        collectionId = 0L
+        collectionTitle = null
+        returnPlaylist = null
+        currentPageIndex = resume
+
+        MsgUtil.showMsg(if (advance) "合集播放完毕，继续收藏夹" else "返回主合集")
+        switchToOnlinePage(resume, backPages[resume])
     }
 
     /**

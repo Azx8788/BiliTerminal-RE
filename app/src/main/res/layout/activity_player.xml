@@ -672,6 +672,17 @@
                 android:text="选择分P"
                 android:textSize="14sp" />
 
+            <TextView
+                android:id="@+id/page_selector_back"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:paddingHorizontal="3dp"
+                android:paddingVertical="6dp"
+                android:text="← 返回主合集"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
             <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView
                 android:id="@+id/page_selector_list"
                 android:layout_width="match_parent"
