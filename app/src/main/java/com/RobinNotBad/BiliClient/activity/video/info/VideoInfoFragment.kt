@@ -192,6 +192,28 @@ class VideoInfoFragment : BaseFragment() {
             fragment.arguments = args
             return fragment
         }
+
+        /**
+         * 进详情页时，要不要把这条观看记录上报给服务端。
+         *
+         * 详情页本身就是一次"打开观看"，必须登记，否则从没看过的视频永远进不了观看记录——
+         * 用户实测过：点进详情页历史里什么都不多，只有真的播了才出现一条。
+         *
+         * 判据只有一条：**这次上报的目标是不是正在打开的这一个分P**。被 26.10.02 的
+         * `if (progress > 0)` 挡掉登记，就是因为拿"有没有进度"当判据，而"没有进度"
+         * 恰好分两种完全相反的语义：
+         *
+         * - cidHistory == cid：这个稿件服务端没有记录（getVideo 把 `last_play_cid == 0`
+         *   归一化成 `cidHistory = cid`、`progress = 0`），报 0 只是登记，没有进度可覆盖；
+         *   这个分P本来就有进度时同理，原样回写，幂等无害。
+         * - cidHistory != cid：进度属于**别的分P**（多P视频：上次看第 3P，详情页预取第 1P），
+         *   报 0 会把第 3P 的续播抹成 0，用户下次打开从头看。必须跳过。
+         *
+         * 抽成纯函数是为了能被 JVM 单测盯住：真机上很难复现"多P视频续播被清零"。
+         */
+        @JvmStatic
+        fun shouldReportHistoryOnEnter(cidHistory: Long, cid: Long): Boolean =
+            cid != 0L && cidHistory == cid
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -332,10 +354,12 @@ class VideoInfoFragment : BaseFragment() {
                 // 是自相矛盾的死代码，这里一并去掉。
                 val data = videoInfo!!.toPlayerData(0)
                 PlayerApi.getVideo(data, false)
-                // progress 为 0 说明服务端没有这个分P的观看记录，此时按 cidHistory 上报 0
-                // 会把服务端该分P的续播进度覆盖掉，所以跳过上报。
-                if (data.progress > 0)
-                    HistoryApi.reportHistory(videoInfo!!.aid, data.cidHistory, (data.progress / 1000).toLong())
+                // 进详情页要"登记"一条观看记录，否则从没看过的视频永远进不了观看记录
+                // （表现就是"点进详情页历史里什么都没有，只有真的播了才出现一条"）。
+                // 但不能无条件上报：cidHistory 指向**别的分P**时，报 0 会把那一P的续播抹掉。
+                // 判据见 shouldReportHistoryOnEnter。
+                if (shouldReportHistoryOnEnter(data.cidHistory, data.cid))
+                    HistoryApi.reportHistory(videoInfo!!.aid, data.cid, (data.progress / 1000).toLong())
                 playerData = data
             } catch (e: Exception) {
                 MsgUtil.err(e)
