@@ -109,4 +109,32 @@ class FavoriteApiTest {
         assertEquals("内容不存在，可能已经被删除了", FavoriteApi.resourceErrorMsg(11010))
         assertEquals("未知码带原码", "操作失败（错误码 7）", FavoriteApi.resourceErrorMsg(7))
     }
+
+    @Test
+    fun resolveMaxCount_legacy999_isTreatedAsUnreliable() {
+        assertEquals(
+            "getBoxList 对自建收藏夹返回 999，实际上限是 1000",
+            FavoriteApi.MAX_COUNT_CUSTOM_FOLDER,
+            FavoriteApi.resolveMaxCount(999, false)
+        )
+        assertEquals(
+            "默认收藏夹拿到 999 同样不可信，回落 50000",
+            FavoriteApi.MAX_COUNT_DEFAULT_FOLDER,
+            FavoriteApi.resolveMaxCount(999, true)
+        )
+    }
+
+    @Test
+    fun resolveMaxCount_trustsNonLegacyServerValue() {
+        assertEquals(50000, FavoriteApi.resolveMaxCount(50000, true))
+        assertEquals(1000, FavoriteApi.resolveMaxCount(1000, false))
+        assertEquals("服务端将来放宽上限时直接跟随", 2000, FavoriteApi.resolveMaxCount(2000, false))
+    }
+
+    @Test
+    fun resolveMaxCount_missingOrInvalid_fallsBackToConvention() {
+        assertEquals("字段缺失", FavoriteApi.MAX_COUNT_DEFAULT_FOLDER, FavoriteApi.resolveMaxCount(0, true))
+        assertEquals("字段缺失", FavoriteApi.MAX_COUNT_CUSTOM_FOLDER, FavoriteApi.resolveMaxCount(0, false))
+        assertEquals("负值非法", FavoriteApi.MAX_COUNT_CUSTOM_FOLDER, FavoriteApi.resolveMaxCount(-1, false))
+    }
 }

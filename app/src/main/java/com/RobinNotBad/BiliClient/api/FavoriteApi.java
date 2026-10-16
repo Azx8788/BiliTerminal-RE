@@ -40,6 +40,35 @@ public class FavoriteApi {
         return ORDER_FAV_TIME.equals(order) ? "fav_time" : order;
     }
 
+    /** 默认收藏夹的视频上限 */
+    public static final int MAX_COUNT_DEFAULT_FOLDER = 50000;
+    /** 用户自建收藏夹的视频上限 */
+    public static final int MAX_COUNT_CUSTOM_FOLDER = 1000;
+
+    /**
+     * 老接口 {@code space.bilibili.com/ajax/fav/getBoxList} 的 {@code max_count} 对自建收藏夹长期返回
+     * {@code 999}——**比实际能装的数量少 1**（26.10.16 实测：一个已有 1000 条的收藏夹被服务端标成
+     * {@code max_count=999}，界面显示 {@code 1000/999}）。该字段没有任何别的语义，所以把 {@code 999}
+     * 与缺失（{@code <= 0}）一并视为「不可信」，回落到本工程约定值。
+     */
+    private static final int LEGACY_CUSTOM_FOLDER_MAX_COUNT = 999;
+
+    /**
+     * 归一化收藏夹视频上限：只信任服务端给的非历史值，其余（历史值 {@code 999} / 缺失 / 非法）按
+     * {@link #MAX_COUNT_DEFAULT_FOLDER} 与 {@link #MAX_COUNT_CUSTOM_FOLDER} 推断。
+     *
+     * <p>纯函数，供单测直接调用；服务端若将来把上限改大并同步了字段，这里会自动跟随。
+     *
+     * @param serverMaxCount 服务端 {@code max_count}，缺失或非法传 {@code 0}
+     * @param isDefault      是否默认收藏夹
+     */
+    public static int resolveMaxCount(int serverMaxCount, boolean isDefault) {
+        if (serverMaxCount == LEGACY_CUSTOM_FOLDER_MAX_COUNT || serverMaxCount <= 0) {
+            return isDefault ? MAX_COUNT_DEFAULT_FOLDER : MAX_COUNT_CUSTOM_FOLDER;
+        }
+        return serverMaxCount;
+    }
+
     public static ArrayList<FavoriteFolder> getFavoriteFolders(long mid) throws IOException, JSONException {
         String url = "https://space.bilibili.com/ajax/fav/getBoxList?mid=" + mid;
         JSONObject result = NetWorkUtil.getJson(url);
@@ -81,9 +110,10 @@ public class FavoriteApi {
                 else favoriteFolder.cover = "";
 
                 favoriteFolder.videoCount = folder.getInt("count");
-                favoriteFolder.maxCount = folder.getInt("max_count");
                 favoriteFolder.isDefault = (i == 0 || favoriteFolder.id == 0);
-                
+                // 服务端 max_count 对自建收藏夹返回 999（历史值），不能直接用，见 resolveMaxCount
+                favoriteFolder.maxCount = resolveMaxCount(folder.optInt("max_count", 0), favoriteFolder.isDefault);
+
                 Long mediaId = fidToMediaIdMap.get(favoriteFolder.id);
                 if (mediaId != null) {
                     favoriteFolder.mediaId = mediaId;
@@ -311,7 +341,7 @@ public class FavoriteApi {
             fidList.add(folder.getLong("fid"));
             stateList.add(folder.getInt("fav_state") == 1);
             countList.add(folder.optInt("media_count", 0));
-            maxCountList.add(i == 0 ? 50000 : 1000);
+            maxCountList.add(i == 0 ? MAX_COUNT_DEFAULT_FOLDER : MAX_COUNT_CUSTOM_FOLDER);
         }
     }
 
