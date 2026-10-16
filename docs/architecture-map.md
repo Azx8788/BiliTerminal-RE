@@ -1013,8 +1013,15 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 7.34 收藏夹上限与「默认收藏夹」的识别规则
 
-服务端不返回上限时按本工程约定填：**默认收藏夹上限 50000、用户自建 1000**，且**默认收藏夹以 `index == 0` 识别**（与 `api/FavoriteApi.java` 既有 `isDefault` 逻辑一致）。
-`parseFavoriteState` 的 `maxCountList` 参数就带着这个推断值——这是「服务端不给就用约定值」的先例。**上限不是接口字段**，别去响应里找。
+约定值（`api/FavoriteApi.java` 的 `MAX_COUNT_DEFAULT_FOLDER` / `MAX_COUNT_CUSTOM_FOLDER`）：**默认收藏夹 50000、用户自建 1000**；
+**默认收藏夹以 `index == 0` 识别**（与既有 `isDefault` 逻辑一致）。
+
+**上限字段有没有，取决于走哪条链**——这是 26.10.16 踩过的坑（「我的收藏夹」把自建收藏夹显示成 `22/999`，而一个 1000 条的收藏夹被显示成 `1000/999`）：
+
+- `x/v3/fav/folder/created/list-all`（`parseFavoriteState`，加收藏时的选择框）**不返回上限**，`maxCountList` 直接用约定值。
+- 老接口 `space.bilibili.com/ajax/fav/getBoxList`（`getFavoriteFolders`，我的收藏夹页 / 移动目标列表）**返回 `max_count`，但自建收藏夹恒为 `999`**（比实际能装的少 1）；默认收藏夹那条倒是正确的 `50000`。
+
+所以两处统一走 `FavoriteApi.resolveMaxCount(serverMaxCount, isDefault)`：**只有「非 999 且 > 0」的服务端值才被采信**，其余（999 / 字段缺失 / 非法）回落到约定值。别再把 `999` 当上限渲染，也别把「服务端一定不给上限」当事实（服务端将来放宽上限并同步字段时，这个函数会自动跟随）。实测数据见 `docs/bilibili-api-notes.md` §6。
 
 ### 7.35 B 站 `playurl` 与签到类接口的接入常识（26.10.10 回迁）
 
@@ -1134,27 +1141,32 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 本地缓存文件夹的"虚拟合集"走的是另一条路（`switchToLocalPage`，`videoUrlList` 从 Intent 拿），不碰这两个字段，所以不需要标记。
 - 真机复现/验证手法与日志见 `docs/review/fix-progress.md` §3.17。
 
-### 7.43 收藏夹连播遇到真实合集：自动套一层（26.10.15）
+### 7.43 虚拟合集的嵌套层：合集 / 分P（26.10.15 起，26.10.16 改为手动进入）
 
-连播到一条属于 `ugc_season` 的视频时，**整个播放列表换成该合集**（官方顺序、完整剧集），并在选集卡片上分层显示。
+用户的心智模型是一棵**目录树**，不是"几种并列类型"：
 
-- **零额外请求**：`switchToOnlinePage` 的虚拟合集分支本来就要 `VideoInfoApi.getVideoInfo(aid)` 拿首个 cid，而它内部已经解析了 `ugc_season` → `videoInfo.collection`。**别再为这件事新增请求**；反过来，改动 `getInfoByJson` 时别把 `collection` 的解析去掉。
-- **合集播放列表复用"cids 装 aid"的形状**（与收藏夹虚拟合集一致，`virtualCollection = true`），所以切集分支一行没改。**不要**给它单独造"aid 数组 + cid 数组"的第三种模式——那次 `getVideoInfo` 反查本来就要发。
-- **`collectionId` 是防抖键**：每切一集都会重新查到同一个 `collection`，没有它就会"正在放合集 C 的第 5 集时又切进 C"把位置重置。
-- **`returnPlaylist` 是一层返回栈**：不压栈的话，合集动辄上百集，收藏夹里排在后面的条目永远轮不到（等于被吞了）。播完自动弹回（受 `auto_next_enabled` 管），用户也能在选集卡片点「← 返回主合集」手动弹。
-- **手动返回必须按合集抑制**（`suppressedCollectionId`）：返回的位置正是触发切换的那条合集视频，不抑制会被立刻又切回去，按钮形同虚设（真机复现过）。只抑制**这一个**合集，别做成全局——否则收藏夹里别的合集也永远切不进去。**显式操作压过隐式自动化**，这条原则以后遇到类似冲突照用。
-- 展平逻辑是纯函数 `model/Collection.toPlaylist`（有单测）：跨节按节顺序、节内按集顺序；`sections` 为空时退回 `cards`（"收藏的合集"只填 cards）。
-- 台账与真机记录见 `docs/review/fix-progress.md` §3.18；接口侧结论见 `docs/bilibili-api-notes.md` §5。
+```
+收藏夹（虚拟合集）= 根目录
+├── 单视频 / 合集里的单视频.mp4   ← 直接播
+├── 分P视频/                     ← 文件夹：进去看各分P，退出来回根目录
+└── 合集/                        ← 文件夹：进去看各剧集，退出来回根目录
+```
 
-### 7.44 `Glide.with(activity)` 在异步回调里必崩，统一走 `GlideUtil.canLoad`（26.10.16）
+**进入一律手动**（26.10.16 用户明确要求，别改回自动）。选集卡片上一行 `page_selector_nest` 承担进出两个方向：
 
-**结论先行**：页面一旦 `finish` / 销毁，`Glide.with(activity)` 会抛 `IllegalArgumentException: You cannot start a load for a destroyed activity`。凡是「**发请求时页面还活着、回来时可能已经关了**」的回调里加载图片，都必须先判活。弱网与低性能设备只是把这个时间窗拉长，不是原因。
+| 所在层 | 那一行显示 | 点击效果 |
+| --- | --- | --- |
+| 根目录层，当前条目是"文件夹" | `进入分P（N 个）` / `进入合集 · 标题（N 集）` | 换播放列表进层 |
+| 任一嵌套层 | `← 返回主合集` | 弹回根目录层 |
 
-- **触发面比想象的大**：`Glide.with(view)` 会沿 View 的 Context 往上找宿主 Activity，最后走到**同一个** `assertNotDestroyed` 判断。所以 `GlideUtil.request/requestRound` 这类「传 View」的写法同样会崩，不是只有传 Activity 才会。
-- **本工程的放大器**：`activity/base/BaseActivity.kt:473` 重写了 `isDestroyed()`，语义是「已销毁 **或** 正在 finish」。Glide 的判活是虚调用，因此**连「只是正在 finish」的窗口也会崩**——比原生 Glide 更容易踩到。
-- **统一入口**：`util/GlideUtil.canLoad(View)`（Java 侧可直接用）。判据是「沿 ContextWrapper 链找到宿主 Activity；找到了才判 `isFinishing() || isDestroyed()`，找不到（View 挂在 Application 上下文上）一律放行」——放行分支保证与改动前行为一致。三个 `request*` 方法已内建这道闸。
-- **页面自己的 `Glide.with(this)` 仍需自己判**：`canLoad` 管不到「传 Activity」的调用点。写法是在 `runOnUiThread {}` **内部**第一行 `if (isDestroyed) return@runOnUiThread`——**不能只在 post 之前判**，判完到 Runnable 真正执行之间主线程完全可能跑完 `onDestroy`。
-- **顺带一条内存约定**：`removeAllViews()` 只是把 View 从父容器摘下来，Glide **不会**因此取消请求，ViewTarget 仍然吊着那个 ImageView。列表重建频繁的页面（每次 `onResume` 重建的那种）必须持有一个页级 `RequestManager` 并显式 `clear(view)`，否则一轮轮往上堆。范例见 `activity/settings/login/AccountSwitchActivity.kt`。
+- **为什么不自动**：自动进入会在用户只想顺着收藏夹听的时候，突然被换成一门 105 讲课程的分P 列表，**收藏夹里排在后面的条目全被跳过**。判据抽在 `updateEnterable(videoInfo)`，合集优先于分P（外层"一系列视频" vs 内层"一个视频的段落"）。
+- **层状态全在 `PlayerActivity` 内部**（`collectionId`/`collectionTitle`/`multiPageAid`/`multiPageTitle`/`returnPlaylist`），**不走 Intent**；`PlayerData` 只有 `virtualCollection`（cids 装 aid 还是 cid）与 `enterableInfo`（起播那一条的 `VideoInfo`，因为它的播放列表由构建方直接拼、不走 `switchToOnlinePage`）。`enterableInfo` 的 `putExtra` **必须显式转 `Parcelable`**——`VideoInfo` 同时实现 `Parcelable`/`Serializable`，不转会报"引用不明确"。
+- **两层的 `cids` 语义不同**：合集层装 **aid**（`virtualCollection = true`，切集时反查 cid）；分P层装**真 cid**（`virtualCollection = false`，切页走普通多P 分支，且 `aid` 要换成该视频的 aid）。
+- **零额外请求**：`switchToOnlinePage` 本来就要 `getVideoInfo(aid)` 拿首个 cid，响应里的 `ugc_season` 是白拿的。**别为这件事新增请求**；反过来，改 `getInfoByJson` 时别把 `collection` 的解析去掉。
+- 层内播完最后一个分P/剧集 → 自动弹回根目录（受 `auto_next_enabled` 管，与"自动下一P"同一档语义）。
+- 根目录层的卡片标题用 `rootTitle`，**不要用 `videoTitle`**：后者会被 `doSwitchPage` 改成当前条目名，从嵌套层返回后会显示成「某条目名（1/20）」，看着像文件夹名其实是列表里的某一条。
+- 展平逻辑是纯函数 `model/Collection.toPlaylist`（有单测）：跨节按节顺序、节内按集顺序；`sections` 为空时退回 `cards`。
+- 台账与真机记录见 `docs/review/fix-progress.md` §3.18 / §3.24；接口侧结论见 `docs/bilibili-api-notes.md` §5。
 
 ## 8. UI 基建速查（新增页面临摹用）
 

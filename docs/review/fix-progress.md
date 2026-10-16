@@ -615,6 +615,79 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - [ ] **跨设备追加（`X-Mid`）未验证**：模拟器未登录，只验了同设备 / 同 `install_id`。
 - [ ] **发送失败后「重开弹窗 + 预填」未构造真实断网场景**，仅代码路径审查。
 
+### 3.22 「我的」页用户卡片与首个功能项紧贴（26.10.16）
+
+用户截图反馈：「我的」页顶部用户信息卡与下方「关注」**紧贴成一张卡**，而「关注」以下的各功能项之间都有间隔。
+
+**根因**：`menuContainer` 的项间距由 `divider=@drawable/empty` + `showDividers="middle"` 提供（`@dimen/linearlayout_divider` = 4dp），而 **`showDividers` 只作用于容器内「项与项之间」**——`myinfo` 是 `menuContainer` 的**前一个兄弟节点**，不在 divider 的覆盖范围内，于是与第一项零间距。不是主题、不是圆角档位、不是卡片样式的问题。
+
+**修复**（`app/src/main/res/layout/activity_myspace.xml`，1 行）：给 `myinfo` 加 `android:layout_marginBottom="@dimen/linearlayout_divider"`。
+
+**为什么放在 `myinfo` 的 marginBottom，而不是 `menuContainer` 的 marginTop**：`MySpaceMoreActivity` 复用同一布局并把 `myinfo` 置为 `GONE`。`GONE` 视图在 `LinearLayout` 测量时被整体跳过、其 margin 也不计入，所以「更多」页不会平白多出 4dp 顶部空白；反之若挂在 `menuContainer` 上，「更多」页就会多一截。**两者视觉结果在主页面完全相同，只有「更多」页能区分**——这是本条唯一需要小心的地方。
+
+**实测（MuMu Nebula，Android 12 / SDK 32，1440x2560 / density 640，即 1dp = 4px）**
+
+用 `uiautomator dump` 取绝对坐标（`dumpsys activity top` 的子 View bounds 是相对父容器的，不能用来算）：
+
+- **基线尺寸**：单个功能项高度 200px，相邻项 pitch 216px（= 200 + 4dp divider 16px）；顶栏底 100px；`LinearLayout` 的 `paddingVertical` 2dp = 8px。
+- **主页面**：`myinfo` 卡底 350px、首个 cell 顶 368px → **间隙 18px（4dp，含 2px 取整）**。修复前此处为 0。
+- **「更多」页**（先把 `edit_profile` 经 `myspace_more` 移入 more 才出现入口）：`myinfo` GONE 后首个 cell 顶 = **108px** = 顶栏 100 + padding 8，**没有多出 4dp** ✓ 与设计意图一致。
+- 测试用的 `myspace_main` / `myspace_more` 已用调试桥 `remove` 清回默认。
+
+**未覆盖**
+
+- [ ] **真机（手表）未验证**，仅在模拟器上量过。纯静态间距、无运行时分支，风险低；但手表窄屏下 4dp 的观感是否够，需要真机确认。
+
+### 3.23 自建收藏夹上限显示成 999（26.10.16）
+
+用户截图反馈：「我的收藏夹」页里自建收藏夹显示 `22/999`、`777/999`、`1000/999`，而实际能装 1000 条。
+
+**根因（服务端字段，非本工程算错）**：这条链走老接口 `space.bilibili.com/ajax/fav/getBoxList`，它**返回 `max_count`，但自建收藏夹恒为 `999`**（默认收藏夹那条是正确的 `50000`）。用调试桥 `cmd http`（带应用登录态）实测响应体确认。注意另一条链 `x/v3/fav/folder/created/list-all`（加收藏时的选择框）**根本不返回上限**、一直硬编码 1000 —— 两条链对同一概念给了不同值，所以同一个收藏夹在选择框里是 1000、在列表页是 999。
+
+**修法**（`api/FavoriteApi.java`）：新增常量 `MAX_COUNT_DEFAULT_FOLDER` / `MAX_COUNT_CUSTOM_FOLDER` 与纯函数 `resolveMaxCount(serverMaxCount, isDefault)`——**只采信「非 999 且 > 0」的服务端值**，其余（999 / 字段缺失 / 非法）回落约定值。`getFavoriteFolders` 改用它（顺带把 `getInt("max_count")` 换成 `optInt(..., 0)`，字段缺失不再整页失败）；`parseFavoriteState` 的 `50000 / 1000` 改用同一对常量。取舍：不直接无视服务端字段，是为了服务端将来放宽上限并同步字段时能自动跟随。
+
+**验证**
+- 新增 3 个 JVM 用例（`FavoriteApiTest.resolveMaxCount_*`）。两 flavor 单测 **60 suites / 596 tests / 0 failures / 0 errors / 0 skipped**（机器产出），`assembleDebug` 通过。
+- **模拟器实测（MuMu Nebula，Android 12 / SDK 32，共存 debug 包）**：`uiautomator dump` 取回 `1912/50000`、`22/1000`、`777/1000`、`90/1000`、`1000/1000`、`115/1000` —— 与用户截图的六个数字一一对应，`/999` 全部消失，默认收藏夹不受影响。
+- 结论沉淀：`docs/architecture-map.md` §7.34（口径）、`docs/bilibili-api-notes.md` §6（实测字段）。
+
+**未覆盖**：真机（手表）未验证（模拟器上文本已确认，风险低）。
+
+### 3.24 虚拟合集里的「分P视频」做成可进入的层级，且**进入改为手动**（26.10.16）
+
+**背景（用户的心智模型）**：这不是"两种并列类型"，而是**一棵目录树**——
+
+```
+收藏夹（虚拟合集）= 根目录
+├── 单视频 / 合集里的单视频.mp4   ← 直接播
+├── 分P视频/                     ← 文件夹：进去看各分P，退出来回根目录
+└── 合集/                        ← 文件夹
+```
+
+**缺口（真机确认）**：`playFavoriteVirtualCollection` 用收藏夹条目建 `pagenames/cids`，而 `switchToOnlinePage` 的虚拟合集分支只取 `videoInfo.cids[0]`——于是**多P视频只能播第 1 个分P，P2 以后完全不可达**。在「重要收藏夹」点「黑马程序员Java」（105 分P）时，选集卡片给的是**收藏夹的 20 条**，不是那 105 个分P（证据 `outputs/collection-check/虚拟合集里多P视频的选集卡片.png`）。
+
+**关键设计转折**：§3.18 做的是**自动**进入合集，本轮先按同样思路做了自动进入分P层，**用户当即否决**——"点击这个视频后不要自动进入子合集啊，要点击后主动进入"。理由成立：自动进入会在你只想顺着收藏夹听的时候，突然被换成一门 105 讲课程的分P 列表，**收藏夹里排在后面的条目全被跳过**。于是两层统一改成**手动**：
+
+- 点收藏夹条目 = 只起播那条（多P 只播 P1），**不换列表**
+- 选集卡片上多一行：当前这条能进得去时显示「进入分P（N 个）」/「进入合集 · 标题（N 集）」，进去后同一行变成「← 返回主合集」（两个方向互斥，共用一行，id `page_selector_nest`）
+- 播完层内最后一个分P/剧集 → 自动弹回根目录（受 `auto_next_enabled` 管）
+
+**实现**（4 处）：
+- `PlayerActivity` 加 `enterableCollection` / `enterableMultiPage` 与统一重算函数 `updateEnterable(videoInfo)`（合集优先于分P）；`enterCurrentNestLayer()` 由那一行的点击触发；`enterMultiPageLayer()` / `enterCollectionPlaylist()` 换列表 + 压返回栈；`returnToCallerPlaylist()` 弹栈
+- 分P层的 `cids` 是**真 cid**（同一个 aid 的多个分P），所以 `virtualCollection = false`，切页走普通多P 分支；`aid` 必须换成该视频的 aid
+- 顺带修文案：根目录层标题原本用 `videoTitle`，而它会被 `doSwitchPage` 改成当前条目名，从嵌套层返回后会显示成「黑马程序员Java…（1/20）」（像文件夹名其实是某一条）→ 新增 `rootTitle`（返回时取自返回栈的 `title`）
+- **`PlayerData` 只剩 `virtualCollection` 一个层相关字段**：层状态全在播放器内部，不再走 Intent。唯一例外是**起播那一条**——它的播放列表由构建方直接拼、不走 `switchToOnlinePage`，所以播放器拿不到它的 videoInfo；构建方把已经请求过的 `VideoInfo` 通过 `PlayerData.enterableInfo` 带过去（零额外请求）。注：`putExtra` 处必须显式转 `Parcelable`，`VideoInfo` 同时实现了 `Parcelable`/`Serializable`，不转会报"引用不明确"
+
+**真机验证（26.10.16 22:2x~23:0x，MuMu Nebula）**：
+| 场景 | 结果 |
+| --- | --- |
+| 点「黑马程序员Java」（105 分P） | 标题停在 `重要收藏夹（虚拟合集）（1/20）`，**没有**被换列表；多出一行「进入分P（105 个）」（`手动入口-进入分P.png`） |
+| 点「进入分P」 | 换成分P层：`分P · 黑马程序员Java…（1/105）`，P1~P105 可点，行变成「← 返回主合集」（`手动进入后的分P层.png`） |
+| 点「← 返回主合集」 | 回到 `重要收藏夹（虚拟合集）（1/20）`，返回入口消失（`返回后回到收藏夹根目录.png`） |
+| 点「超神人辉夜姬 第一集」（合集《辉夜姬》18 集） | 标题停在 `重要收藏夹（虚拟合集）`，**同样不自动进入**（`合集条目不再自动进入.png`） |
+
+**未覆盖**：① 「进入合集 · 标题（N 集）」这一行的**文案渲染**未单独截到图（合集分支与分P 分支共用同一行渲染代码，且 `enterCollectionPlaylist` 在 §3.18 已验证可进入；真机上选集卡片在几次尝试里都因 adb/UI 时序没打开）；② 进入分P层一律从**第 1 个分P** 起播（`VideoInfo` 不带"上次看到哪个分P"）；③ 一个视频**既多P 又在合集里**时只给"进入合集"（合集优先），它的分P 仍不可达；④ 本地缓存的虚拟合集走另一条路径（`switchToLocalPage`），未做嵌套层。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

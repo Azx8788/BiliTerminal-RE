@@ -136,3 +136,14 @@
 - `view?aid=` 的 `ugc_season` **带完整剧集**（实测 `ep_count=336`，`sections[].episodes[]` 也正好 336 条，分 9 节），且每条 episode 带 `aid`/`cid`/`title` —— 所以**一次请求就能拿到整个合集的官方顺序与真 cid**，足以直接构造播放列表。
 - **但响应体很大**：上述 336 集那个 `view` 响应 **494 KB**。→ 收藏夹列表层逐条预取合集归属不可行（20 条最坏 ~10MB，手表弱网不能接受）。要探测就**按需探测**（用户主动要，或只对当前可见的几条懒加载）。
 - 本项目已有的解析可直接复用：`api/VideoInfoApi.java` 的 `analyzeUgcSeason` → `model/Collection`（`sections[].episodes[]`，`Collection.Episode` 有 `aid`/`cid`/`title`）。合集详情页入口见 `docs/architecture-map.md` §7.38。
+
+## 6. 收藏夹「视频上限」字段的两个坑（26.10.16 实测）
+
+**问题**：「我的收藏夹」页把自建收藏夹显示成 `22/999`，而实际上限是 1000——一个已经有 **1000 条**的收藏夹被显示成 `1000/999`，自相矛盾。
+
+用调试桥（`cmd http`，带应用登录态）实测定论：
+
+- `space.bilibili.com/ajax/fav/getBoxList?mid=<自己>` **返回 `max_count`**，但**自建收藏夹恒为 `999`**（比实际能装的 1000 少 1），**默认收藏夹那条是正确的 `50000`**。同响应里还有 `count`（已装数量）、`fav_box`（fid）、`ctime`、`state`、`videos[]`（仅封面用，最多 3 条）。
+- `x/v3/fav/folder/created/list-all` **不返回任何上限字段**（加收藏时的选择框走这条，所以它一直显示 1000 是对的）。
+- 结论：**同一个概念两条链给的值不一样**，`999` 是没有任何别的语义的历史值。统一走 `api/FavoriteApi.java` 的 `resolveMaxCount()`，别再把 `999` 直接当上限渲染。详见 `docs/architecture-map.md` §7.34。
+- 顺带：`getBoxList` 的 `list[0]` **就是默认收藏夹**（`fav_box` 非 0，但服务端把它排在第一），所以「默认收藏夹 = `index == 0`」的既有判据在这条链上成立。
