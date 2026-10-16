@@ -51,10 +51,16 @@
             android:paddingHorizontal="@dimen/activity_padding_horizontal"
             android:paddingVertical="2dp">
 
+            <!-- 与下方功能列表的间隔。取值同 menuContainer 的项间距（showDividers 只管容器内
+                 的「项与项之间」，管不到容器外的这张卡，漏掉它两者就紧贴成一张卡）。
+                 挂在 myinfo 的 marginBottom 而非 menuContainer 的 marginTop：MySpaceMoreActivity
+                 复用本布局并把 myinfo 置为 GONE，GONE 视图的 margin 不参与测量，
+                 「更多」页因此不会平白多出 4dp。详见 docs/review/fix-progress.md §3.22 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/myinfo"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content">
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/linearlayout_divider">
 
                 <androidx.constraintlayout.widget.ConstraintLayout
                     android:layout_width="match_parent"
