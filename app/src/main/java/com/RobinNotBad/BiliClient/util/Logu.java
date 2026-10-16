@@ -18,6 +18,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.text.SimpleDateFormat;
+import java.util.ArrayDeque;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
@@ -216,6 +217,97 @@ public class Logu {
         return name.substring(index) + ">" + caller.getMethodName();
     }
 
+    // ==================== 内存环形缓冲 ====================
+    //
+    // 目标：让用户能「随反馈 / 崩溃附带日志」。做法是平时一直在内存里记、**不落盘**
+    // （零磁盘 IO、零存储占用），崩溃或反馈时再从内存导出。
+    //
+    // 为什么是内存而不是落盘：手表存储小，而「随反馈附日志」是个低频动作，为此让全量日志
+    // 长期占磁盘不划算；内存快照在崩溃瞬间取一次，成本只在那一刻。
+    //
+    // 为什么天然只记 W/E/F 级别：v/d/i 三个方法开头有 LOGV/LOGD/LOGI_ENABLED 开关
+    // （release 下为 false，见 BiliTerminal.applyLogSwitches），release 包里它们**根本不执行**、
+    // 连 toFile 都进不来；而 w/e/wtf 恒执行、本来就调 getCaller()。所以缓冲挂在 w/e/wtf
+    // 共用的 toFile 里，既不新增开关、不新增 getCaller()，release 行为也只是多一次入队。
+    // 一旦打开「详细模式」，v/d/i 会自动经同一条 toFile 进缓冲——不需要额外逻辑。
+
+    /**
+     * 环形缓冲的字符数上限（65536 ≈ 64K 字符）。
+     *
+     * <p>UTF-16 下约 128KB 内存，手表可接受；同时**必须远小于 Binder 事务上限**：
+     * 崩溃快照要经 Intent extra 跨进程传给 `:error_activity` 的崩溃页，而 Binder 事务
+     * 上限约 1MB，超了直接 TransactionTooLargeException。64K 字符留足了安全余量。
+     */
+    private static final int RING_MAX_CHARS = 65536;
+
+    /**
+     * 日志行的环形缓冲。
+     *
+     * <p>用 [ArrayDeque] 而不是 ArrayList：超容量时只从头部删一条，常数时间、不做数组搬移
+     * （同 [com.RobinNotBad.BiliClient.util.CrashTrail] 的思路）。
+     *
+     * <p>线程安全：全工程 269 处 `Logu.*` 调用点可能来自任意线程，故 [RING] 与 [ringChars]
+     * 的读写一律用 `synchronized (RING)` 包住。
+     */
+    private static final ArrayDeque<String> RING = new ArrayDeque<>();
+
+    /** 缓冲里所有行的累计字符数（与 [RING] 同步维护，只允许在 `synchronized (RING)` 内读写）。 */
+    private static int ringChars = 0;
+
+    /**
+     * 记一行进内存缓冲，超出 [RING_MAX_CHARS] 时从头部逐条淘汰直到回到上限内。
+     *
+     * <p>行内正文已经过脱敏 + `shorten()`（见 [toFile]），单行最长约 [MAX_LINE_CHARS]，
+     * 远小于上限，因此正常情况下不会出现「一行进来就把整段历史挤空」。
+     */
+    private static void recordToRing(String line) {
+        if (line == null) return;
+        synchronized (RING) {
+            RING.addLast(line);
+            ringChars += line.length();
+            while (ringChars > RING_MAX_CHARS && !RING.isEmpty()) {
+                ringChars -= RING.removeFirst().length();
+            }
+        }
+    }
+
+    /**
+     * 崩溃 / 反馈时取内存日志快照。
+     *
+     * <p>返回拼接好的多行文本（每行形如 `MM-dd HH:mm:ss.SSS E 类名&gt;方法名 | 正文`），
+     * 缓冲为空时返回空串（**不返回 null**，调用方直接拼字符串）。
+     *
+     * <p>只读内存、不碰磁盘，可在崩溃路径上安全调用。
+     */
+    public static String ringSnapshot() {
+        synchronized (RING) {
+            if (RING.isEmpty()) return "";
+            StringBuilder sb = new StringBuilder(ringChars + RING.size());
+            boolean first = true;
+            for (String line : RING) {
+                if (!first) sb.append('\n');
+                sb.append(line);
+                first = false;
+            }
+            return sb.toString();
+        }
+    }
+
+    /** 当前缓冲累计字符数。agent / 调试桥可据此判断快照是否被截断过。 */
+    public static int ringChars() {
+        synchronized (RING) {
+            return ringChars;
+        }
+    }
+
+    /** 清空内存缓冲（例如反馈已提交，避免同一份日志被反复附带）。 */
+    public static void ringClear() {
+        synchronized (RING) {
+            RING.clear();
+            ringChars = 0;
+        }
+    }
+
     // ==================== 落盘 ====================
 
     /**
@@ -248,11 +340,18 @@ public class Logu {
     /**
      * 落盘一路（与 logcat 那一路分开）。
      *
-     * <p>文件里带上调用者（`类名>方法名`）：文件只装本应用的日志，不需要靠 tag 区分来源，
+     * <p>文件里带上调用者（`类名&gt;方法名`）：文件只装本应用的日志，不需要靠 tag 区分来源，
      * 但需要能一眼定位到代码。logcat 那一路的 tag 仍是调用者本身，两条路互不影响。
+     *
+     * <p>顺序是**先脱敏、再 `shorten()`**：若先截断再脱敏，一条超长行被截断后敏感值可能只剩
+     * 前半截，脱敏就匹配不全、凭证反而漏出去。脱敏后的同一行**同时进内存缓冲与落盘**，
+     * 两条路内容完全一致（[recordToRing] 与 [enqueue] 收到的是同一个 line）。
      */
     private static void toFile(String level, String caller, String text) {
-        enqueue(APP_LOG_NAME, TIME_FORMAT.format(new Date()) + " " + level + " " + caller + " | " + shorten(text));
+        String sanitized = text == null ? null : LogSanitizer.sanitize(text);
+        String line = TIME_FORMAT.format(new Date()) + " " + level + " " + caller + " | " + shorten(sanitized);
+        recordToRing(line);
+        enqueue(APP_LOG_NAME, line);
     }
 
     /**

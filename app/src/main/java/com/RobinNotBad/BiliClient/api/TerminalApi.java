@@ -4,16 +4,19 @@ import android.content.Context;
 import android.os.Build;
 import android.provider.Settings;
 import android.text.TextUtils;
-import android.util.Log;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
 import com.RobinNotBad.BiliClient.BuildConfig;
 import com.RobinNotBad.BiliClient.model.Announcement;
 import com.RobinNotBad.BiliClient.model.ApiResult;
+import com.RobinNotBad.BiliClient.model.FeedbackItem;
+import com.RobinNotBad.BiliClient.model.FeedbackReply;
+import com.RobinNotBad.BiliClient.util.Logu;
 import com.RobinNotBad.BiliClient.util.MsgUtil;
 import com.RobinNotBad.BiliClient.util.NetWorkUtil;
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil;
 import com.RobinNotBad.BiliClient.util.SettingsKeys;
+import com.RobinNotBad.BiliClient.util.TerminalReportPrefs;
 import com.RobinNotBad.BiliClient.util.TimeUtil;
 
 import org.json.JSONArray;
@@ -85,8 +88,14 @@ public class TerminalApi {
      * <p><b>v2（26.10.14）</b>：新增设备级去重键 {@link #getDeviceKey()}。此前那三处文案
      * 都写着"不读取 ANDROID_ID 等任何设备唯一标识"，而新方案正是要拿它派生出哈希，
      * 属于**实质变化**，所以必须升版并同步改掉那三句 —— 否则就是自相矛盾。
+     *
+     * <p><b>v3（26.10.16）</b>：新增「可附带应用日志」。崩溃页与反馈页各有一个勾选框，
+     * 勾上才会把最近的应用日志（内存缓冲，已脱敏）随报告 / 反馈一起发送 —— 属于
+     * **「收集什么」的实质变化**，所以必须升版并同步改那三处文案 + {@code desc_setting_crash_auto}。
+     * 注意「已脱敏」是这句承诺的一部分：`util/LogSanitizer` 在日志**入缓冲之前**就把登录凭据等
+     * 敏感参数的值替换成了占位符，文案里的这句话有代码兜着。
      */
-    public static final int PRIVACY_VERSION = 2;
+    public static final int PRIVACY_VERSION = 3;
 
     private TerminalApi() {
     }
@@ -141,8 +150,17 @@ public class TerminalApi {
         return data;
     }
 
+    /**
+     * 反馈载荷。
+     *
+     * <p>{@code log} 是用户**显式勾选**「附带应用日志」时才带的可选字段：内容是
+     * {@code Logu.ringSnapshot()} 的内存日志快照（已在入缓冲前脱敏），服务端上限 200000 字符。
+     * 未勾选时传 {@code null}/空串，这里经 {@link #safe(String)} 落成**空串而不是 JSON null**
+     * ——服务端一律按字符串落库，字段缺失与 null 都会变成脏数据。老客户端不发这个字段，
+     * 行为与以前完全一致。
+     */
     public static JSONObject buildFeedbackPayload(String installId, String deviceKey, String category,
-                                                  String content, String contact, long mid,
+                                                  String content, String log, String contact, long mid,
                                                   int versionCode, String versionName, int sdk,
                                                   String brand, String device) throws JSONException {
         JSONObject data = new JSONObject();
@@ -151,6 +169,8 @@ public class TerminalApi {
         data.put("device_key", safe(deviceKey));
         data.put("category", normalizeCategory(category));
         data.put("content", safe(content));
+        // 附带的应用日志（可空，落成空串）；服务端对它是可选的
+        data.put("log", safe(log));
         data.put("contact", safe(contact));
         data.put("mid", mid);
         data.put("version_code", versionCode);
@@ -158,6 +178,23 @@ public class TerminalApi {
         data.put("sdk", sdk);
         data.put("brand", safe(brand));
         data.put("device", safe(device));
+        return data;
+    }
+
+    /**
+     * 追加回复的载荷（26.10.16 新增）。
+     *
+     * <p>**纯函数**，可在 JVM 单测里直接断言。
+     *
+     * <p>只有两个字段：反馈 id 与内容。身份**全部走请求头**（`X-Install-Id` / `X-Mid`），
+     * 与「我的反馈」同一口径 —— 不在 body 里再塞一份 install_id，免得两处可能不一致，
+     * 也免得又一条把身份写进请求体的路径。
+     */
+    public static JSONObject buildFeedbackReplyPayload(int feedbackId, String content)
+            throws JSONException {
+        JSONObject data = new JSONObject();
+        data.put("id", feedbackId);
+        data.put("content", safe(content));
         return data;
     }
 
@@ -244,6 +281,70 @@ public class TerminalApi {
         return merged;
     }
 
+    /**
+     * 解析「我的反馈」列表。{@code data} 形如 {@code {"items":[...],"total":1}}。
+     *
+     * <p>纯函数：不碰 Android 运行时，可在 JVM 单测里直接验证。{@code items} 缺失、为空或
+     * 条目是 JSON {@code null} 都安全跳过。
+     *
+     * <p>{@code ctime} 是 **epoch 秒**，换算成毫秒后交给 {@link TimeUtil#formatDateTime(long)}，
+     * 与 {@link #parseAnnouncements(JSONArray)} 同一口径。{@code replies} 可能缺失、可能是空数组，
+     * 也可能多条——一律收敛成非空的列表。
+     */
+    public static ArrayList<FeedbackItem> parseMyFeedback(JSONObject data) {
+        ArrayList<FeedbackItem> list = new ArrayList<>();
+        if (data == null) return list;
+        JSONArray items = data.optJSONArray("items");
+        if (items == null) return list;
+        for (int i = 0; i < items.length(); i++) {
+            JSONObject item = items.optJSONObject(i);
+            if (item == null) continue;
+
+            ArrayList<FeedbackReply> replies = new ArrayList<>();
+            JSONArray replyArray = item.optJSONArray("replies");
+            if (replyArray != null) {
+                for (int j = 0; j < replyArray.length(); j++) {
+                    JSONObject reply = replyArray.optJSONObject(j);
+                    if (reply == null) continue;
+                    replies.add(new FeedbackReply(
+                            reply.optInt("id", 0),
+                            reply.optString("title", ""),
+                            reply.optString("content", ""),
+                            TimeUtil.formatDateTime(reply.optLong("ctime", 0) * 1000),
+                            // 26.10.16：一条反馈下面现在有两侧的消息（开发者回复 / 用户追加说明）。
+                            // **旧服务端不返回这个字段**，取到空串 -> isFromUser() 为 false，
+                            // 正好等于升级前「只可能有开发者回复」的事实，不需要额外兼容分支。
+                            reply.optString("author", "")));
+                }
+            }
+
+            list.add(new FeedbackItem(
+                    item.optInt("id", 0),
+                    item.optString("category", ""),
+                    item.optString("content", ""),
+                    item.optString("contact", ""),
+                    TimeUtil.formatDateTime(item.optLong("ctime", 0) * 1000),
+                    item.optInt("handled", 0) != 0,
+                    replies));
+        }
+        return list;
+    }
+
+    /**
+     * 「我的反馈」请求是否应附带 {@code X-Mid}：**两个条件都满足才带**——
+     * 用户勾选了「附带账号 ID」（{@link SettingsKeys#FEEDBACK_ATTACH_MID}）**且**确实已登录（有 UID）。
+     *
+     * <p>与提交反馈同一口径（见 {@code FeedbackActivity} 里 {@code if (attachMid) ... else 0}）：
+     * 没勾选就只认本机，未登录也没有 UID 可带。
+     *
+     * <p>抽成独立函数是为了让这条隐私开关能在 JVM 单测里钉住：它只读 SharedPreferences
+     * （单测注入 {@code FakeSharedPreferences} 即可），不碰 Android 运行时。
+     */
+    public static boolean shouldAttachMid() {
+        if (!SharedPreferencesUtil.getBoolean(SettingsKeys.FEEDBACK_ATTACH_MID, false)) return false;
+        return SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0L) > 0;
+    }
+
     // ==================== install_id ====================
 
     /**
@@ -286,7 +387,7 @@ public class TerminalApi {
             }
         } catch (Exception e) {
             // 某些定制 ROM 会抛异常；拿不到就算了，统计不能因此崩
-            Log.w("debug-terminal", "read ANDROID_ID failed: " + e);
+            Logu.w("read ANDROID_ID failed: " + e);
         }
         if (TextUtils.isEmpty(raw)) return "";
         String key = hashDeviceKey(raw);
@@ -320,21 +421,23 @@ public class TerminalApi {
             }
             return sb.toString();
         } catch (Exception e) {
-            Log.w("debug-terminal", "sha256 failed: " + e);
+            Logu.w("sha256 failed: " + e);
             return "";
         }
     }
 
-    /** 匿名统计是否开启。默认开，但**必须先就当前版本隐私说明点过「同意」**，未同意一律不上报。 */
+    /**
+     * 匿名统计是否开启：**必须先就当前版本隐私说明点过「同意」**，未同意一律不上报。
+     *
+     * <p>默认值与读取落点统一在 {@link TerminalReportPrefs}，这里只叠加隐私同意这道总闸。
+     */
     public static boolean isTelemetryEnabled() {
-        return hasPrivacyConsent()
-                && SharedPreferencesUtil.getBoolean(SettingsKeys.TELEMETRY_ENABLE, true);
+        return hasPrivacyConsent() && TerminalReportPrefs.isTelemetrySwitchOn();
     }
 
-    /** 崩溃自动上报是否开启，默认开；同样以隐私说明的「同意」为前置条件。 */
+    /** 崩溃自动上报是否开启；同样以隐私说明的「同意」为前置条件，默认值见 {@link TerminalReportPrefs}。 */
     public static boolean isCrashReportAutoEnabled() {
-        return hasPrivacyConsent()
-                && SharedPreferencesUtil.getBoolean(SettingsKeys.CRASH_REPORT_AUTO, true);
+        return hasPrivacyConsent() && TerminalReportPrefs.isCrashReportSwitchOn();
     }
 
     // ==================== 隐私说明再确认 ====================
@@ -411,7 +514,22 @@ public class TerminalApi {
     }
 
     private static JSONObject post(String path, JSONObject body) throws IOException, JSONException {
-        Response response = NetWorkUtil.postJson(BASE_URL + path, body.toString(), headers());
+        return postWithHeaders(path, body, headers());
+    }
+
+    /**
+     * 用**指定**的请求头发 POST。
+     *
+     * <p>只有「我的反馈」相关接口需要它：那几个得走 {@link #feedbackHeaders()} 才能在用户
+     * 勾选了「附带账号 ID」时带上 `X-Mid`（换设备后仍能操作自己发过的反馈）。
+     *
+     * <p><b>不要为了省事把 mid 加进通用 {@link #headers()}</b>：那等于对所有接口都默认带上
+     * UID，与「默认不带」的隐私口径直接相悖。
+     */
+    private static JSONObject postWithHeaders(String path, JSONObject body,
+                                              ArrayList<String> customHeaders)
+            throws IOException, JSONException {
+        Response response = NetWorkUtil.postJson(BASE_URL + path, body.toString(), customHeaders);
         if (response.body() == null) throw new IOException("empty response body");
         return new JSONObject(response.body().string());
     }
@@ -475,7 +593,7 @@ public class TerminalApi {
             return post("/telemetry/ping", payload).optInt("code", -1) == 0;
         } catch (Exception e) {
             // 遥测是尽力而为：任何失败都不能影响用户使用，也不能弹窗打扰。
-            Log.w("debug-terminal", "telemetry ping failed: " + e);
+            Logu.w("telemetry ping failed: " + e);
             return false;
         }
     }
@@ -483,16 +601,45 @@ public class TerminalApi {
     /**
      * 提交反馈。
      *
+     * @param log 用户显式勾选「附带应用日志」时传 {@code Logu.ringSnapshot()}，否则传空串/null
      * @param mid 用户显式勾选「附带我的账号」时传 UID，否则传 0
      * @return {@code ApiResult.code} 为服务端返回的反馈 id（成功）或负的错误码，{@code message} 为错误原因
      */
-    public static ApiResult submitFeedback(String category, String content, String contact, long mid) {
+    public static ApiResult submitFeedback(String category, String content, String log,
+                                           String contact, long mid) {
         try {
             JSONObject payload = buildFeedbackPayload(
-                    getInstallId(), getDeviceKey(), category, content, contact, mid,
+                    getInstallId(), getDeviceKey(), category, content, log, contact, mid,
                     BuildConfig.VERSION_CODE, BuildConfig.VERSION_NAME,
                     Build.VERSION.SDK_INT, Build.BRAND, Build.DEVICE);
             JSONObject result = post("/feedback/submit", payload);
+            if (result.optInt("code", -1) != 0) {
+                return new ApiResult(-1, result.optString("msg", "unknown"));
+            }
+            return new ApiResult(result.optInt("id", -1), "");
+        } catch (IOException e) {
+            return new ApiResult(-2, "网络连接失败");
+        } catch (JSONException e) {
+            return new ApiResult(-3, "服务器返回了无法解析的内容");
+        }
+    }
+
+    /**
+     * 往**自己已提交的**反馈下面追加一条说明（26.10.16 新增）。
+     *
+     * <p>服务端会校验归属：不是自己的反馈返回 `code = 404`（与「不存在」同一个码，
+     * 见服务端 `feedback_reply` 的注释）。追加成功后服务端会把该反馈**打回「待受理」**
+     * （GitHub 的 reopen 语义），所以调用方要把页面上的状态同步改掉。
+     *
+     * <p>必须走 {@link #feedbackHeaders()}：用户勾了「附带账号 ID」时才能靠 `X-Mid`
+     * 在换设备后继续回复自己发过的反馈。
+     *
+     * @return 成功时 {@code code} 是新消息的 id；失败时 {@code message} 是服务端或本地的原因
+     */
+    public static ApiResult submitFeedbackReply(int feedbackId, String content) {
+        try {
+            JSONObject payload = buildFeedbackReplyPayload(feedbackId, content);
+            JSONObject result = postWithHeaders("/feedback/reply", payload, feedbackHeaders());
             if (result.optInt("code", -1) != 0) {
                 return new ApiResult(-1, result.optString("msg", "unknown"));
             }
@@ -555,6 +702,37 @@ public class TerminalApi {
     }
 
     /**
+     * 「我的反馈」列表。
+     *
+     * <p>身份靠 {@code X-Install-Id}（{@link #headers()} 已带）；登录用户的 UID 只在用户勾选
+     * 「附带账号 ID」时才通过 {@code X-Mid} 头附带，与提交反馈同一口径——没勾选就只认本机。
+     *
+     * <p><b>必须显式传 {@link #feedbackHeaders()}</b>，绝不可改用
+     * {@link NetWorkUtil#getJson(String)} 单参重载：那个重载用 {@code webHeaders}，
+     * 第一项就是 {@code Cookie}，会把 SESSDATA 发到自建服务器。
+     */
+    public static ArrayList<FeedbackItem> getMyFeedback() throws Exception {
+        JSONObject result = NetWorkUtil.getJson(BASE_URL + "/feedback/mine", feedbackHeaders());
+        requireOk(result);
+        return parseMyFeedback(result.optJSONObject("data"));
+    }
+
+    /**
+     * 「我的反馈」专用请求头：{@link #headers()} 的副本，按需追加 {@code X-Mid}。
+     *
+     * <p>mid 走请求头而不是查询串——uvicorn 的 access log 会记完整 URL，放查询串等于把 UID
+     * 写进服务器日志文件。是否附带由 {@link #shouldAttachMid()} 决定。
+     */
+    public static ArrayList<String> feedbackHeaders() {
+        ArrayList<String> list = headers();
+        if (shouldAttachMid()) {
+            list.add("X-Mid");
+            list.add(String.valueOf(SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0L)));
+        }
+        return list;
+    }
+
+    /**
      * 公告列表页用：把上游与自建两路合并后写入 [out]。
      *
      * <p>两路各自尽力而为：**任何一路失败都不影响另一路展示**。原实现是「一个源抛异常
@@ -569,12 +747,12 @@ public class TerminalApi {
         try {
             upstream = AppInfoApi.getAnnouncementList();
         } catch (Exception e) {
-            Log.w("debug-terminal", "upstream announcement failed: " + e);
+            Logu.w("upstream announcement failed: " + e);
         }
         try {
             own = getOwnAnnouncementList();
         } catch (Exception e) {
-            Log.w("debug-terminal", "own announcement failed: " + e);
+            Logu.w("own announcement failed: " + e);
         }
         out.clear();
         out.addAll(mergeAnnouncements(upstream, own));

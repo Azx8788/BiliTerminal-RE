@@ -22,6 +22,36 @@ import org.json.JSONObject
  */
 object CrashReporter {
 
+    /**
+     * 页面轨迹与应用日志两段之间的分隔行。
+     *
+     * <p>两段共用 `log` 字段后，管理台里看到的就是一坨连续文本，没有这行分隔根本分不清
+     * 哪几行是「用户走过哪些页面」、哪几行是「应用日志」——所以分隔符的用途就是**人眼定位**。
+     * 前后各留一个空行（`\n\n` / `\n`），是让它在纯文本 / 等宽字体里也自成一段。
+     */
+    private const val LOG_SECTION_SEPARATOR = "\n\n--- 应用日志（内存缓冲，最近若干行）---\n"
+
+    /**
+     * 把页面轨迹与应用日志合并进同一个 `log` 字段。
+     *
+     * <p>**为什么复用同一个字段而不是新增一个**：
+     * 1. 服务端 `crash` 表的 `log` 列上限 200000 字符，两段拼起来也远够用，于是**服务端零改动**
+     *    ——不用发新表结构、不用改管理台、不用改导出脚本；
+     * 2. 老数据（只有轨迹）与新数据（轨迹 + 应用日志）在库里**同构**，消费方不需要区分两种格式，
+     *    顶多是一次 `indexOf` 看有没有分隔符。
+     *
+     * <p>**任一段为空时不留下孤零零的分隔符**：只有一段就直接用那一段，两段都空就是空串。
+     */
+    private fun mergeLog(trail: String?, ringLog: String?): String {
+        val t = trail.orEmpty()
+        val r = ringLog.orEmpty()
+        return when {
+            t.isEmpty() -> r
+            r.isEmpty() -> t
+            else -> t + LOG_SECTION_SEPARATOR + r
+        }
+    }
+
     /** 从 Intent extra 里带过来的那些「崩溃瞬间才拿得到」的字段。 */
     @JvmStatic
     fun buildPayload(
@@ -31,6 +61,7 @@ object CrashReporter {
         thread: String?,
         stack: String?,
         trail: String?,
+        ringLog: String?,
         uptimeSec: Long,
         extra: String? = null
     ): JSONObject {
@@ -59,7 +90,7 @@ object CrashReporter {
             /* message = */ message,
             /* thread = */ thread,
             /* stack = */ stack,
-            /* log = */ trail,
+            /* log = */ mergeLog(trail, ringLog),
             /* extra = */ extra ?: "",
             /* versionCode = */ BuildConfig.VERSION_CODE,
             /* versionName = */ BuildConfig.VERSION_NAME,
@@ -76,7 +107,13 @@ object CrashReporter {
         )
     }
 
-    /** 采集 + 上传。返回成功时 `code` 就是给用户看的报错编号。 */
+    /**
+     * 采集 + 上传。返回成功时 `code` 就是给用户看的报错编号。
+     *
+     * @param trail 崩溃前用户走过的页面轨迹（`CrashTrail.snapshot()`）。
+     * @param ringLog 内存日志快照（`Logu.ringSnapshot()`）；不需要附带时传空串。
+     *   与 [trail] 合并进同一个 `log` 字段，理由见 [mergeLog]。
+     */
     @JvmStatic
     fun upload(
         context: Context?,
@@ -85,10 +122,11 @@ object CrashReporter {
         thread: String?,
         stack: String?,
         trail: String?,
+        ringLog: String?,
         uptimeSec: Long
     ): ApiResult {
         return try {
-            val payload = buildPayload(context, exception, message, thread, stack, trail, uptimeSec)
+            val payload = buildPayload(context, exception, message, thread, stack, trail, ringLog, uptimeSec)
             TerminalApi.uploadCrash(payload)
         } catch (e: Exception) {
             ApiResult(-4, "崩溃报告生成失败")

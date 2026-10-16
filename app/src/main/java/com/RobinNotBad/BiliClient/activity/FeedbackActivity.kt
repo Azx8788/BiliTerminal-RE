@@ -4,12 +4,15 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.TextView
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.api.TerminalApi
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.LogExporter
+import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
@@ -27,6 +30,10 @@ import com.google.android.material.button.MaterialButton
  * 只发三类东西：用户自己写的内容、用户选的联系方式（可空）、以及版本号与机型。
  * 账号 ID 默认**不带**，只有用户在本页（或设置页）显式打开「附带我的账号 ID」才会带上；
  * 这个开关的状态存在 [SettingsKeys.FEEDBACK_ATTACH_MID]，默认 false。
+ * 应用日志同样默认**不附带**：只有用户在本页勾选「附带应用日志」才会把
+ * [Logu.ringSnapshot] 的**内存日志快照**（已脱敏）塞进 `log` 字段——反馈是用户主动行为，
+ * 由他决定带不带（与崩溃页的默认勾选相反）。本页另有「导出日志到文件」入口，走
+ * [LogExporter]，只把日志留在本机、不经过网络。
  * 改这里的字段之前先去看 `TerminalApi.buildFeedbackPayload`，两边的字段表必须一致。
  *
  * <h3>为什么不用 ViewModel / Retrofit</h3>
@@ -62,6 +69,8 @@ class FeedbackActivity : BaseActivity() {
             val contactEdit = findViewById<EditText>(R.id.contact_edit)
             val attachCard = findViewById<View>(R.id.attach_mid_card)
             val attachText = findViewById<TextView>(R.id.attach_mid_text)
+            val attachLogCheck = findViewById<CheckBox>(R.id.attach_log_check)
+            val exportLogCard = findViewById<View>(R.id.export_log_card)
             val submitBtn = findViewById<MaterialButton>(R.id.submit_btn)
             val statusView = findViewById<TextView>(R.id.submit_status)
 
@@ -107,6 +116,15 @@ class FeedbackActivity : BaseActivity() {
                 renderAttach()
             }
 
+            // ---------- 附带应用日志 ----------
+            // 默认不勾选，且**不持久化**：每次进页面都是关的，避免上次的选择被悄悄沿用
+            // （与「附带账号 ID」不同——那个是长期偏好，这个是一次性决定）。
+            attachLogCheck.isChecked = false
+
+            // ---------- 导出日志到文件 ----------
+            // 与提交是两条独立路径：这里只落本机文件并调起系统分享，不经过网络。
+            exportLogCard.setOnClickListener { LogExporter.export(this) }
+
             // ---------- 发送 ----------
             submitBtn.setOnClickListener {
                 if (sending) return@setOnClickListener
@@ -121,6 +139,8 @@ class FeedbackActivity : BaseActivity() {
                     return@setOnClickListener
                 }
                 val contact = contactEdit.text?.toString()?.trim().orEmpty()
+                // 在主线程读一次勾选状态，带进子线程用（View 不跨线程访问）
+                val attachLog = attachLogCheck.isChecked
 
                 sending = true
                 submitBtn.isEnabled = false
@@ -131,7 +151,9 @@ class FeedbackActivity : BaseActivity() {
                     // 关掉开关时传 0：服务端那条记录里根本不会有 mid 这个字段值，
                     // 不是「传了但不显示」——隐私上这两者的区别很重要。
                     val mid = if (attachMid) SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0L) else 0L
-                    val result = TerminalApi.submitFeedback(category, content, contact, mid)
+                    // 勾选才取内存日志快照；拼接最长 64K 字符，放在子线程避免任何主线程开销。
+                    val log = if (attachLog) Logu.ringSnapshot() else ""
+                    val result = TerminalApi.submitFeedback(category, content, log, contact, mid)
 
                     runOnUiThread {
                         sending = false
@@ -142,6 +164,11 @@ class FeedbackActivity : BaseActivity() {
                             // 成功才清空，失败时留着内容让用户重发，不然写的一大段就没了
                             contentEdit.setText("")
                             contactEdit.setText("")
+                            // 日志已随这次反馈送达，清空内存缓冲，避免下次反馈把同一份旧日志再发一遍。
+                            // 只在「确实勾选附带」且「提交成功」时清：没勾选就没送出去、失败则要留着重试。
+                            // 代价是清完之后用户当场再点「导出日志」会得到空提示——可接受：缓冲是滚动的、
+                            // 新日志会立刻重新累积，而想要文件留档的人本就该走导出入口（那条路径不清缓冲）。
+                            if (attachLog) Logu.ringClear()
                         } else {
                             statusView.text = getString(R.string.feedback_fail, result.message)
                         }

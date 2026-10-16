@@ -3,6 +3,8 @@ package com.RobinNotBad.BiliClient.activity.settings
 import android.app.Activity
 import android.content.Intent
 import com.RobinNotBad.BiliClient.BuildConfig
+import com.RobinNotBad.BiliClient.activity.FeedbackActivity
+import com.RobinNotBad.BiliClient.activity.feedback.FeedbackListActivity
 import com.RobinNotBad.BiliClient.activity.settings.login.AccountSwitchActivity
 
 /**
@@ -74,6 +76,28 @@ object SettingsIndex {
         }
         list += Entry("公告列表", "查看哔哩终端发布公告") { a ->
             a.startActivity(Intent(a, AnnouncementsActivity::class.java))
+        }
+        // 「反馈与统计」（26.10.16 起独立成屏）：入口 + 叶子项，全局搜索都要能找到。
+        // 叶子项靠 highlight 按项名滚动定位，所以名字必须与 buildFeedbackGroup() 里的
+        // SettingSection.name 严格一致（同「通知设置」那两条的做法）。
+        list += Entry("反馈与统计", "反馈与建议、我的反馈、匿名统计与崩溃上报") { a ->
+            openGroup(a, GROUP_FEEDBACK, "反馈与统计")
+        }
+        list += Entry("反馈与建议", "直接发送给本项目的开发者（自建通道，无需登录）") { a ->
+            a.startActivity(Intent(a, FeedbackActivity::class.java))
+        }
+        // 「我的反馈」（26.10.16 新增）：独立 Activity 子页面，按 AGENTS 约定要进搜索索引
+        list += Entry("我的反馈", "查看你提交过的反馈与开发者的回复") { a ->
+            a.startActivity(Intent(a, FeedbackListActivity::class.java))
+        }
+        list += Entry("匿名使用统计", "每天最多上报一次「随机安装号 + 版本号 + 机型」") { a ->
+            openGroup(a, GROUP_FEEDBACK, "反馈与统计", "匿名使用统计")
+        }
+        list += Entry("崩溃自动上报", "崩溃时自动把堆栈、机型、页面记录与应用日志发到自建服务器") { a ->
+            openGroup(a, GROUP_FEEDBACK, "反馈与统计", "崩溃自动上报")
+        }
+        list += Entry("反馈附带账号 ID", "打开后反馈与崩溃报告会附上你的 UID") { a ->
+            openGroup(a, GROUP_FEEDBACK, "反馈与统计", "反馈附带账号 ID")
         }
         list += Entry("教程管理", "管理各页面的新手教程进度") { a ->
             a.startActivity(Intent(a, TutorialManagerActivity::class.java))

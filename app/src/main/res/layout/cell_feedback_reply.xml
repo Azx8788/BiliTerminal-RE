@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  对话时间线里的一条消息（26.10.16 新增），只用在反馈详情页的对话区。
+
+  26.10.16 起一条反馈下面有**两侧**的消息：开发者回复与用户自己的追加说明。
+  两者共用本布局，靠 `reply_title` 的文字区分（「开发者回复」/ 自定义标题 vs「我的补充」），
+  用户侧再由 FeedbackDetailActivity 补一圈主题色描边 —— 见那里的 buildReplyView。
+
+  消息条数很少（多为 0~5 条），详情页直接把本布局 inflate 进 LinearLayout，没有独立 adapter。
+-->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/reply_card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="4dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="4dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/reply_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                tools:text="已修复" />
+
+            <TextView
+                android:id="@+id/reply_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:alpha="0.7"
+                android:singleLine="true"
+                android:textSize="11sp"
+                tools:text="2026-10-09 21:33" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/reply_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:alpha="0.95"
+            android:textSize="12sp"
+            tools:text="下个版本会修好，感谢反馈。" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

@@ -135,6 +135,19 @@
             android:exported="false"
             android:label="反馈与建议"
             android:screenOrientation="locked" />
+        <!-- 26.10.16：「我的反馈」列表 + 详情（详情页可追加说明，走自建服务器的反馈对话接口）。
+             入口只在设置「反馈与统计」分组，不需要被外部拉起，故 exported=false。
+             详情页整条数据由列表页以 Parcelable extra 传入。 -->
+        <activity
+            android:name=".activity.feedback.FeedbackListActivity"
+            android:exported="false"
+            android:label="我的反馈"
+            android:screenOrientation="locked" />
+        <activity
+            android:name=".activity.feedback.FeedbackDetailActivity"
+            android:exported="false"
+            android:label="反馈详情"
+            android:screenOrientation="locked" />
         <activity
             android:name=".activity.TutorialActivity"
             android:exported="false"

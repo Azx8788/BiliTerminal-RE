@@ -152,6 +152,8 @@ class DebugBridge : BroadcastReceiver() {
             "logs" -> logs()
             "logclear" -> logClear(intent)
             "trail" -> trail()
+            "logring" -> logRing(intent)
+            "crash" -> crash()
             "top" -> top()
             else -> "ERR: 未知命令 $cmd（用 --es cmd help 看命令表）"
         }
@@ -176,6 +178,10 @@ class DebugBridge : BroadcastReceiver() {
         |  --es cmd logs                     列出日志文件及大小
         |  --es cmd logclear [--es file <名>]   清空日志（默认清业务日志）
         |  --es cmd trail                    页面轨迹（最近 20 个页面）
+        |  --es cmd logring [--es inject <文本>]  内存日志缓冲（不落盘那条路）；
+        |                                   带 inject 会先以 W 级写一条再取快照，用于验脱敏
+        |  --es cmd crash                    在主线程抛一个测试异常，**主进程会立刻崩**。
+        |                                   用于验证「崩溃 → ErrorCatch 带 ring_log → 崩溃页自动上报」整条链路
         |  --es cmd top                      当前前台 Activity
         |
         |结果同时写入 logs/$RESULT_FILE；回显为空时读该文件。
@@ -577,9 +583,51 @@ class DebugBridge : BroadcastReceiver() {
         return if (snapshot.isEmpty()) "OK: 暂无页面轨迹" else "OK: 页面轨迹\n$snapshot"
     }
 
+    /**
+     * 读**内存日志缓冲**（`Logu` 的环形缓冲），可选先注入一条测试日志。
+     *
+     * <p>与 `log` 命令的区别：`log` 读的是**落盘文件**，而落盘只在 Agent 模式下才有；
+     * 内存缓冲是 release 包唯一能拿到历史日志的那条路（它刻意不落盘）。加这条命令是因为
+     * 「缓冲到底有没有在累积、脱敏有没有生效」光看落盘文件验证不了。
+     *
+     * <p>`--es inject <文本>` 会先以 W 级写一条再取快照 —— 用来验证脱敏链路：
+     * 注入 `SESSDATA=abc&sign=xyz`，快照里应当出现 `SESSDATA=***&sign=***`。
+     */
+    private fun logRing(intent: Intent): String {
+        val inject = intent.getStringExtra("inject")
+        if (!inject.isNullOrEmpty()) Logu.w(inject)
+        val chars = Logu.ringChars()
+        val snapshot = Logu.ringSnapshot()
+        if (snapshot.isEmpty()) return "OK: 内存日志缓冲为空（ringChars=0）"
+        val tailLimit = 4000
+        val tail = if (snapshot.length > tailLimit) snapshot.substring(snapshot.length - tailLimit) else snapshot
+        var lines = 1
+        for (c in snapshot) if (c == '\n') lines++
+        return "OK: ringChars=$chars，$lines 行；尾部 ${tail.length} 字符：\n$tail"
+    }
+
     private fun top(): String {
         val activity = BiliTerminal.getCurrentActivity()
         return activity?.javaClass?.name ?: "<应用不在前台>"
+    }
+
+    /**
+     * 在主线程抛一个未捕获异常，**主进程会立刻崩溃**。
+     *
+     * <p>存在的唯一理由：验证「崩溃 → [com.RobinNotBad.BiliClient.ErrorCatch] 在崩溃瞬间把
+     * `ring_log` 等 extra 塞进 Intent → `CatchActivity`（`:error_activity` 独立进程）自动上报」
+     * 这整条链路。手动 `start` 崩溃页只能验证**接收端**，验证不了发送端那段代码。
+     *
+     * <p>刻意用 `Handler.post` 而不是直接在 `onReceive` 里抛：脱离 receiver 的调用栈，
+     * 让异常真正走到 `Thread.setDefaultUncaughtExceptionHandler`。
+     *
+     * <p>返回值基本看不到——进程马上就死了，结果文件也来不及写。
+     */
+    private fun crash(): String {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            throw RuntimeException("DebugBridge 测试崩溃（验证崩溃上报链路）")
+        }
+        return "OK: 已请求在主线程抛出测试异常，主进程即将崩溃"
     }
 
     // ==================== 工具 ====================

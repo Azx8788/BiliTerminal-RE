@@ -3,9 +3,16 @@ package com.RobinNotBad.BiliClient.util
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.text.InputFilter
+import android.text.InputType
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -203,6 +210,47 @@ object TerminalDialog {
         return sheet.dialog
     }
 
+    /**
+     * 输入型：一个多行输入框 + 「取消 / 发送」按钮（26.10.16 新增）。
+     *
+     * 场景：反馈详情页的「追加说明」。收在这里而不是让调用方裸写
+     * `AlertDialog.Builder(...).setView(EditText(...))` —— 那样又要各自处理主题色、键盘弹出、
+     * 按钮位置这三件重复的事，正是本文件存在的意义（见类注释）。
+     *
+     * **按钮必须走固定底栏**（[Sheet] 的 `bottomButtonBar = true`）：输入框会随内容长高，
+     * 按钮跟在正文后面会被顶出可视区，而这时用户正打着字。
+     *
+     * @param maxLength 0 表示不限
+     * @param onConfirm 回调拿到的是**已 trim 过**的内容；内容为空时既不回调也不关窗
+     */
+    fun input(
+        context: Context,
+        title: String? = null,
+        hint: String? = null,
+        initialText: String = "",
+        maxLength: Int = 0,
+        confirmText: String = "发送",
+        cancelText: String = "取消",
+        onConfirm: (String) -> Unit
+    ): AlertDialog {
+        val sheet = Sheet(context, title, bottomButtonBar = true)
+        val edit = sheet.addInput(hint, initialText, maxLength)
+
+        if (cancelText.isNotEmpty()) {
+            sheet.addButton(cancelText, sheet.secondaryColor()) { sheet.dialog.dismiss() }
+        }
+        sheet.addButton(confirmText, sheet.primaryColor()) {
+            val text = edit.text?.toString()?.trim().orEmpty()
+            // 空内容不关窗也不回调：用户多半是手滑点了发送，把输入框一起关掉就得重打一遍
+            if (text.isEmpty()) return@addButton
+            sheet.dialog.dismiss()
+            onConfirm(text)
+        }
+
+        sheet.prepareForTyping(edit)
+        return sheet.dialog
+    }
+
     /** 纯提示型（只有一个按钮），如「该季暂无剧集」。 */
     fun alert(
         context: Context,
@@ -324,6 +372,72 @@ object TerminalDialog {
             row.root.isClickable = false
             row.root.isFocusable = false
             row.root.background = null
+        }
+
+        /**
+         * 加一个多行输入框。给 [TerminalDialog.input] 用。
+         *
+         * 外观自己画而不是沿用主题的 `editTextStyle`：7 套主题各有一份
+         * `ThemeOverlay.<X>.Dialog`，但都**没有**声明 `editTextBackground`，交给框架解析会落到
+         * Material 的默认值上（深色主题里就是一条近白的下划线，与本文件的整体观感不搭）。
+         * 这里只从 `?attr/colorOnSurface` 取色，与文件其它部分同一约定。
+         */
+        internal fun addInput(hint: String?, initial: String, maxLength: Int): EditText {
+            val edit = EditText(dialog.context).apply {
+                setText(initial)
+                this.hint = hint
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                gravity = Gravity.TOP or Gravity.START
+                textSize = 13f
+                // minLines 给足打字时的视野；maxLines 是**弹窗不被撑出屏幕**的保证
+                // （配合 prepareForTyping 取消滚动区高度上限，见那里的说明）
+                minLines = 3
+                maxLines = 6
+                setTextColor(onSurfaceColor())
+                setHintTextColor(secondaryColor())
+                background = inputBackground()
+                val pad = dimen(R.dimen.dialog_item_padding_h)
+                setPadding(pad, pad, pad, pad)
+            }
+            if (maxLength > 0) edit.filters = arrayOf(InputFilter.LengthFilter(maxLength))
+            container.addView(edit)
+            return edit
+        }
+
+        /** 输入框底：`colorOnSurface` 压到 10% 透明度的圆角块（深浅主题各自成立）。 */
+        private fun inputBackground(): Drawable {
+            val base = onSurfaceColor()
+            val alpha = (Color.alpha(base) * 0.10f).toInt().coerceIn(0, 255)
+            return GradientDrawable().apply {
+                setColor((base and 0x00FFFFFF) or (alpha shl 24))
+                cornerRadius = 8f * dialog.context.resources.displayMetrics.density
+            }
+        }
+
+        /**
+         * 打字前的准备：取消滚动区高度上限 + 弹起软键盘 + 聚焦到文末。
+         *
+         * **为什么取消上限**：`capScrollHeight()` 把滚动区钉死在屏高的 45%，那是为「条目多到
+         * 撑破表盘」准备的；输入型弹窗的内容只有一个输入框，钉死会在下面留一大片空白。
+         * 改成 `wrap_content` 的安全性由输入框自身的 `maxLines = 6` 保证 —— 内容再多也是
+         * 输入框内部滚动，不会把弹窗撑出屏幕。
+         */
+        internal fun prepareForTyping(edit: EditText) {
+            scroll.layoutParams = scroll.layoutParams.apply {
+                height = ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+            dialog.window?.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            )
+            edit.requestFocus()
+            edit.setSelection(edit.text?.length ?: 0)
+            // show 之后再补一次：弹窗显示前 View 还没 attach，那一次 requestFocus 不一定生效，
+            // 表现为「弹窗出来了但键盘不弹、光标也不在框里」。
+            dialog.setOnShowListener {
+                edit.requestFocus()
+                edit.setSelection(edit.text?.length ?: 0)
+            }
         }
 
         /** 加一个右对齐的文字按钮（确认型用）。 */

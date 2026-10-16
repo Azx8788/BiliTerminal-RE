@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.RobinNotBad.BiliClient.ui.widget.RotaryScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
@@ -76,17 +77,64 @@
             android:text="点击上方展开错误堆栈"
             android:textSize="11sp" />
 
+        <!-- 这段说明讲的是**上游手动上传**那条路（「点击下面的按钮」指 upload_btn）。
+             26.10.16：upload_btn 已刻意不显示（上游只服务其自身版本，本 fork 点它必被拒），
+             所以这段指向「下面的按钮」的说明一并收起，否则它指向一个不存在的按钮。 -->
         <TextView
+            android:id="@+id/manual_upload_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"
             android:alpha="0.85"
             android:gravity="center"
             android:text="@string/desc_crash"
-            android:textSize="12sp" />
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <!-- 26.10.16：勾选框包进卡片，与反馈页的样式对齐（那边也是卡片包裹）。
+             默认勾选——崩溃时用户往往没耐心操作，默认勾上才拿得到样本；用户可主动取消。
+             缓冲为空时由 CatchActivity 置灰并改文案。
+             颜色只读 ?attr/，不写死色值：勾选色取 colorPrimary，文字色取框架的 textColorPrimary
+             （本工程各主题已按亮/暗分别声明，避免落到 Material 默认的「灰底白字」）。 -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginVertical="2dp"
+            android:layout_marginTop="4dp"
+            android:paddingVertical="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="8dp">
+
+                <com.google.android.material.checkbox.MaterialCheckBox
+                    android:id="@+id/attach_ring_log"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="附带应用日志"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textSize="12sp"
+                    app:buttonTint="?attr/colorPrimary" />
+
+                <!-- 补一行描述：只放一个勾选框时，卡片右侧会空一大片、看着像没做完。
+                     本工程其它卡片都是「标题 + 描述」两行结构，这里跟上。 -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:alpha="0.7"
+                    android:text="崩溃前最近的应用运行日志，已脱敏；不勾选就不会发送"
+                    android:textSize="11sp" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- 26.10.09：自建服务器的崩溃报告是「自动上传」的（上游那套仍需手动点按钮），
-             这里显示自动上传的状态与报错 ID。默认隐藏，只在开关打开时显示。 -->
+             这里显示自动上传的状态与报错 ID。默认隐藏，只在开关打开时显示。
+             26.10.16：**刻意留在卡片外** —— 它只是状态文字、不可点，被卡片框起来会让人以为能点。 -->
         <TextView
             android:id="@+id/auto_report_status"
             android:layout_width="match_parent"

@@ -11,6 +11,7 @@ import com.RobinNotBad.BiliClient.BuildConfig
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.FeedbackActivity
 import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
+import com.RobinNotBad.BiliClient.activity.feedback.FeedbackListActivity
 import com.RobinNotBad.BiliClient.activity.settings.login.AccountSwitchActivity
 import com.RobinNotBad.BiliClient.activity.settings.login.LoginActivity
 import com.RobinNotBad.BiliClient.activity.settings.login.SpecialLoginActivity
@@ -29,9 +30,19 @@ import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.PerformanceManager
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
+import com.RobinNotBad.BiliClient.util.TerminalReportPrefs
 
 /** 「外观设置」分组的 group_type 取值。`SettingsIndex` 里跳转该分组时也用这个常量。 */
 const val GROUP_APPEARANCE = "appearance"
+
+/**
+ * 「反馈与统计」分组的 group_type 取值。`SettingsIndex` 里跳转该分组时也用这个常量。
+ *
+ * <p>26.10.16：这 5 个项原先**平铺在「关于与帮助」页上**，把那一页撑得很长。
+ * 改成与「外观设置」同样的形态——本页的另一个 `group_type` 分组，
+ * 上级只留一个入口卡片，点进去才是这些项（对用户同样是独立一屏）。
+ */
+const val GROUP_FEEDBACK = "feedback"
 
 /** 「通知设置」分组的 group_type 取值。`SettingsIndex` 里跳转该分组时也用这个常量。 */
 const val GROUP_NOTIFY = "notify"
@@ -108,6 +119,7 @@ class SettingGroupActivity : RefreshListActivity() {
             "ui" -> buildUIGroup()
             GROUP_APPEARANCE -> buildAppearanceGroup()
             GROUP_NOTIFY -> buildNotifyGroup()
+            GROUP_FEEDBACK -> buildFeedbackGroup()
             "content" -> buildContentGroup()
             "download" -> buildDownloadGroup()
             "lab" -> buildLabGroup()
@@ -523,9 +535,28 @@ class SettingGroupActivity : RefreshListActivity() {
         }
 
         // 26.10.09：自建反馈通道 + 匿名统计/崩溃上报。
-        // 三个开关都能在这里关掉——默认开是用户拍板的取舍（真实留存数据），
-        // 但「默认开」必须配一条明确的关闭路径，否则就是偷偷摸摸收集。
-        title("反馈与统计")
+        // 26.10.16：这 5 项原先平铺在本页，把「关于与帮助」撑得很长。改成与「外观设置」
+        // 同样的形态——上级只留一个入口卡片，点进去才是那些项（对用户同样是独立一屏）。
+        nav(
+            R.drawable.icon_help,
+            "反馈与统计",
+            "反馈与建议、我的反馈、匿名统计与崩溃上报开关"
+        ) {
+            startActivity(Intent(this, SettingGroupActivity::class.java).apply {
+                putExtra("group_type", GROUP_FEEDBACK)
+                putExtra("group_title", "反馈与统计")
+            })
+        }
+    }
+
+    /**
+     * 「反馈与统计」分组：自建反馈通道 + 匿名统计 / 崩溃上报的三个开关。
+     *
+     * <p>26.10.16 从 [buildAboutGroup] 整体迁来。**三个开关都能在这里关掉**——默认开是
+     * 用户拍板的取舍（真实留存数据），但「默认开」必须配一条明确的关闭路径，
+     * 否则就是偷偷摸摸收集。
+     */
+    private fun buildFeedbackGroup() {
         nav(
             R.drawable.icon_help,
             getString(R.string.feedback_entry_title),
@@ -533,11 +564,21 @@ class SettingGroupActivity : RefreshListActivity() {
         ) {
             startActivity(Intent(this, FeedbackActivity::class.java))
         }
+        // 26.10.16：「我的反馈」——看自己发过的反馈、与开发者一来一回的对话，并可追加说明。
+        // 挂在这里而不是加菜单项：菜单结构对老用户是缓存的，新菜单项不会自动出现
+        // （见 AGENTS.md「新增菜单页改三处」那条）。
+        nav(
+            R.drawable.icon_announcement,
+            getString(R.string.feedback_mine_entry_title),
+            getString(R.string.feedback_mine_entry_desc)
+        ) {
+            startActivity(Intent(this, FeedbackListActivity::class.java))
+        }
         switch(
             getString(R.string.setting_telemetry),
             getString(R.string.desc_setting_telemetry),
             SettingsKeys.TELEMETRY_ENABLE,
-            true
+            TerminalReportPrefs.DEFAULT_TELEMETRY_ENABLED
         ) { on ->
             // 用户主动打开开关就是一次明确的意思表示，等同于重新同意隐私说明——
             // 否则会出现「开关打开着、但因为之前点过不同意而一直不上报」这种说不通的状态。
@@ -548,7 +589,7 @@ class SettingGroupActivity : RefreshListActivity() {
             getString(R.string.setting_crash_auto),
             getString(R.string.desc_setting_crash_auto),
             SettingsKeys.CRASH_REPORT_AUTO,
-            true
+            TerminalReportPrefs.DEFAULT_CRASH_REPORT_ENABLED
         ) { on ->
             if (on) TerminalApi.recordPrivacyConsentFromSettings()
         }

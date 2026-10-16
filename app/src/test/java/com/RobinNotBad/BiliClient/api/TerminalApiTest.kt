@@ -75,10 +75,11 @@ class TerminalApiTest {
     @Test
     fun buildFeedbackPayload_normalizesCategoryAndDefaults() {
         val payload = TerminalApi.buildFeedbackPayload(
-            "abc123", "devkey123", "BUG", "播放器闪退", null, 0, 2610090, "26.10.09", 34, "Xiaomi", "diting"
+            "abc123", "devkey123", "BUG", "播放器闪退", null, null, 0, 2610090, "26.10.09", 34, "Xiaomi", "diting"
         )
         assertEquals("非法分类应被收敛", "other", payload.getString("category"))
         assertEquals("content 不可以被裁剪或改写", "播放器闪退", payload.getString("content"))
+        assertEquals("未勾选附带日志时 log 应为空串", "", payload.getString("log"))
         assertEquals("未填联系方式应为空串", "", payload.getString("contact"))
         assertEquals("未勾选附带账号时 mid 应为 0", 0L, payload.getLong("mid"))
         assertEquals("devkey123", payload.getString("device_key"))
@@ -87,10 +88,63 @@ class TerminalApiTest {
     @Test
     fun buildFeedbackPayload_keepsSelectedMid() {
         val payload = TerminalApi.buildFeedbackPayload(
-            "abc123", "devkey123", "bug", "内容", "qq:123", 123456L, 1, "v", 34, "b", "d"
+            "abc123", "devkey123", "bug", "内容", null, "qq:123", 123456L, 1, "v", 34, "b", "d"
         )
         assertEquals(123456L, payload.getLong("mid"))
         assertEquals("qq:123", payload.getString("contact"))
+    }
+
+    /**
+     * 勾选「附带应用日志」时，快照原样进 `log` 字段；未勾选（null / 空串）时必须是**空串**
+     * 而不是 JSON `null` —— 服务端按字符串落库，`null` 会污染数据。
+     */
+    @Test
+    fun buildFeedbackPayload_logFallsBackToEmptyString() {
+        val attached = TerminalApi.buildFeedbackPayload(
+            "abc123", "devkey123", "bug", "内容", "12:00:00 E A>b | 崩了", "", 0, 1, "v", 34, "b", "d"
+        )
+        assertEquals("日志快照应原样带上", "12:00:00 E A>b | 崩了", attached.getString("log"))
+
+        for (blank in listOf<String?>(null, "")) {
+            val payload = TerminalApi.buildFeedbackPayload(
+                "abc123", "devkey123", "bug", "内容", blank, "", 0, 1, "v", 34, "b", "d"
+            )
+            assertFalse("log 不该是 JSON null", payload.isNull("log"))
+            assertEquals("log 为空时应落成空串", "", payload.getString("log"))
+            assertFalse("序列化文本里不该出现 \"log\":null", payload.toString().contains("\"log\":null"))
+        }
+    }
+
+    /**
+     * 追加回复的载荷（26.10.16）：**只有 id 与 content 两个字段**。
+     *
+     * 身份全部走请求头，body 里不该再出现 install_id / mid —— 多一份就多一处可能不一致，
+     * 也多一条把身份写进请求体的路径。
+     */
+    @Test
+    fun buildFeedbackReplyPayload_hasOnlyIdAndContent() {
+        val payload = TerminalApi.buildFeedbackReplyPayload(42, "补充：点下一集才复现")
+
+        assertEquals(42, payload.getInt("id"))
+        assertEquals("补充：点下一集才复现", payload.getString("content"))
+        assertEquals("载荷应当只有两个字段", 2, payload.length())
+        for (forbidden in listOf("install_id", "mid", "device_key", "log", "category")) {
+            assertFalse("追加回复的载荷里不该有 $forbidden", payload.has(forbidden))
+        }
+    }
+
+    /** 内容为 null / 空串时落成**空串**而不是 JSON null（服务端按字符串落库）。 */
+    @Test
+    fun buildFeedbackReplyPayload_contentFallsBackToEmptyString() {
+        for (blank in listOf<String?>(null, "")) {
+            val payload = TerminalApi.buildFeedbackReplyPayload(1, blank)
+            assertFalse("content 不该是 JSON null", payload.isNull("content"))
+            assertEquals("", payload.getString("content"))
+            assertFalse(
+                "序列化文本里不该出现 \"content\":null",
+                payload.toString().contains("\"content\":null")
+            )
+        }
     }
 
     // ---------- 崩溃载荷 ----------
@@ -211,7 +265,7 @@ class TerminalApiTest {
     @Test
     fun feedbackPayload_containsNoCookieOrToken() {
         val payload = TerminalApi.buildFeedbackPayload(
-            "abc123", "devkey123", "bug", "内容", "", 0, 1, "v", 34, "b", "d"
+            "abc123", "devkey123", "bug", "内容", null, "", 0, 1, "v", 34, "b", "d"
         )
         val text = payload.toString().lowercase()
         for (forbidden in listOf("sessdata", "bili_jct", "dedeuserid", "cookie", "csrf")) {

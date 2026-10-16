@@ -63,8 +63,11 @@ public class NetWorkUtil {
      *
      * <p>`access_key` / `csrf`(bili_jct) 都是**可直接冒用身份的凭证**——写进日志等于把会话明文
      * 留在设备与 logcat 里（与审计 S2「只记 Cookie 键名、不记值」同一条原则）。
+     *
+     * <p>**公开可见是为了让 [com.RobinNotBad.BiliClient.util.LogSanitizer] 复用同一份清单**：
+     * 日志缓冲与 HTTP 追踪都要脱敏，各写一份迟早改漏一处；此处是唯一真相来源。
      */
-    private static final String[] SENSITIVE_QUERY_KEYS = {
+    public static final String[] SENSITIVE_QUERY_KEYS = {
             "access_key", "csrf", "bili_jct", "SESSDATA", "refresh_token", "token", "sign", "appkey"
     };
 
@@ -74,8 +77,11 @@ public class NetWorkUtil {
      * <p>这几个是 B 站 WBI 风控的浏览器指纹 blob（`dm_img_list` 单个就上千字符），对排障毫无价值，
      * 却能让一行日志从 600 字符涨到 2200+。实测打开追踪后跑几个页面，日志就飙到 74KB——
      * 按 2MB 滚动上限算，几十次页面加载就把历史冲掉了。
+     *
+     * <p>**公开可见是为了让 [com.RobinNotBad.BiliClient.util.LogSanitizer] 复用同一份清单**，
+     * 理由同上（SENSITIVE_QUERY_KEYS）。
      */
-    private static final String[] NOISE_QUERY_KEYS = {
+    public static final String[] NOISE_QUERY_KEYS = {
             "dm_img_list", "dm_img_inter", "dm_img_str", "dm_cover_img_str"
     };
 

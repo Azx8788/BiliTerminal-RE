@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「我的反馈」详情页（26.10.16 新增，只读）。
+
+  顶栏 + 可滚动的正文体，结构与 activity_feedback.xml 一致；滚动用工程既有的
+  RotaryScrollView（支持手表表冠），不引入任何新 drawable / 主题属性，7 套主题都要成立。
+
+  回复区（reply_section）默认 GONE：回复为空时整块不显示，别在页面上留一个空白标题。
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".activity.feedback.FeedbackDetailActivity">
+
+    <RelativeLayout
+        android:id="@+id/top"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true">
+
+        <TextView
+            android:id="@+id/pageName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentLeft="true"
+            android:layout_marginVertical="3dp"
+            android:layout_marginStart="8dp"
+            android:layout_toStartOf="@id/timeText"
+            android:layout_toLeftOf="@id/timeText"
+            android:lines="1"
+            android:text="反馈详情"
+            android:textStyle="bold"
+            app:drawableStartCompat="@drawable/arrow_back" />
+
+        <com.RobinNotBad.BiliClient.ui.widget.TextClock
+            android:id="@+id/timeText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentRight="true"
+            android:layout_marginVertical="3dp"
+            android:layout_marginEnd="8dp" />
+
+    </RelativeLayout>
+
+    <!-- id 是给「发送成功后滚到时间线末尾」用的（FeedbackDetailActivity.scrollToBottom）。 -->
+    <com.RobinNotBad.BiliClient.ui.widget.RotaryScrollView
+        android:id="@+id/detail_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/top">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/activity_padding_horizontal"
+            android:paddingVertical="4dp">
+
+            <!-- 第一行：分类 + 状态（待受理 / 已受理） -->
+            <TextView
+                android:id="@+id/detail_meta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                tools:text="功能异常 · 待受理" />
+
+            <TextView
+                android:id="@+id/detail_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:alpha="0.7"
+                android:textSize="11sp"
+                tools:text="2026-10-09 21:19" />
+
+            <!-- 反馈完整正文（详情页不截断，全量显示） -->
+            <TextView
+                android:id="@+id/detail_content"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:textSize="13sp"
+                tools:text="播放器在切集的时候会闪退，复现步骤：先播一个视频再点下一集。" />
+
+            <!-- 联系方式：用户没填时在代码里置 GONE -->
+            <TextView
+                android:id="@+id/detail_contact"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:alpha="0.8"
+                android:textSize="11sp"
+                android:visibility="gone"
+                tools:text="联系方式：qq:123456"
+                tools:visibility="visible" />
+
+            <!-- 对话区：一条按时间交错的时间线（26.10.16 起两侧都有消息）。
+                 为空时整块 GONE，不留空白标题。 -->
+            <LinearLayout
+                android:id="@+id/reply_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <!-- 文案由代码按内容决定：只有开发者回复时叫「开发者回复」更具体，
+                     一旦有来回就叫「对话记录」。这里的文字只是布局预览用。 -->
+                <TextView
+                    android:id="@+id/reply_header"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    tools:text="对话记录" />
+
+                <LinearLayout
+                    android:id="@+id/reply_container"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </LinearLayout>
+
+            <!-- 「追加说明」入口（26.10.16 新增）。
+                 做成卡片而不是底部按钮：本页主体已经全是卡片，异形按钮会显得「不属于这一列」
+                 （同一个教训在反馈页的勾选框上吃过一次）。
+                 输入走 TerminalDialog.input() 弹窗，不在这里内嵌输入框 —— 键盘会顶掉半屏。 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/add_note_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="8dp"
+                    android:layout_marginVertical="6dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="追加说明"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:alpha="0.7"
+                        android:text="补充复现步骤或说明，开发者会看到"
+                        android:textSize="11sp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+    </com.RobinNotBad.BiliClient.ui.widget.RotaryScrollView>
+
+</RelativeLayout>

@@ -10,6 +10,7 @@
   没有引入新的 drawable 或主题属性 —— 手表端 7 套主题都要成立。
 -->
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -138,11 +139,69 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- 是否附带应用日志：默认**不勾选**（反馈是用户主动行为，由他决定；
+                 与崩溃页的默认勾选相反）。
+                 26.10.16 改：原先这里是**裸 CheckBox**，夹在上下两个 MaterialCardView 之间——
+                 左右与卡片内文字对不齐，而且 CheckBox 的方块本身占位、把文字又往右推了一截，
+                 看起来「不属于这一列」。改成与上下一致的卡片 + 卡片内 8dp 水平边距。
+                 勾选色仍读主题，不写死色值。 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/attach_log_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="8dp"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/attach_log_check"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/feedback_attach_log"
+                        android:textSize="13sp"
+                        app:buttonTint="?attr/colorPrimary" />
+
+                    <!-- 同上：本工程卡片都是「标题 + 描述」两行，只放勾选框右侧会空一大片 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:alpha="0.7"
+                        android:text="最近的应用运行日志（已脱敏），便于定位问题"
+                        android:textSize="11sp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 导出日志到文件：走 LogExporter（FileProvider + 系统分享），与提交是两条独立路径 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/export_log_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp">
+
+                <TextView
+                    android:id="@+id/export_log_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="35dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:gravity="center_vertical"
+                    android:text="@string/feedback_export_log"
+                    android:textSize="13sp" />
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 26.10.16：marginTop 由 8dp 改成 6dp —— 上面几个卡片全是 6dp，
+                 只有它多出 2dp（实测 32px vs 24px），用户一眼就看出「这两个间距不一样」。 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/submit_btn"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="6dp"
                 android:text="@string/feedback_submit"
                 android:textSize="13sp" />
 

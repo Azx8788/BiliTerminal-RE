@@ -8,6 +8,7 @@ import android.os.Process
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StyleSpan
+import android.widget.CheckBox
 import android.widget.TextView
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
@@ -23,6 +24,15 @@ import com.RobinNotBad.BiliClient.util.StringUtil
 import com.google.android.material.button.MaterialButton
 
 class CatchActivity : BaseActivity() {
+
+    companion object {
+        /** 自动上报的延迟毫秒数：给用户一个真正能生效的「取消附带日志」窗口。 */
+        private const val AUTO_REPORT_DELAY_MS = 3000L
+
+        /** 同上，供文案使用；与 [AUTO_REPORT_DELAY_MS] 必须保持一致。 */
+        private const val AUTO_REPORT_DELAY_SEC = 3
+    }
+
     private var openStack: Boolean = false
 
     @SuppressLint("MissingInflatedId", "SetTextI18n")
@@ -47,6 +57,21 @@ class CatchActivity : BaseActivity() {
         val trail = intent.getStringExtra("trail")
         val uptime = intent.getLongExtra("uptime", 0L)
 
+        // 26.10.16（崩溃报告附带应用日志）：内存日志快照由 ErrorCatch 在崩溃瞬间从主进程
+        // 取好、经 Intent extra 带过来。**这里不能再调 Logu.ringSnapshot()**——崩溃页跑在
+        // :error_activity 独立进程，那边的 Logu 内存缓冲是空的，直接调只会拿到空串。
+        val ringLog = intent.getStringExtra("ring_log")
+
+        val attachLogBox = findViewById<CheckBox>(R.id.attach_ring_log)
+        if (ringLog.isNullOrEmpty()) {
+            // 本次崩溃前没产生任何 W/E/F 日志：勾了也没内容可传。
+            // 直接置灰 + 改文案，比留一个「勾了却什么都没带」的活勾选框更清楚——
+            // 用户不会误以为日志已经附上了。
+            attachLogBox.isChecked = false
+            attachLogBox.isEnabled = false
+            attachLogBox.text = "本次没有可附带的日志"
+        }
+
         val autoStatusView = findViewById<TextView>(R.id.auto_report_status)
 
         // 自动上报走自建服务器，与下面那个「手动上传到上游」的按钮互相独立：
@@ -54,18 +79,32 @@ class CatchActivity : BaseActivity() {
         // 而自动上报要的正是这些没被人为挑过的样本。开关默认开，用户可在设置里关。
         if (TerminalApi.isCrashReportAutoEnabled()) {
             autoStatusView.visibility = android.view.View.VISIBLE
-            autoStatusView.text = "正在自动上报错误报告…"
-            CenterThreadPool.run {
-                val res = CrashReporter.upload(
-                    this@CatchActivity, exception, message, crashThread, stack, trail, uptime
-                )
-                runOnUiThread {
-                    autoStatusView.text = if (res.code >= 0)
-                        "已自动上报错误报告\n报错ID：${res.code}\n如需补充说明请到「设置 - 关于 - 反馈与建议」"
-                    else
-                        "自动上报失败：${res.message}\n（可在「设置 - 关于与帮助」里关闭自动上报）"
+            autoStatusView.text =
+                "将在 $AUTO_REPORT_DELAY_SEC 秒后自动上报错误报告\n（这期间可取消下面的「附带应用日志」）"
+            // 上面那段「点击下面的按钮上传」的说明已在 XML 里固定 gone（按钮不显示了），
+            // 这里不再需要运行时收起它。
+            // **不能立刻读勾选状态并上报**：页面渲染完成之前用户看不到勾选框，同步读到的
+            // 永远是 XML 默认值，等于「可取消」是句空话（26.10.16 真机实测发现）。
+            // 所以延后一小段，给用户一个真正能生效的取消窗口。
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (isDestroyed) return@postDelayed
+                // 在主线程读勾选状态：CenterThreadPool 里读 View 状态不是线程安全的。
+                // 没勾选就传空串，由 CrashReporter 那边判空后不拼分隔符。
+                val ringLogToSend = if (attachLogBox.isChecked) ringLog.orEmpty() else ""
+                autoStatusView.text = "正在自动上报错误报告…"
+                CenterThreadPool.run {
+                    val res = CrashReporter.upload(
+                        this@CatchActivity, exception, message, crashThread, stack, trail, ringLogToSend, uptime
+                    )
+                    runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
+                        autoStatusView.text = if (res.code >= 0)
+                            "已自动上报错误报告\n报错ID：${res.code}\n如需补充说明请到「设置 - 关于 - 反馈与建议」"
+                        else
+                            "自动上报失败：${res.message}\n（可在「设置 - 关于与帮助」里关闭自动上报）"
+                    }
                 }
-            }
+            }, AUTO_REPORT_DELAY_MS)
         }
 
         findViewById<android.view.View>(R.id.exit_btn).setOnClickListener { android.os.Process.killProcess(android.os.Process.myPid()) }
@@ -87,6 +126,11 @@ class CatchActivity : BaseActivity() {
             else
                 allowUpload = true
 
+            // **刻意不显示这个按钮**：XML 里 upload_btn 就是 gone，这里也不再设回 VISIBLE。
+            // 理由：它走的是上游 api.biliterminal.cn，那台服务器只服务其自身版本——本 fork 点它
+            // 一律被拒（实测返回「请使用最新版本上传」）。而崩溃上报已由上面的自建通道自动完成，
+            // 留一个永远失败的按钮只会让人撞墙。上游接口本身按约定原样保留
+            //（`AppInfoApi.uploadStack` 不动），将来上游若开放本版本，把 visibility 设回 VISIBLE 即可。
             if (allowUpload) btnUpload.setOnClickListener {
                 btnUpload.isEnabled = false
                 if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, -1) == -1L)
@@ -95,9 +139,12 @@ class CatchActivity : BaseActivity() {
                     CenterThreadPool.run {
                         val res: ApiResult = AppInfoApi.uploadStack(stack, this@CatchActivity)
                         runOnUiThread {
+                            if (isDestroyed) return@runOnUiThread
                             if (res.code >= 0)
                                 btnUpload.text = "请带着你的报错ID：${res.code}\n和你崩溃前进行的操作\n去找开发者\n（提醒：开发者不保证会修好也不保证随时回复你）"
-                            else btnUpload.text = res.message
+                            else btnUpload.text = res.message +
+                                "\n\n（这个按钮走的是上游服务器，本 fork 常被它按版本拒绝；" +
+                                "崩溃报告以上面自动上报的报错ID 为准）"
 
                             if (res.code == -1) btnUpload.isEnabled = true
                         }

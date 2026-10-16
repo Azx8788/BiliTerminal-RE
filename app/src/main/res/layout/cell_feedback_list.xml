@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「我的反馈」列表项（26.10.16 新增）。
+
+  手表端屏小：一行只放「分类 + 状态」，正文压成两行摘要，时间单独一行弱化。
+  与 cell_announcement_list.xml 保持同一套卡片外观与尺寸（同一批 MaterialCardView + 既有 dimen）。
+-->
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cardView"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="@dimen/activity_padding_horizontal"
+    android:layout_marginVertical="@dimen/list_margin_vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="4dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/category"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                tools:text="功能异常" />
+
+            <!-- 状态只用「待受理 / 已受理」，绝不要写「已处理」 -->
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:alpha="0.85"
+                android:singleLine="true"
+                android:textSize="12sp"
+                tools:text="待受理" />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:alpha="0.95"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textSize="12sp"
+            tools:text="播放器在切集的时候会闪退，复现步骤：先播一个视频再点下一集。" />
+
+        <TextView
+            android:id="@+id/time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:alpha="0.7"
+            android:textSize="12sp"
+            tools:text="2026-10-09 21:19" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>
