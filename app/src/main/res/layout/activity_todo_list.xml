@@ -50,54 +50,6 @@
             android:paddingVertical="12dp">
 
             <TextView
-                android:id="@+id/item_comic"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="漫画系统"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_course"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="付费课程系统"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_tutorial"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="教程回放和一键跳过系统"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_theme"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="更先进的主题系统"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_vip"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="大会员开通系统"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_settings_refactor"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="设置界面重构"
-                android:textSize="14sp" />
-
-            <TextView
                 android:id="@+id/item_mobile"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -111,38 +63,6 @@
                 android:layout_height="wrap_content"
                 android:paddingVertical="10dp"
                 android:text="平板端适配"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_desktop"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="电脑端试开发"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_linux"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="Linux就算了....."
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_ios"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="IOS有时间可以试试"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/item_sign"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingVertical="10dp"
-                android:text="签名不管我的事"
                 android:textSize="14sp" />
 
             <TextView
