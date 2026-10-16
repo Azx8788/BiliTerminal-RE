@@ -53,6 +53,14 @@ __pycache__/
 /index.html
 /legacy.html
 
+# 本地产物目录（从未跟踪过，且**不应**入库）
+# outputs/ 放的是发版 APK 与真机截图，实测 137MB —— 一旦进去就永久膨胀，且大文件删掉也
+#   只是「新提交里没有」，旧提交仍然背着它。
+# .workbuddy-ai/ 是 AI 工作目录（记忆、临时产物），与项目代码无关。
+# 这两条是**护栏**：靠「记得用显式路径 git add」防不住，一次 `git add -A` 就进去了。
+/outputs/
+/.workbuddy-ai/
+
 # 控制台 / 自建后端（26.10.14 起移出版本库）
 # 这套东西（FastAPI 后端 + console.html + selftest + nginx 配置 + systemd 单元）
 # 直接部署到服务器 /opt/rebiliterminal-api/，**改完即生效**：改前端只需覆盖文件
