@@ -1,7 +1,11 @@
 package com.RobinNotBad.BiliClient.util;
 
 
+import android.app.Activity;
+import android.content.Context;
+import android.content.ContextWrapper;
 import android.graphics.drawable.Drawable;
+import android.view.View;
 import android.widget.ImageView;
 
 import com.RobinNotBad.BiliClient.R;
@@ -64,6 +68,7 @@ public class GlideUtil {
     }
 
     public static void request(ImageView view, String url, int placeholder) {
+        if (!canLoad(view)) return;
         Glide.with(view).asDrawable().load(url(url))
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .format(DecodeFormat.PREFER_RGB_565)
@@ -74,6 +79,7 @@ public class GlideUtil {
     }
 
     public static void requestRound(ImageView view, String url, int placeholder) {
+        if (!canLoad(view)) return;
         Glide.with(view).asDrawable().load(url(url))
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .format(DecodeFormat.PREFER_RGB_565)
@@ -85,6 +91,7 @@ public class GlideUtil {
     }
 
     public static void request(ImageView view, String url, int roundCorners, int placeholder) {
+        if (!canLoad(view)) return;
         Glide.with(view).asDrawable().load(url(url))
                 .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .format(DecodeFormat.PREFER_RGB_565)
@@ -93,6 +100,37 @@ public class GlideUtil {
                 .error(safePlaceholder(placeholder))
                 .apply(RequestOptions.bitmapTransform(new RoundedCorners(ToolsUtil.dp2px(roundCorners))))
                 .into(view);
+    }
+
+    /**
+     * 现在还能不能对这个 View 发起一次图片加载。
+     *
+     * <p>Glide 4 的 {@code Glide.with(activity)} 内部会先
+     * {@code assertNotDestroyed(activity)}，页面一旦销毁就抛
+     * {@code IllegalArgumentException: You cannot start a load for a destroyed activity}；
+     * 而 {@code Glide.with(view)} 会沿着 View 的 Context 往上找宿主 Activity，最后走到**同一个**
+     * 判断。于是「网络回来后在回调里刷新图片」这种场景必崩——发请求时页面还活着，回来时已经
+     * finish 了；弱网与低性能设备只是把这个时间窗拉长。
+     *
+     * <p>这里提前挡住：**只有确实解析到一个已销毁 / 正在 finish 的 Activity 才拒绝**。
+     * 解析不到 Activity（View 挂在 Application 上下文上）时照常放行，与改动前行为一致。
+     *
+     * <p>{@code Activity#isDestroyed()} 是 API 17+，本工程 minSdk 19，不需要版本闸；
+     * 另外 {@code BaseActivity} 重写了它（销毁**或**正在 finish 都返回 true），
+     * 这里仍把 {@code isFinishing()} 一起判，是为了不依赖那个重写。
+     */
+    public static boolean canLoad(View view) {
+        if (view == null) return false;
+        Activity activity = findActivity(view.getContext());
+        if (activity == null) return true;
+        return !activity.isFinishing() && !activity.isDestroyed();
+    }
+
+    /** 沿 ContextWrapper 链找宿主 Activity；不是 Activity 上下文时返回 null。 */
+    private static Activity findActivity(Context context) {
+        if (context instanceof Activity) return (Activity) context;
+        if (context instanceof ContextWrapper) return findActivity(((ContextWrapper) context).getBaseContext());
+        return null;
     }
 
     /**

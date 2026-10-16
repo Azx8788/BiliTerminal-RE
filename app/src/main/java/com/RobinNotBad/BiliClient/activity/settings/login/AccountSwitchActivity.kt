@@ -17,10 +17,12 @@ import com.RobinNotBad.BiliClient.model.UserInfo
 import com.RobinNotBad.BiliClient.util.AccountManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.GlideUtil
+import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.TerminalDialog
 import com.bumptech.glide.Glide
+import com.bumptech.glide.RequestManager
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 import com.google.android.material.card.MaterialCardView
@@ -28,6 +30,19 @@ import com.google.android.material.card.MaterialCardView
 class AccountSwitchActivity : BaseActivity() {
 
     private lateinit var accountList: LinearLayout
+
+    /**
+     * 本页共用的 Glide 请求管理器。
+     *
+     * 不再每张卡片各写一次 `Glide.with(this)`：那个调用在页面已销毁 / 正在 finish 时会抛
+     * `IllegalArgumentException: You cannot start a load for a destroyed activity`，
+     * 而本页的头像加载全部发生在「网络回来之后」，正好落在这个窗口里。
+     * 存成字段还能让 [clearAvatarRequests] 有东西可清。
+     */
+    private var requestManager: RequestManager? = null
+
+    /** 本页加载过头像的 ImageView，用于在重建列表 / 销毁页面时逐个 clear。 */
+    private val avatarViews = ArrayList<ImageView>()
 
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,7 +63,53 @@ class AccountSwitchActivity : BaseActivity() {
         refreshAccountList()
     }
 
+    /**
+     * 取消本页所有头像请求并断开引用。
+     *
+     * 调用点两处：[refreshAccountList] 重建列表之前、[onDestroy] 收尾时。
+     *
+     * 为什么必须显式清：Glide 只在 **Activity 销毁** 时清理「已经登记到它的 RequestManager 上」的请求，
+     * 而 `accountList.removeAllViews()` 只是把 View 从父容器摘下来——还在加载中的 ViewTarget
+     * 依然吊着那个 ImageView。本页每次 `onResume` 都会重建一遍列表（还有删除账号后的一次），
+     * 不清理就会一轮轮往上堆，低性能设备上先表现为卡顿、再表现为 OOM。
+     */
+    private fun clearAvatarRequests() {
+        val manager = requestManager ?: return
+        for (avatarView in avatarViews) {
+            try {
+                manager.clear(avatarView)
+            } catch (e: Exception) {
+                Logu.e("AccountSwitchActivity", "取消头像请求失败：${e.message}")
+            }
+        }
+        avatarViews.clear()
+    }
+
+    /**
+     * 统一的头像加载入口。
+     *
+     * 两道防线：
+     * 1. 页面已销毁 / 正在 finish 时直接放弃——这是本次崩溃的直接修复点；
+     * 2. 请求走本页共用的 [requestManager]，而不是每次 `Glide.with(this)`，
+     *    这样 [clearAvatarRequests] 才清得掉。
+     */
+    private fun loadAvatar(avatarView: ImageView, url: String) {
+        // 本方法只在主线程被调用（onCreate/onResume 的同步路径与 runOnUiThread 内），
+        // 而 onDestroy 也在主线程，因此「判断 → 调用」之间不存在被销毁的竞态。
+        if (isDestroyed) return
+        val manager = requestManager ?: Glide.with(this).also { requestManager = it }
+        if (!avatarViews.contains(avatarView)) avatarViews.add(avatarView)
+        manager.load(url)
+            .transition(GlideUtil.getTransitionOptions())
+            .placeholder(R.mipmap.akari)
+            .error(R.mipmap.akari)
+            .apply(RequestOptions.circleCropTransform())
+            .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+            .into(avatarView)
+    }
+
     private fun refreshAccountList() {
+        clearAvatarRequests()
         accountList.removeAllViews()
         val accounts = AccountManager.getAccounts()
 
@@ -101,35 +162,28 @@ class AccountSwitchActivity : BaseActivity() {
         val savedName = account.name
         val savedAvatar = account.avatar
 
-        if (savedAvatar != null && savedAvatar.isNotEmpty() && savedName != null && savedName.isNotEmpty()) {
+        if (!savedAvatar.isNullOrEmpty() && !savedName.isNullOrEmpty()) {
             nameView.text = savedName + (if (isCurrent) "（当前）" else "")
-            Glide.with(this)
-                .load(savedAvatar)
-                .transition(GlideUtil.getTransitionOptions())
-                .placeholder(R.mipmap.akari)
-                .error(R.mipmap.akari)
-                .apply(RequestOptions.circleCropTransform())
-                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                .into(avatarView)
+            loadAvatar(avatarView, savedAvatar)
         } else {
             nameView.text = "UID:" + account.mid + (if (isCurrent) "（当前）" else "")
 
             CenterThreadPool.run {
+                // 起跑前先判一次：页面已经走了就别再白跑一次网络
+                // （弱网下这次请求要挂好几秒，白占着连接与线程）。
+                if (isDestroyed) return@run
                 try {
-                    val userInfo = UserInfoApi.getUserInfo(account.mid)
-                    if (userInfo != null) {
-                        runOnUiThread {
-                            nameView.text = userInfo.name + (if (isCurrent) "（当前）" else "")
-                            if (userInfo.avatar != null && userInfo.avatar.isNotEmpty()) {
-                                Glide.with(this)
-                                    .load(userInfo.avatar)
-                                    .transition(GlideUtil.getTransitionOptions())
-                                    .placeholder(R.mipmap.akari)
-                                    .error(R.mipmap.akari)
-                                    .apply(RequestOptions.circleCropTransform())
-                                    .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
-                                    .into(avatarView)
-                            }
+                    val userInfo = UserInfoApi.getUserInfo(account.mid) ?: return@run
+                    runOnUiThread {
+                        // 【崩溃修复点】请求在后台跑的这几秒里，页面完全可能已经被 finish 或销毁：
+                        // 点左上角标题退出、点另一个账号切走（startActivity + finish）、
+                        // 或低内存设备上被系统回收。此时 Glide.with(activity) 会抛
+                        // IllegalArgumentException: You cannot start a load for a destroyed activity
+                        // （即混淆栈里的 R1.l.d），同时 nameView 也已脱离窗口，不该再写。
+                        if (isDestroyed) return@runOnUiThread
+                        nameView.text = userInfo.name + (if (isCurrent) "（当前）" else "")
+                        if (!userInfo.avatar.isNullOrEmpty()) {
+                            loadAvatar(avatarView, userInfo.avatar)
                         }
                     }
                 } catch (e: Exception) {
@@ -171,6 +225,19 @@ class AccountSwitchActivity : BaseActivity() {
         }
 
         return view
+    }
+
+    /**
+     * 页面销毁时收尾。
+     *
+     * 清理必须放在 `super.onDestroy()` **之前**：`super` 一跑，Glide 挂在 Activity 生命周期上的
+     * RequestManager 就已经进入 destroyed 状态，那时候再 clear 属于事后补救；
+     * 先清掉才能确定地把 ViewTarget 与 ImageView 的引用断开（防泄漏）。
+     */
+    override fun onDestroy() {
+        clearAvatarRequests()
+        requestManager = null
+        super.onDestroy()
     }
 
     private fun accountsCanBeRemoved(): Boolean {
