@@ -111,6 +111,8 @@ adb pull $LOG/bridge-last.txt ./bridge-last.txt        # 拷到本地（实测�
 | `logs` | — | 列出日志文件及大小 |
 | `logclear` | `[--es file]` | 清空日志 |
 | `trail` | — | 页面轨迹（最近 20 个页面，崩溃报告用的同一份数据） |
+| `logring` | `[--es inject <文本>]` | 读**内存日志缓冲**（不落盘那条路）的当前状态；带 `inject` 时先以 W 级写一条再取快照 |
+| `crash` | — | 在主线程抛真实异常，**主进程立刻崩溃**。用于验证崩溃上报整条链路（见 §4.7） |
 | `top` | — | 当前前台 Activity 全类名 |
 | `help` | — | 命令表 |
 
@@ -204,6 +206,43 @@ adb logcat -s "PlayerActivity>getExtras" "PlayerActivity>checkStall"
 >
 > 真正不依赖 adb 连接的做法是读落盘日志（见 §5）——那才是 agent 事后取证的主力手段。
 
+### 4.6 验证内存缓冲与脱敏
+
+既有的 `log` / `logs` 命令读的是**落盘文件**，而落盘只在 Agent 测试模式下才有。**内存日志缓冲**（`Logu` 的环形缓冲）是 release 包唯一能拿到历史日志的那条路——它**刻意不落盘**。所以「缓冲到底有没有在累积、脱敏有没有生效」光看落盘文件是验证不了的，要看内存缓冲就得用 `logring`。
+
+```bash
+# 直接读当前缓冲状态，返回形如：
+#   OK: ringChars=N，M 行；尾部 X 字符：<内容>
+adb shell am broadcast -n <包名>/com.RobinNotBad.BiliClient.debug.DebugBridge \
+  --es token rebili-agent-bridge --es cmd logring
+
+# 先以 W 级写一条日志再取快照，专门用来验证脱敏链路
+adb shell am broadcast -n <包名>/com.RobinNotBad.BiliClient.debug.DebugBridge \
+  --es token rebili-agent-bridge --es cmd logring \
+  --es inject 'verify SESSDATA=SECRET123 access_key=xyz normal=keep'
+```
+
+`inject` 那条的实测结果里出现 `verify SESSDATA=*** access_key=*** normal=keep`——敏感值被替换、无关键值原样保留，且 caller tag 仍是 `DebugBridge>logRing`（`Logu` 的 tag 契约没被破坏，见 §4.5）。
+
+> 内存缓冲有 `RING_MAX_CHARS`（65536 字符）上限，超限从头部逐条淘汰，所以回显会同时报出 `ringChars` 与行数——两者都是「早先的日志看不到」的成因（一个是不在累积、一个是正常滚动），分开看才分得清。
+
+### 4.7 验证崩溃上报整条链路
+
+用 `start` 拉起 `CatchActivity` 只能验证**接收端**（`ring_log` extra 读得对不对）；而 `ErrorCatch` 里「崩溃瞬间取 `Logu.ringSnapshot()` 塞进 Intent」那行代码**根本不会被执行**。要验整条链路，得造一个真实的崩溃：
+
+```bash
+adb shell am broadcast -n <包名>/com.RobinNotBad.BiliClient.debug.DebugBridge \
+  --es token rebili-agent-bridge --es cmd crash
+```
+
+它用 `Handler(mainLooper).post { throw RuntimeException(...) }` 在**主线程**抛真实异常——刻意脱离 `onReceive` 调用栈，让异常真正走到 `Thread.setDefaultUncaughtExceptionHandler`。**主进程会立刻崩溃**，所以：
+
+- 返回值基本看不到（进程马上就死，`bridge-last.txt` 也来不及写）；
+- 预期现象：`logcat -b crash` 出现该 `RuntimeException`、前台变成 `CatchActivity`、`ps` 里出现 `<包名>:error_activity`；
+- **验收要看服务端**：崩溃表新增一条，其 `log` 字段应当是「页面轨迹 + 分隔行 + 应用日志」三段结构（内存缓冲见 §4.6）。
+
+> 实测（26.10.16）：触发后服务端收到 `log` 11140 字符 / 45 行，分隔行 `--- 应用日志（内存缓冲，最近若干行）---` 位于中间，前后两段各就各位，且正则自检无明文凭证。
+
 ---
 
 ## 5. 日志与落盘
@@ -214,6 +253,8 @@ adb logcat -s "PlayerActivity>getExtras" "PlayerActivity>checkStall"
 | `http.log` | 每次 HTTP 请求一行：`方法 脱敏URL -> 状态码 (耗时ms) \| req=… \| res=…` | 同上 |
 | `bridge-last.txt` | 最后一条调试桥命令的结果 | 同上 |
 | `bridge-http-response.txt` | 最后一条 `http` 命令的响应体全文 | 同上 |
+
+> 上表都是**落盘**通道（只在 Agent 测试模式下才有）。另有一条**内存环形缓冲**——不落盘、release 下也能拿到历史日志，用 `--es cmd logring` 读（见 §4.6）。
 
 **目录位置**：优先 `getExternalFilesDir("logs")`（即 `/sdcard/Android/data/<包名>/files/logs`，无需任何存储权限），外部存储不可用时回退内部 `files/logs`。`ping` 命令会报出实际路径。
 
@@ -281,7 +322,8 @@ GET https://api.bilibili.com/x/...&dm_img_list=…&dm_img_inter=…&dm_cover_img
 | --- | --- |
 | `app/src/debug/java/com/RobinNotBad/BiliClient/debug/DebugBridge.kt` | 调试桥本体（命令分发） |
 | `app/src/debug/AndroidManifest.xml` | 调试桥与 `TestActivity` 的导出声明 + DUMP 权限 |
-| `app/src/main/java/com/RobinNotBad/BiliClient/util/Logu.java` | 异步落盘与尾部读取（**logcat 的 tag 刻意未动**，见 §4.5） |
+| `app/src/main/java/com/RobinNotBad/BiliClient/util/Logu.java` | 异步落盘、**内存环形缓冲**（`logring` 读的就是它）与尾部读取（**logcat 的 tag 刻意未动**，见 §4.5） |
+| `app/src/main/java/com/RobinNotBad/BiliClient/util/LogSanitizer.kt` | 日志文本的 `键=值` 脱敏（`logring --es inject` 可现场验证，见 §4.6） |
 | `app/src/main/java/com/RobinNotBad/BiliClient/util/NetWorkUtil.java` | `HTTP_TRACE` 与 `HttpTraceInterceptor`、URL 脱敏 |
 | `app/src/main/java/com/RobinNotBad/BiliClient/BiliTerminal.kt` | `AGENT_TEST_MODE`、`applyLogSwitches()`、当前前台 Activity |
 | `app/src/main/java/com/RobinNotBad/BiliClient/activity/SplashActivity.kt` | Agent 模式下跳过 UETool 悬浮窗 |

@@ -80,8 +80,8 @@
   - ① 关于页 → 反馈页能进、分类、4000 字上限、断网报错文案、成功清空；
   - ② 三个开关关掉后抓包确认无到 `rebiliterminal.zsapp.asia` 的请求；
   - ③ 故意崩溃一次，崩溃页显示「报错ID」且服务端 `/admin/api/crash` 可见；
-  - ④ 公告页在上游接口挂掉时仍能显示自建公告（反向也要成立）。§41.7
-- [ ] **隐私同意闸门未真机验证**（条目已补进回归清单第 228~231、236 条，**尚未执行**）：全新安装 / 清数据后首次启动必须弹一次；点「不同意」能正常进主界面且抓包无请求。§41.8
+  - ④ 公告页在上游接口挂掉时仍能显示自建公告（反向也要成立）。正文见 `docs/archive/review/fix-progress-history.md` §41.7。
+- [ ] **隐私同意闸门未真机验证**（条目已补进回归清单第 228~231、236 条，**尚未执行**）：全新安装 / 清数据后首次启动必须弹一次；点「不同意」能正常进主界面且抓包无请求。正文见 `docs/archive/review/fix-progress-history.md` §41.8。
 - [ ] **minSdk 19 未在 API 19~23 上做过任何运行验证** —— 本机 `D:\Program Files\android-sdk` 下**既无 `emulator` 也无 `system-images`**，本轮 `minSdk 24 → 19` 的结论全部来自静态审计 + 依赖元数据 + lint + dex 反汇编，**没有真机/模拟器背书**。
   - 需覆盖的真机用例已写进 `docs/review/device-test-plan.md`（§1.2 设备侧 + T12 平台 API 兼容）：任一含 `TextClock` 的页面（43 个布局里都有，4.4 上原本会因 4 参 `TextView` 构造直接崩）、列表页 `AsyncLayoutInflaterX.fadeIn`（`activity/base/BaseActivity.kt:435`）、任一写 SharedPreferences 的操作（登录态刷新 / 设置项开关）、发评论或回复（`activity/reply/WriteReplyActivity.kt:177`）、设置页各图标（验证 `res/drawable-v21` 之外的兜底色可接受）、通知（三处 `NotificationChannel` 均有 `SDK_INT >= O` 闸，预期低版本不弹且不崩）。
   - 逐项静态结论与依赖下限见 `docs/architecture-map.md` §1.1。
@@ -180,64 +180,6 @@
   **56 suites / 558 tests / 0 failed**。
 
 设计文档：`docs/superpowers/specs/2026-10-14-console-v2-design.md`（含实施后的修订说明）。
-
-### 3.1 自建反馈 / 公告 / 匿名统计 / 崩溃上报（§四十一）
-
-- **起因（用户原话）**：想在反馈界面加入「发送到服务器的反馈界面」和「遥测，看看有多少人会用这个应用」。
-- **拍板**：用已有的 HK 服务器自建后端；统计口径只要**匿名唯一安装数 + 日活**；**默认开、设置里可关**；公告**不是替换上游，而是增加一个自己的公告源**。
-- **为什么另起一套**：原本全仓没有任何反馈界面（全仓 grep `反馈`/`feedback` 只命中注释，渠道全是站外 QQ 群 / GitHub / Gitee issue；`about_trailer_feedback` 只是免责声明**连链接都没有**）。
-- 上游 `api/AppInfoApi.java`（4 个接口，指向 `api.biliterminal.cn`）不是本 fork 的；本 fork 的中转服务已停用（`.github/workflows/relay-notify.yml:40-45` Secrets 未配置），**目前没有任何自己的后端**。
-- 上游 `AppInfoApi.customHeaders`（`AppInfoApi.java:110-140`）虽带 `App-Info`/`Device-Info` 且故意不带 Cookie，但**没有任何唯一标识**，数不了「多少个不同的人」。
-
-**服务端（新增 `server/`，已部署 HK 并公网验证）**
-
-- 文件：`server/rebiliterminal_api.py`（单文件 FastAPI + SQLite，无 ORM）、`server/requirements.txt`、`server/rebiliterminal-api.service`、`server/nginx/rebiliterminal.zsapp.asia.conf`、`server/README.md`；另有 `server/console.html`、`server/selftest.py`、`server/backup.sh`（§四十二）。
-- 部署：`/opt/rebiliterminal-api/`（`rebiliterminal_api.py` + `env`(chmod 600) + `data.db`）；systemd 单元 `rebiliterminal-api`；uvicorn 监听 `127.0.0.1:8788`；nginx 反代 `https://rebiliterminal.zsapp.asia/terminal/`。`env` 里是 `REBILITERMINAL_DB` 与 `REBILITERMINAL_ADMIN_TOKEN`。
-- 证书**绕开宝塔**：`/www/server/panel/class/acme_v2.py` 会查 `default.db` 的 `sites` 表、必须先有宝塔站点记录，本机也无 acme.sh → **自装 acme.sh 走 webroot 模式**（`--issue -d rebiliterminal.zsapp.asia --webroot /www/wwwroot/rebiliterminal.zsapp.asia`），再 `--install-cert` 到 `/www/server/panel/vhost/cert/…` + `--reloadcmd "nginx -s reload"`，续签靠 acme.sh 自带 cron。
-- 接口沿用上游风格：**成功一律 `code=0`，失败 `code!=0` + `msg`，HTTP 恒 2xx**。
-  - `GET /terminal/health`；
-  - `GET /terminal/announcement/get_list[?from=<id>]`（id = 自增 id **+ 1000000000**，故意与上游 id 空间错开；不带 `from` 是倒序列表页，带 `from` 是启动弹窗差量、只回 `id>from` 且正序）；
-  - `POST /terminal/telemetry/ping`（按 `install_id` 聚合 + `daily_active(install_id, day)` 主键去重）；
-  - `POST /terminal/feedback/submit`（category 白名单 `bug|suggestion|other|content|performance`，content ≤ 4000 字，同 IP 每小时 10 次）；
-  - `POST /terminal/upload/stack`（返回的 `id` 就是给用户看的报错编号）。
-- 限流：进程内滑动窗口（ping 480/时、feedback 10/时、crash 30/时，按 `X-Forwarded-For` 首段）。
-- 管理看板：`GET /admin?token=<REBILITERMINAL_ADMIN_TOKEN>`（HTML）+ `/admin/api/stats|feedback|crash`（JSON）+ `POST /admin/announcement`。
-- **隐私红线（改动前必读）**：整套服务端**不存 IP**（只用 IP 限流、不入库），不存 Cookie；`install_id` 是客户端随机 UUID、与账号无关、不读 `ANDROID_ID` 或任何设备指纹，卸载重装即换新。
-
-**客户端新增（名称已按 `app/src/main/java` 核实）**
-
-- `api/TerminalApi.java` —— 这条链路**唯一**出口（`BASE_URL = https://rebiliterminal.zsapp.asia/terminal`）。
-- 请求与解析分离：`buildPingPayload` / `buildFeedbackPayload` / `buildCrashPayload` / `parseAnnouncements` / `mergeAnnouncements` / `dayKey` 都是纯函数。
-- 单测 `app/src/test/java/com/RobinNotBad/BiliClient/api/TerminalApiTest.kt`（14 例，专门断言载荷里不出现 sessdata / bili_jct / dedeuserid / cookie / csrf）。
-- `util/TelemetryReporter.kt`：启动时一天最多 ping 一次，**只有请求成功才写回日期**（断网启动不浪费当天机会）。
-- `util/CrashReporter.kt` + `util/CrashTrail.kt`：`ErrorCatch` 在崩溃瞬间把异常/消息/线程/最近页面轨迹/uptime 塞进 Intent，`CatchActivity`（独立进程）在开关打开时自动上报。
-- `activity/FeedbackActivity.kt` + `res/layout/activity_feedback.xml`（分类 / 4000 字计数 / 联系方式选填 /「附带账号 ID」开关 / QQ 群兜底 / 发送状态与报错号），清单注册 `android:exported="false"`。
-- 其他改动：`BiliTerminal.kt`（`onActivityResumed` 记页面轨迹）、`ErrorCatch.java`、`activity/CatchActivity.kt`、`activity/SplashActivity.kt`、`activity/settings/AboutActivity.kt` + `activity_setting_about.xml`、`activity/settings/SettingGroupActivity.kt`、`activity/settings/AnnouncementsActivity.kt`、`util/SettingsKeys.kt`、`res/layout/activity_catch.xml`、`AndroidManifest.xml`。
-- `SplashActivity` 启动**并联**两件事（自建公告差量 + 匿名日活），**各自包异常** —— 自建服务器挂掉绝不能影响启动。
-- **入口挂关于页，不只挂设置页**：「关于与帮助」加「反馈与统计」组（三个开关）；菜单结构对老用户是缓存的，新分组不会自动出现，只挂设置分组等于老用户看不到入口。
-- **上游手动上传按钮逻辑一行没动**；自动上报**故意不套上游那两道限制**（「已登录 + 异常类型白名单」）。
-
-**隐私文案（改这块之前先读）**
-
-- 两句公开承诺 `strings.xml` 的 `about_to_uncle`（「…也不会收集任何用户隐私信息。」）与 `text_setup_introduction`（「…不会收集你的任何账号及隐私信息，请放心使用！」）**已同步改写**。
-- 新增 `desc_setting_telemetry` / `desc_setting_crash_auto` / `desc_setting_feedback_attach_mid`。**以后往上报载荷里加任何字段，必须同时改这三处文案**，否则承诺又是假的。
-- 默认值：`TELEMETRY_ENABLE = true`、`CRASH_REPORT_AUTO = true`、`FEEDBACK_ATTACH_MID = false`（账号 ID **默认不带**；关掉时传 `0`，服务端那条记录里根本不会有这个值）。
-
-**§41.8（26.10.09 补丁）：隐私「再同意一遍」启动闸门**
-
-- 取舍（用户拍的板）：弹窗点「不同意」= **App 照常使用，只是不上报**（不是拒绝进入应用），两个开关直接关掉，以后可在设置里手动打开；只有隐私说明改版才会再问一次。
-- **两个 key 分开，是这一节核心**：`SettingsKeys.PRIVACY_CONSENT_VERSION`（Int，0 = 从未同意，决定**能不能上报**）与 `SettingsKeys.PRIVACY_PROMPTED_VERSION`（Int，0 = 从未问过，同意/不同意都算，决定**还要不要弹**）。`TerminalApi.PRIVACY_VERSION = 1`，**改隐私文案必须 +1**。
-- **闸门收在 `TerminalApi` 里，不靠调用点自觉**：`isTelemetryEnabled() = hasPrivacyConsent() && getBoolean(TELEMETRY_ENABLE, true)`；`isCrashReportAutoEnabled() = hasPrivacyConsent() && getBoolean(CRASH_REPORT_AUTO, true)`。
-- 另有 `hasPrivacyConsent()` / `needsPrivacyConsent()` / `acceptPrivacyConsent()` / `declinePrivacyConsent()` / `recordPrivacyConsentFromSettings()`；`declinePrivacyConsent()` 只记 prompted 版本 + 两开关置 false，`recordPrivacyConsentFromSettings()` **只记版本号、不碰任何开关**。
-- 落地点：`SplashActivity.proceedSplashFlowWithPrivacyGate()`（**两个调用点都改走闸门**：`onCreate` 的 UETool 权限之后、`onActivityResult` 的 UETool 分支；两条路都继续启动流程，不拦人）。
-- 设置页两个 `switch(...)` 补 onChange，**只在 `on == true` 时** `recordPrivacyConsentFromSettings()`（`SettingsAdapter.kt:201-207` 是**先写 SharedPreferences、再回调 onChange**）。
-- `MsgUtil.showMsgLong(...)`：默认路径是 sticky `SnackEvent`，闪屏（`class SplashActivity : Activity()`，**不是 BaseActivity**）不消费，下一个 `BaseActivity` 在 `onResume`（`BaseActivity.kt:355-361`）取出显示并 `removeStickyEvent`（`MsgUtil.java:121/125`）→ 刚好弹一次、弹在新页面上。**是有意为之，别改成 Toast。**
-- **老用户不需要迁移**：`getInt(key, 0)` 键不存在时返回 0，正好等价于「从未同意」。
-- 验证：`TerminalPrivacyConsentTest.kt` **7 例全绿**；当时 `:app:testDebugUnitTest --rerun-tasks` 全量 **48 个测试类 / 450 例全绿**（含 `TerminalApiTest` 14 例）。
-- 同一补丁新增 `TerminalDialog.choice(...)` 与 `layout_dialog_terminal.xml` 的固定底栏 `@id/terminal_dialog_buttons`。
-  - 原来 `Sheet.addButton` 把按钮加进 `terminal_dialog_list`（**在 ScrollView 内部**），而 `capScrollHeight()` 把滚动区高度**钉死在屏高 45%**、滚动条又是 `scrollbars="none"`；长正文会把按钮顶到看不见，配上必要的 `setCancelable(false)` 就是**用户彻底卡在闪屏上**。
-  - `Sheet` 加构造参数 `bottomButtonBar: Boolean = false`（默认 false = 原行为，既有 12 处 `confirm/alert/menu` 零影响），只有 `choice()` 用 `true`。
-  - **为什么必须新增 `choice()` 而不是复用 `confirm()`**：`confirm()` 的取消按钮写死 `dismiss()`（无回调），且内部是**先 `dismiss()` 再 `onConfirm()`**，`setOnDismissListener` 触发时还拿不到「用户点的其实是确定」，两条路都会走一遍。
 
 ### 3.2 管理控制台 WebUI + 服务端并发加固（§四十二）
 
@@ -534,6 +476,145 @@
 
 
 
+### 3.19 线上崩溃：账号切换页「销毁后启动图片加载」（26.10.16）
+
+**现场（用户提供的混淆栈）**：
+```
+java.lang.IllegalArgumentException: You cannot start a load for a destroyed activity
+  at R1.l.d(SourceFile:83)      ← Glide RequestManagerRetriever.assertNotDestroyed
+  at Q0.b.run(SourceFile:53)    ← 主线程 Handler 里的 Runnable
+```
+设备 Android 5.0.2（API 21），**打开账号切换页后等几秒即触发**，弱网 / 低性能设备更易复现。
+
+**根因（已在源码定位，唯一命中点）**：`activity/settings/login/AccountSwitchActivity.kt` 的 `createAccountCard()`。账号没有缓存过昵称/头像时，走 `CenterThreadPool.run { UserInfoApi.getUserInfo(mid) → runOnUiThread { Glide.with(this)… } }`。`UserInfoApi.getUserInfo` 是一次真实网络请求，**请求期间用户完全可以离开这个页面**——点左上角标题 `finish()`、点另一个账号切走（`startActivity(SplashActivity)` + `finish()`）、或低内存设备上被系统回收。请求回来时 `runOnUiThread` 的 Runnable 才落到主线程，`Glide.with(activity)` 一进来就 `assertNotDestroyed` → 抛异常 → 无人捕获 → 应用崩溃。**弱网只是把这个时间窗从几十毫秒拉长到几秒**，低性能设备只是更容易在后台被回收——都不是原因本身。
+
+**为什么本工程比原生 Glide 更容易踩**：`activity/base/BaseActivity.kt:473` 重写了 `isDestroyed()`，语义是「已销毁 **或** 正在 finish」。Glide 的判活是虚调用，因此**连「只是正在 finish、还没 onDestroy」的窗口也会崩**。另外 `Glide.with(view)` 会沿 View 的 Context 往上找宿主 Activity，最后走同一个判断——所以「传 View」的写法（`GlideUtil.request/requestRound`）同样会崩，不止传 Activity 才会。
+
+**修法（三处，`AccountSwitchActivity.kt`）**：
+1. **异步回调内部判活**：`runOnUiThread {}` 里第一行 `if (isDestroyed) return@runOnUiThread`。**必须在 Runnable 内部判**，只在 post 之前判是错的——判完到 Runnable 真正执行之间，主线程完全可能已经跑完 `onDestroy`。请求起跑前也补了一次 `if (isDestroyed) return@run`，省掉一次注定无用的网络往返。
+2. **页级 `RequestManager`**：新增字段 `requestManager`，所有头像加载统一走 `loadAvatar()`（内含判活），不再每张卡各写一次 `Glide.with(this)`。
+3. **`onDestroy` 收尾**：新增 `override fun onDestroy()`，在 `super.onDestroy()` **之前**调 `clearAvatarRequests()`（`super` 一跑，Glide 挂在生命周期上的 RequestManager 已进入 destroyed，再 clear 属于事后补救），随后置空 `requestManager`。
+
+**顺带修的同类缺陷（同一页面）**：`refreshAccountList()` 每次 `onResume` 都重建一遍列表，而 `removeAllViews()` **只是把 View 从父容器摘下来，Glide 不会因此取消请求**——ViewTarget 仍吊着那个 ImageView，一轮轮往上堆（低性能设备上先卡顿、后 OOM）。现在 `clearAvatarRequests()` 在重建列表前也调一次，把上一轮请求显式清掉。
+
+**新增可复用落点**：`util/GlideUtil.canLoad(View)`（Java），判据是「沿 ContextWrapper 链找宿主 Activity；**找到了才判** `isFinishing() || isDestroyed()`，找不到（View 挂在 Application 上下文上）一律放行」——放行分支保证与改动前行为一致。三个 `request*` 方法已内建这道闸，调用方只有 `RecentUpAdapter` / `HotSearchAdapter` 两处，都在主线程 `onBindViewHolder` 里，无误伤。口径见 `docs/architecture-map.md` §7.44。
+
+**验证**：`:app:assembleDebug` + 两 flavor 单测全绿（`testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 各 **58 suites / 568 tests / 0 failures / 0 errors / 0 skipped**，读自 `app/build/test-results/`）。本改动无纯逻辑可抽（判活是一行谓词），**未新增单测**；`AccountSwitchActivity` 是 Activity，工程无 Robolectric，JVM 单测覆盖不到。
+
+**未真机复验**：需要在弱网下走「打开账号切换页 → 立即返回/切账号」的用例，logcat 判据是**不再出现** `IllegalArgumentException: You cannot start a load for a destroyed activity`。本轮无在线设备。
+
+**同类残留（本轮未动，同一崩溃类）**：`activity/user/EditProfileActivity.kt:125→135` 的判活写在 `runOnUiThread` **之外**（块内第 135 行直接 `Glide.with(this@EditProfileActivity)`），仍留着「判完 → Runnable 执行」的窄窗口。全工程这种「判活写在 post 之外」的形态共 4 个文件 10 处（`VoteInfoActivity` 4 处、`EditProfileActivity` 2 处、`EditSignActivity` 2 处、`EditUserInfoActivity` 2 处），其中**只有 `EditProfileActivity` 那一处在块内加载图片**，其余块内不涉及 Glide。
+
+### 3.20 日志基建 + 崩溃 / 反馈附带日志 + 「我的反馈」页面（§四十八，26.10.16）
+
+四块一起做。**技术口径与取舍统一记在 `docs/architecture-map.md` §6.5（日志能力 / 我的反馈），这里只记现状与待办。**
+
+**一、日志基建（客户端，新增）**
+- `util/Logu.java` 新增**内存环形缓冲**：`ArrayDeque<String>` + 累计字符数，上限 `RING_MAX_CHARS = 65536`（约 128KB），超限从头部逐条淘汰；读写一律 `synchronized (RING)`。API：`ringSnapshot()` / `ringChars()` / `ringClear()`。
+- **只记 W/E/F 级别**（`w/e/wtf` 本来就恒执行、本来就调 `getCaller()`，故**不新增开关、不新增栈遍历，release 行为零变化**）；**不落盘**（release `LOG_TO_FILE` 恒 false，内存缓冲是 release 下唯一能拿到历史日志的手段）。
+- 新增 `util/LogSanitizer.kt`（object + `@JvmStatic`）：按 `键=值` 脱敏、**不解析 URL**、有快速路径、正则按键名长度降序拼接；键名复用 `NetWorkUtil.SENSITIVE_QUERY_KEYS` / `NOISE_QUERY_KEYS`（二者由 `private` 改 `public`，`maskUrl()` 未动）。
+- `Logu.toFile()` 顺序改为**先脱敏 → 再 `shorten()` → 同时进缓冲与落盘**（先截断再脱敏会让超长行凭证只被截掉一半）。
+
+**二、崩溃报告附带日志**
+- `ErrorCatch.java` 崩溃瞬间多塞 `intent.putExtra("ring_log", Logu.ringSnapshot())`（与既有 `trail` 同一条路，只取值不做采集）；`util/CrashReporter.kt` 的 `buildPayload` / `upload` 加 `ringLog` 参数，`mergeLog()` 把轨迹与应用日志合并进**同一个 `log` 字段**（服务端零改动，老数据与新数据同构）。
+- **`CatchActivity` 跑在 `:error_activity` 独立进程，那边的 `Logu` 缓冲恒为空**，只能读 Intent extra、**不能**调 `ringSnapshot()`。
+- 崩溃页（`activity_catch.xml` + `CatchActivity.kt`）加「附带应用日志」勾选框，**默认勾选**；缓冲为空时置灰并改文案「本次没有可附带的日志」。
+
+**三、反馈附带日志 + 本地导出**
+- `FeedbackActivity` 加「附带应用日志」勾选框，**默认不勾选、不持久化**（与崩溃页相反：反馈是用户主动行为）。
+- 新增 `util/LogExporter.kt`：子线程把 `ringSnapshot()` 写成应用私有 `cache/terminal/rebili-log-yyyyMMdd-HHmmss.txt`，经 FileProvider + `ACTION_SEND` 分享。
+- `TerminalApi.buildFeedbackPayload` / `submitFeedback` 加 `log` 参数（服务端该字段**可选**，老客户端不发就是空串）。
+- **`ringClear()` 只在「勾选 + 提交成功」时清空**：没勾选就没送出去、失败要留着重试。
+
+**四、服务端（HK，已上线）+「我的反馈」页面**
+- 新增 `GET /terminal/feedback/mine`（`X-Install-Id` 认领 + 可选 `X-Mid` 头）；`feedback` 表加 `log` 列（`SCHEMA_VERSION` 1 → 2）；`/terminal/feedback/submit` 收可选 `log`。
+- `/admin/api/feedback` 与 `/admin/api/crash` 列表都改回 `LENGTH(log) AS log_len`（**不回全文**），新增 `/admin/api/feedback/detail?id=` 与 `/admin/api/crash/detail?id=` 拉全文；`console.html` 反馈 / 崩溃详情抽屉都能显示日志（异步拉 detail，用 `textContent` 写入而非拼 HTML）。**管理台此前根本看不到 `crash.log`**（列表 SELECT 里没有、详情也不显示），本次补上。
+- 客户端新增「我的反馈」列表 + 只读详情（`activity/feedback/`），入口在设置页「反馈与统计」分组（`SettingGroupActivity` + `SettingsIndex` 搜索索引，不新增菜单项）；状态文案用「**待受理 / 已受理**」——`handled` 是开发者待办状态，**不写「已处理」**。
+
+**真机验证结论（26.10.16 晚，MuMu Nebula 模拟器 / Android 12 / SDK 32 / x86_64；全部通过）**
+
+- [x] **内存缓冲在累积**：Agent 模式下 `v/d/i` 全开，HTTP trace 行会自动进缓冲——印证「详细模式一开，`v/d/i` 自动进缓冲、不需要额外逻辑」这条设计（见 `docs/architecture-map.md` §6.5）。
+- [x] **脱敏生效**：经调试桥新增命令 `logring --es inject` 注入 `SESSDATA=SECRET123 access_key=xyz normal=keep`，快照里是 `SESSDATA=*** access_key=*** normal=keep`——敏感值被替换、`normal=keep` 未被误伤，caller tag 仍是 `DebugBridge>logRing`（`Logu` 的 tag 契约没被破坏）。这条同时把「`LogSanitizer` 只在 JVM 单测里跑过」补成了真实链路核对。
+- [x] **崩溃页勾选框**：`ring_log` 非空时 `checked="true" enabled="true"`；为空时 `checked="false" enabled="false"`、文案变成「本次没有可附带的日志」。
+- [x] **跨进程那条约束被实测印证**：`CatchActivity` 确实跑在 `:error_activity` 独立进程（`ps` 可见），系统级 `topResumedActivity` 能确认它在前台，而调试桥的 `top` 命令（读主进程弱引用）**看不到它**——这正是「崩溃页不能直接调 `Logu.ringSnapshot()`」的现场证据。
+- [x] **反馈端到端提交带日志**：反馈页输入内容 + 勾选「附带应用日志」+ 提交 → 服务端返回编号 4；`/admin/api/feedback/detail?id=4` 查到 `log` 为 **4152 字符 / 19 行**，格式 `MM-dd HH:mm:ss.SSS 级别 类名>方法名 | 正文`，正则自检无明文凭证。
+- [x] **「我的反馈」列表页**：显示分类「功能异常」、状态「待受理」、正文与时间。
+- [x] **详情页**：`FeedbackDetailActivity` 正常；该条没有开发者回复时不显示空的回复区。
+- [x] **`ringClear()` 生效**：提交成功后立刻查缓冲为空，随后新日志能重新累积。
+- [x] **隐私升版生效**：隐私同意版本号（`SettingsKeys.PRIVACY_CONSENT_VERSION` / `PRIVACY_PROMPTED_VERSION`）由 2 升到 3 后，模拟器上此前同意过 v2 的用户**确实被要求重新确认**（弹出了隐私同意弹窗）。
+- [x] **全程无崩溃**：`logcat -b crash` 里本应用 0 条。
+
+**仍待办 / 未覆盖**
+
+**补充真机验证（26.10.16 晚二轮，全部通过）**
+
+- **崩溃自动上报端到端**：用调试桥新增的 `crash` 命令在主线程抛真实异常 → `ErrorCatch` 正确拉起 `CatchActivity`（`:error_activity` 独立进程）→ 服务端 `crash` 表收到 **id=34**，`log` 为 **11140 字符 / 45 行**：前半是页面轨迹、中间是分隔行 `--- 应用日志（内存缓冲，最近若干行）---`、后半是应用日志；**正则自检无明文凭证**。这条补上了「只验接收端、没验发送端」的缺口。
+- **日志本地导出**：点「导出日志到文件」→ 生成 `cache/terminal/rebili-log-<时间戳>.txt`（实测 3771 字节），并唤起系统分享面板（`ChooserActivity`）。
+- **脱敏三个维度**：噪音键 `dm_img_list=…` / `dm_cover_img_str=…`（用 `…` 而非 `***`）、Cookie 串（`;` 分隔）`SESSDATA=***; bili_jct=***`、大小写不敏感且 `refresh_token` 未被 `token` 抢先匹配。
+- **详情页开发者回复**：给反馈 #4 加一条服务端回复后，列表状态由「待受理」变为「**已受理**」，详情页正确显示「开发者回复」标题 + 回复标题 + 时间 + 正文。
+- **一处误判已撤销**：详情页页名实为「**反馈详情**」，此前记的「与列表页同名」不成立——那次 `uiautomator dump` 拿到的是列表页残留内容（详情页尚在启动中）。
+
+**第三轮：用户截图反馈驱动的修复（26.10.16 晚）**
+
+用户发来两张真机截图，暴露三个问题（其中两个是本次实现引入的缺陷）：
+
+1. **「附带应用日志」勾选框根本不生效**（功能性缺陷，本次引入）：`CatchActivity.onCreate` 里**同步读**勾选状态后**立刻**发起上报，而用户要等页面渲染完才看得到勾选框——那时日志早已发出，「可取消」是句空话。修法：改成 `postDelayed` **延迟 3 秒**上报，状态文字分两阶段（「将在 3 秒后自动上报…」→「已自动上报」）。**实测对比**：勾选 → 服务端 `log` 10239 字符且含应用日志段（#35）；**3 秒内取消 → `log` 为 0、不含应用日志段**（#36）。
+2. **「上传堆栈」按钮从未显示过**（既有 bug，非本次引入）：`upload_btn` 在 XML 里是 `visibility="gone"`，而 `CatchActivity` 的 `allowUpload` 分支**只挂了监听、没把 visibility 设回来**。这同时让 `desc_crash` 那句「建议点击**下面的按钮**上传」指向一个不存在的按钮。修法：补 `visibility = VISIBLE`；并在自动上报开启时**隐藏** `desc_crash`（两套语义不能同时摆着）。
+3. **反馈页勾选框与周围卡片不对齐**（本次引入）：裸 `CheckBox` 夹在两个 `MaterialCardView` 之间，左右边距不一致（卡片内文字 8dp vs 勾选框 4dp），且 CheckBox 方块占位把文字又推右一截。修法：包进同规格卡片 + 卡片内 8dp + `MaterialCheckBox`；文案缩短为「附带应用日志（便于定位问题）」避免换行。**实测**：三个卡片 bounds 完全一致（`[32,…][1408,…]`）、间距均为 24px、文案单行。
+
+4. **两处样式 / 间距对齐（用户第二轮截图）**：
+   - 反馈页「发送反馈」按钮的 `marginTop` 是 **8dp**，而上面几个卡片全是 **6dp** —— 实测 32px vs 24px，肉眼可辨。已改齐 6dp，三处间距现在均为 **24px**（`attach_log_card` / `export_log_card` / `submit_btn`）。
+   - 崩溃页的勾选框此前是**裸控件**夹在说明文字与上报状态之间，已与「自动上报状态」一起**包进同一个卡片**（与反馈页样式一致）；卡片内 8dp 水平边距，实测内容从 x=48 起（卡片起点 16 + 32px 内边距）。
+
+5. **隐藏「上传堆栈」按钮（用户第三轮反馈）**：上一轮把它修可见后，用户点了发现上游 `api.biliterminal.cn` 一律返回「请使用最新版本上传」（那台服务器只服务其自身版本），而我加的那段解释文字很长很难看。用户拍板**直接隐藏**。做法：`CatchActivity` 不再设 `visibility = VISIBLE`（XML 里本就是 gone），代码保留并注明「上游接口按约定原样保留，将来上游若开放本版本把 VISIBLE 加回来」；`desc_crash`（「点击下面的按钮上传」）也固定 `gone`，否则它指向一个不存在的按钮。**实测**：崩溃页视图树里已无 `upload_btn` / `manual_upload_hint`。
+6. **状态文字移出卡片（用户第三轮反馈）**：第 4 点里我把勾选框与 `auto_report_status` 包进了同一个卡片——**做过头了**。状态文字不可点，被卡片框着会让人以为能点。已改成卡片内只放勾选框，状态文字回到卡片外。**实测**：勾选框 `x` 从 48 起（卡片内）、状态文字从 16 起（卡片外）。
+
+**顺带发现并修正的文案问题**：
+
+- 反馈页顶部隐私说明 `feedback_privacy` 原写「只发送你写的内容、版本号与机型」，**没提日志** —— 与新增的「附带应用日志」直接矛盾，已补上（含「已脱敏」的说明）。属于 v3 文案的同步补齐，`PRIVACY_VERSION` 无需再升。
+- **「请使用最新版本上传」不是本工程文案**：点「上传堆栈」时上游 `api.biliterminal.cn` 返回该 `msg`，被 `btnUpload.text = res.message` 原样显示。上游只服务它自身版本、会拒绝本 fork。已在该分支文案后补一句说明，免得用户以为是自己版本旧。
+
+**仍待办**
+
+- [ ] **服务端「我的反馈」跨设备找回未验证**：换设备 / 重装后靠 `X-Mid` 找回、`X-Install-Id` 认领——本次只验了同设备的列表 / 详情。
+- [ ] **缓冲 64K 上限的淘汰行为未验证**：需要灌入超过上限的日志量才能观察到「从头部逐条淘汰」，本次未构造该场景。
+
+### 3.21 反馈对话：用户可追加说明（§四十九，26.10.16）
+
+用户看着详情页里那条开发者回复问「用户想继续回复咋办」。此前「我的反馈」是**只读**形态（当时拍板不做评论），本轮把它补成**一来一回的对话**。
+
+**服务端**（`server/rebiliterminal_api.py`，1708 → 1909 行，已上线 HK）
+
+- 新增表 `feedback_comment`（`feedback_id` / `author` / `content` / `ctime` + 来源字段），`SCHEMA_VERSION` 2 → 3。
+  **v3 刻意不做 DDL**：新表定义只写在 `SCHEMA` 里、由 `init_db()` 的 `executescript` 建好；在迁移里再抄一份建表语句就是同一份 schema 有两处真相。`selftest` §19 的「迁移必须幂等」正好会抓这种「每次跑都报做了事」的步骤。
+- 新增 `POST /terminal/feedback/reply`（body `{id, content}`，身份全走请求头）。**归属校验与 `/feedback/mine` 共用同一份 SQL 片段 `_MINE_SQL`** —— 两边各写一份必然漂移，症状是「列表里看得到、却回不了」，用户只会觉得功能坏了。
+- **不是自己的反馈与「不存在」返回同一个 `code=404`**：区分开就等于给了一个枚举 id 的探针，能扫出哪些编号真实存在。
+- **副作用：把该反馈 `handled` 置回 0（待受理）**。这是 GitHub 的 reopen 语义 —— 开发者的 `?pending=1` 列表与「待处理」计数会自动把它顶上来，**不必另建未读 / 提醒机制**。
+- 对话由两个来源合并（`_db_feedback_thread`）：`announcements`（`author='dev'`，顺带承担启动弹窗通知）+ `feedback_comment`（`author='user'`），按 `ctime` 排序。**合并逻辑只有这一份**，客户端 `/feedback/mine` 与管理台 `/admin/api/feedback/detail` 的 `thread` 共用。
+- 管理台：列表多回 `user_reply_count`；`console.html` 打「用户回复 ×N」标签，详情抽屉按时间交错渲染两侧消息（左侧色条区分：蓝 = 开发者，橙 = 用户）。
+
+**客户端**
+
+- `util/TerminalDialog.kt` 新增 `input()`（+ `Sheet.addInput` / `prepareForTyping`）：多行输入框 + **固定底栏**按钮（输入框会长高，按钮跟着滚会被顶出可视区），自动弹键盘。**外观自己画**（`colorOnSurface` 10% 透明度的圆角块）—— 7 套主题都没声明 `editTextBackground`，交给框架会落到 Material 默认值（深色主题下是一条近白下划线）。
+- `model/FeedbackReply.java` 加 `author` 与 `isFromUser()`。**旧服务端不返回这个字段**，缺失 → 空串 → 非用户，正好等于升级前「只可能有开发者回复」的事实，不需要额外兼容分支。
+- `TerminalApi`：`buildFeedbackReplyPayload`（纯函数，**只有 id 与 content**）+ `submitFeedbackReply`。后者走新增的 `postWithHeaders(..., feedbackHeaders())`；**其余接口仍用 `headers()`** —— 不能为了省事把 mid 加进通用请求头，那等于对所有接口默认带 UID。
+- `FeedbackDetailActivity` 改成**一条按时间交错的时间线**：标题文字（「我的补充」vs 开发者标题）是主判据，用户侧另加一圈主题色描边便于扫读；只有开发者回复时区块标题仍是「开发者回复」，一旦有来回就变「对话记录」。底部「追加说明」卡片走弹窗输入。
+  发送成功：本地追加 + 状态回落「待受理」+ 滚到末尾 + `setResult(RESULT_OK)`。
+- **失败不丢内容**：弹窗的 `onConfirm` 是在 `dismiss` **之后**才回调的，拿不到「失败了就别关」这个中间态，所以失败时**重开弹窗并预填**刚写的内容（与 `FeedbackActivity` 失败保留输入同一原则）。
+- `FeedbackListActivity` 用 `registerForActivityResult` 接结果码，**只在真的改过时才重拉**（无条件 `onResume` 重拉会让每次返回都多一次请求）。
+
+**真机验证（MuMu Nebula，Android 12 / SDK 32）**
+
+- 端到端：详情页 → 追加说明 → 弹窗输入 → 发送 → 状态由「已受理」变「**待受理**」、区块标题由「开发者回复」变「**对话记录**」、时间线出现「我的补充 20:47」。
+- 服务端核对：`feedback_comment` 落库 1 行（`author=user`）；`feedback#4` 的 `handled` 由 1 回到 0；线上 `/feedback/mine` 返回 `[dev] → [user]` 两条；管理台列表 `user_reply_count=1`、详情 `thread` 两条、WebUI 含新代码。
+- 边界：空内容点「发送」→ **弹窗不关**；点「取消」→ 正常关闭；两者服务端**都未被误写入**（仍 1 行）。
+- 返回列表 → 自动重拉，状态显示「待受理」。
+
+**未覆盖**
+
+- [ ] **跨设备追加（`X-Mid`）未验证**：模拟器未登录，只验了同设备 / 同 `install_id`。
+- [ ] **发送失败后「重开弹窗 + 预填」未构造真实断网场景**，仅代码路径审查。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
@@ -584,7 +665,7 @@
 | 三十八 | 26.10.05 线上 release 崩溃：动态详情页 NPE（用户提供混淆栈） | mapping retrace 定位 lambda、`Dynamic.ensureDetailFields()`、`diFragment.view!!` 改 `view?.let`、6 例新单测 | 部分遗留（未真机复现） |
 | 三十九 | 26.10.05 第三批真机反馈：收藏夹顶部工具条三处 | `supportsChangeAnimations = false`、`manageBar` 只在多选态可见 + 长按菜单「多选」入口、`ScrollRetractDecider.action()` 展开条件收紧为「仅 `!canScrollUp`」、`suppressClickAfterLongPress` | 部分遗留（三处均未真机复现） |
 | 四十 | Release 说明漏掉更新日志：根因与兜底（26.10.05 发版后） | `.github/scripts/extract_update_log.py`、`build-release.yml` fail-closed、AGENTS/SKILL 硬要求 | 部分遗留（26.10.05 Release 正文未人工补） |
-| 四十一 | 26.10.09：自建反馈界面 + 自建公告源 + 匿名统计 / 崩溃自动上报（新功能） | `server/` 全栈 + `api/TerminalApi.java` + `util/TelemetryReporter.kt` / `CrashReporter.kt` / `CrashTrail.kt` + `activity/FeedbackActivity.kt` + 隐私文案改写 + §41.8 隐私再同意闸门（`PRIVACY_CONSENT_VERSION` / `PRIVACY_PROMPTED_VERSION` / `TerminalDialog.choice`） | 已闭环（明细回归清单待补） |
+| 四十一 | 26.10.09：自建反馈界面 + 自建公告源 + 匿名统计 / 崩溃自动上报（新功能） | `server/` 全栈 + `api/TerminalApi.java` + `util/TelemetryReporter.kt` / `CrashReporter.kt` / `CrashTrail.kt` + `activity/FeedbackActivity.kt` + 隐私文案改写 + §41.8 隐私再同意闸门（`PRIVACY_CONSENT_VERSION` / `PRIVACY_PROMPTED_VERSION` / `TerminalDialog.choice`） | 已闭环（明细回归清单待补）；正文见 `docs/archive/review/fix-progress-history.md` |
 | 四十二 | 26.10.09：管理控制台 WebUI（遥测 / 反馈 / 崩溃 / 公告四合一）+ 服务端并发加固 | `server/console.html` 零依赖单文件、`run_in_threadpool` + `synchronous=NORMAL`、无状态签名 Cookie + 双 CSRF 防线、`console.zsapp.asia` vhost / 证书、`backup.sh` + 探活、selftest 39 项 | 部分遗留（无告警渠道、无 TOTP/IP 白名单、无浏览器回归） |
 | 四十三 | 26.10.10 补丁：紧急撤回「自动跳过片头片尾」（2610102） | `SkipOpEdPrefs.FEATURE_ENABLED = false` + `isEnabled()`、四处落点、`SkipOpEdPrefsTest` +3 例、tag `26.10.10.1` | 部分遗留（处于撤回状态，恢复清单 6 步未执行） |
 | 四十四 | 26.10.11：播放器网络韧性（弱网卡死 / 直播线路 / 切后台位置错） | `PlayerActivity.kt` 加读超时与重连选项 + 停滞看门狗 + `onSaveInstanceState` + 重挂 Surface 改 seek `video_now`；新增 `util/live/LiveStreamSelector.kt`（+14 单测）与 `LiveInfoActivity.kt` 接线、`PlayerData.liveUrlCandidates`；删 `max_cached_duration` | 部分遗留（真机只跑到「位置未复现回跳」；看门狗未真机触发；P0-2 重取 URL、P1-3 后台保活未做） |
@@ -592,6 +673,8 @@
 | 四十六 | 26.10.11：弹幕「一抖一抖」——时钟基准错位 | `player/DanmakuManager.kt` 的 `updateTimer` 不再 `timer.update(pos)`（删掉位置回调参数）；对齐改到主线程 `PlayerActivity.progressChange()` + `DanmakuSync` 判定 + `mDanmakuView.seekTo(video_now)`（`SEEK_POS` 会重设 `mTimeBase`）；`onPrepared` 起播锚定；短视频播放器同样处理 | 真机取证已完成（42 次/秒硬校正、偏差最大 199s）；修复后待用户实机确认 |
 | 四十六 | 26.10.11：线上崩溃 `PlaybackService` 5 秒义务未兑现（`RemoteServiceException`） | 根因 = `onPause` 的 `startForegroundService` 与 `onResume`/`onDestroy` 的 `stopService` 竞态（低内存手表上服务创建慢，`stopService` 先到 → 义务作废 → 5 秒后崩主线程）+ `startUpdateTimer()` 误放 `onCreate`；修法 = `foregrounded`/`stopPending` 两标志 + `onCreate` 就 `enterForeground()` + 兜底通知 + 定时器移到进场之后 | 已过构建与单测（两 flavor 各 478 例全绿）；真机未复现 |
 | 四十七 | 26.10.11：控制台补「反馈 / 崩溃」已处理开关，并关掉已解决项 | `server/rebiliterminal_api.py`（`_db_set_handled` + `POST /admin/api/{feedback,crash}/handled`；两个列表接口加 `handled` 与 `pending=1`）、`server/console.html`（默认只看未处理 + 状态标签 + 标记/重开按钮 + 待处理计数）、`server/selftest.py` +17 例、`server/README.md` 与 `docs/architecture-map.md` 同步 | 已闭环（服务器实测：56 项 selftest 全通过、curl 覆盖 403/415/400/404；crash #2「PlaybackService 5 秒义务」与 feedback #2 测试内容已标记；crash #3/#4/#5 `TimeUtil$cache` 未修故保留待处理） |
+| 四十八 | 26.10.16：日志基建 + 崩溃 / 反馈附带日志 + 「我的反馈」页面 | `util/Logu.java` 内存环形缓冲（`RING_MAX_CHARS=65536`、只记 W/E/F、不落盘）、`util/LogSanitizer.kt`（键=值脱敏，复用 `NetWorkUtil` 两份键名清单）、`util/LogExporter.kt`（FileProvider 分享）、`util/CrashReporter.kt` 的 `mergeLog()`、`ErrorCatch.java` 的 `ring_log` Intent extra、`CatchActivity.kt` / `FeedbackActivity.kt` 勾选框、`TerminalApi` 的 `log` 参数与 `getMyFeedback()`、`activity/feedback/` 列表 + 详情、服务端 `feedback.log` 列（`SCHEMA_VERSION` 1→2）+ `/terminal/feedback/mine` + `/admin/api/{feedback,crash}/detail` + `log_len` | 部分遗留（服务端已上线；客户端已真机验证通过，仅日志本地导出、崩溃自动上报端到端、跨设备找回未覆盖，见 §3.20） |
+| 四十九 | 26.10.16：反馈对话——用户可追加说明 | 服务端 `feedback_comment` 表（`SCHEMA_VERSION` 2→3，**v3 刻意无 DDL**）+ `POST /terminal/feedback/reply` + 归属判据 `_MINE_SQL` 与 `/feedback/mine` **共用同一份** + 追加即把 `handled` 打回 0（reopen 语义）+ `_db_feedback_thread` 合并两侧消息 + 管理台 `user_reply_count` 与对话抽屉；客户端 `TerminalDialog.input()`（+`Sheet.addInput`）、`FeedbackReply.author`、`submitFeedbackReply`（走新增 `postWithHeaders`）、`FeedbackDetailActivity` 时间线与「追加说明」入口、`FeedbackListActivity` 结果码重拉 | 部分遗留（跨设备 `X-Mid` 追加、发送失败重开预填未真机覆盖，见 §3.21） |
 
 ## 5. 仍待回迁 / 仅见于归档的长期结论
 

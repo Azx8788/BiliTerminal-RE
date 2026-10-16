@@ -463,6 +463,80 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 关于页 / 设置页入口：`activity/FeedbackActivity.kt` + `res/layout/activity_feedback.xml`。
   入口挂在**关于页**（`activity_setting_about.xml` 的 `@id/feedback_entry`）与设置「关于与帮助」
   分组（`SettingGroupActivity.buildAboutGroup`）。挂关于页是因为**菜单结构对老用户是缓存的，新分组不会自动出现**。
+- **「我的反馈」页面（26.10.16 客户端已实现）**：接口 `GET /terminal/feedback/mine`，
+  靠 `X-Install-Id` 认领，返回摘要字段 + `handled` 状态 + **整条对话**（`replies`）。另认可选 `X-Mid` 头
+  （登录用户换设备 / 重装后仍能找回）——**只在用户勾选了「附带账号 ID」时才带**，
+  与提交反馈同一口径，没勾选就只认本机。
+  `mid` 走**请求头**不走查询串：uvicorn 的 access log 会记完整 URL，放查询串等于把 UID
+  写进服务器日志文件。
+  状态文案用「**待受理 / 已受理**」，**不要写「已处理」**：`handled` 是开发者的待办状态，
+  「无法复现」「不是 bug」也会被标掉，写「已处理」就是承诺了它做不到的事。
+  - **客户端落点**：`api/TerminalApi.getMyFeedback()` + 纯解析 `parseMyFeedback()`、
+    `feedbackHeaders()`（`headers()` 的副本，按需追加 `X-Mid`；**必须显式传它，绝不可改用
+    `NetWorkUtil.getJson(String)` 单参重载**——那个重载用 `webHeaders`，第一项就是 `Cookie`）；
+    `model/FeedbackItem.java`（Parcelable）、`adapter/FeedbackListAdapter.kt`、
+    `activity/feedback/FeedbackListActivity.kt`（列表）与 `FeedbackDetailActivity.kt`（对话时间线 + 追加说明）。
+    入口挂设置页「关于与帮助 → 反馈与统计」分组（`SettingGroupActivity`）+ `SettingsIndex` 搜索索引
+    （**不新增菜单项**——菜单对老用户是缓存的，新菜单 key 不会自动出现）。
+  - 服务端实现与字段表见 `server/rebiliterminal_api.py`（注意 `server/` **不入版本库**，
+    见 `.gitignore`，只部署在服务器上）。
+- **反馈对话：两侧消息合成一条时间线（26.10.16 新增）**。一条反馈下面现在**两侧**都有消息，
+  `replies` 里按 `ctime` 交错返回，每项带 `author` 区分：
+  - `author = "dev"` → 开发者回复，存在 `announcements`（`reply_feedback_id` 关联）。
+    **沿用定向公告这条老路**：它顺带承担**启动弹窗通知**，动它风险大且收益为零。
+  - `author = "user"` → 用户追加的说明，存在 `feedback_comment` 表。不对外可见、不参与公告差量。
+  - **合并逻辑只有一份**（服务端 `_db_feedback_thread`），客户端 `/feedback/mine` 与管理台
+    `/admin/api/feedback/detail` 的 `thread` 共用 —— 两边各写一份必然漂移。
+  - **追加接口 `POST /terminal/feedback/reply`**（body `{id, content}`，身份全走请求头）：
+    - **归属判据与 `/feedback/mine` 共用同一份 SQL 片段 `_MINE_SQL`**。两边一旦不一致，
+      症状是「列表里看得到、却回不了」——用户只会觉得功能坏了，没人会想到是两条 SQL 漂移。
+    - **不是自己的反馈与「不存在」返回同一个 `code=404`**：区分开就等于给了一个枚举 id 的探针。
+    - **副作用：把 `handled` 置回 0（待受理）**。GitHub 的 reopen 语义 —— 开发者的
+      `?pending=1` 列表与「待处理」计数会自动把它顶上来，**不必另建未读 / 提醒机制**。
+    - 限流 20 次/时；内容上限 2000 字符（比首条反馈的 4000 小 —— 追加说明是补充，不该另起一篇）。
+    - **没有删除接口**：用户删掉自己说过的话会让开发者看到的上下文缺失、排查到一半线索断掉。
+  - **客户端**：`TerminalDialog.input()` 负责弹窗输入（多行框 + **固定底栏**按钮，输入框会长高，
+    按钮跟着滚会被顶出可视区）；`TerminalApi.submitFeedbackReply()` 走 `postWithHeaders(..., feedbackHeaders())`
+    —— **其余接口仍用 `headers()`**，不能把 mid 加进通用请求头（那等于对所有接口默认带 UID）。
+    `FeedbackReply.author` / `isFromUser()` 区分两侧；**旧服务端不返回 `author`**，缺失 → 非用户，
+    正好等于升级前「只可能有开发者回复」，不需要兼容分支。
+  - **失败不能丢内容**：`TerminalDialog.input` 的 `onConfirm` 在 `dismiss()` **之后**才回调，
+    拿不到「失败了就别关」这个中间态，所以失败时**重开弹窗并预填**（与 `FeedbackActivity`
+    失败保留输入同一原则）。
+- **日志能力（26.10.16 新增；崩溃 / 反馈「附带日志」的地基）**：`util/Logu.java` 的**内存环形缓冲**是 release 包唯一能拿到历史日志的手段。
+  - **只记 W/E/F 级别**：`Logu.w/e/wtf` 本来就恒执行、本来就调 `getCaller()`，在这条路上做缓冲
+    **不新增开关、不新增栈遍历，release 行为零变化**；`v/d/i` 受 `LOGV/LOGD/LOGI_ENABLED` 保护、
+    release 下根本不执行——「详细模式」一开它们自动进缓冲，不需要额外逻辑。
+  - **不落盘**：release 包 `LOG_TO_FILE = agentMode && …` 恒 false（`BiliTerminal.applyLogSwitches()`），
+    磁盘日志只在 debug / agent 模式有；内存缓冲是不改这条前提就能拿到历史日志的唯一途径。
+  - **容量上限 `RING_MAX_CHARS = 65536`（约 128KB 内存）**：`ArrayDeque<String>` + 累计字符数，
+    超限从头部逐条淘汰（常数时间，不做数组搬移）；读写一律 `synchronized (RING)`
+    （全工程 269 处 `Logu.*` 调用点可能来自任意线程）。**上限由 Binder 约束定**：
+    崩溃快照要经 Intent extra 跨进程传给 `:error_activity`，Binder 事务上限约 1MB。
+    API：`ringSnapshot()` / `ringChars()` / `ringClear()`。
+  - **脱敏在 `util/LogSanitizer.kt`**（Kotlin object + `@JvmStatic`）：对任意文本按 `键=值` 模式脱敏
+    （敏感键 → `***`，噪音键 → `…`），**不解析 URL**（日志行是任意文本）；有**快速路径**
+    （先查 `键名=` 是否出现，没有就直接原样返回、不跑正则）；正则按**键名长度降序**拼接，
+    避免 `token` 抢先匹配 `refresh_token` 前缀。键名清单直接复用
+    `NetWorkUtil.SENSITIVE_QUERY_KEYS` / `NOISE_QUERY_KEYS`（这两个常量因此由 `private` 改 `public`，
+    `maskUrl()` 逻辑一字未动）。
+  - **`Logu.toFile()` 的顺序**：先脱敏 → 再 `shorten()` → 同时进内存缓冲与落盘。
+    **先截断再脱敏会让超长行的凭证只被截掉一半、脱敏不完整**，别调换。
+  - **崩溃路径跨进程那条坑**：`ErrorCatch` 在崩溃瞬间把 `intent.putExtra("ring_log", Logu.ringSnapshot())`
+    带过去（与既有 `trail` 同一条路，只取值不做采集）；**`CatchActivity` 跑在 `:error_activity` 独立进程，
+    那边的 `Logu` 缓冲恒为空**，所以它只能读 `intent.getStringExtra("ring_log")`、
+    **不能**直接调 `ringSnapshot()`。
+  - **合并进同一个 `log` 字段**：`util/CrashReporter.kt` 的 `buildPayload` / `upload` 加 `ringLog` 参数，
+    用 `mergeLog()` 把页面轨迹与应用日志合并进同一个 `log`，中间是分隔行
+    `\n\n--- 应用日志（内存缓冲，最近若干行）---\n`；任一段为空时不留孤零零的分隔符。
+    **复用同一字段而非新增** → 服务端 `crash.log` 上限 200000 字符够用、**服务端零改动**，
+    老数据（只有轨迹）与新数据在库里同构。
+  - **反馈路径**：`TerminalApi.buildFeedbackPayload` / `submitFeedback` 加 `log` 参数
+    （服务端该字段**可选**，老客户端不发就是空串）；本地导出走 `util/LogExporter.kt`
+    （子线程把 `ringSnapshot()` 写成应用私有 `cache/terminal/rebili-log-yyyyMMdd-HHmmss.txt`，
+    经 FileProvider + `ACTION_SEND` 分享）。
+  - **`ringClear()` 的取舍**：只在「勾选了附带」且「提交成功」时清空——没勾选就没送出去、
+    失败要留着重试；勾选 + 成功说明这份日志已被用户授权送出。
 - **隐私同意闸门**（26.10.09 二次确认）：启动时 `SplashActivity.proceedSplashFlowWithPrivacyGate()`
   先看 `TerminalApi.needsPrivacyConsent()`，为真就弹一次 `TerminalDialog.choice`（`setCancelable(false)`，
   两条路都继续启动，不拦人）。状态由两个键**分开**表示：
@@ -475,6 +549,13 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   设置页里用户**主动打开**开关时回调 `recordPrivacyConsentFromSettings()`（打开即重新同意，
   且只记版本号、不碰另一个开关）。**改隐私文案就要把 `TerminalApi.PRIVACY_VERSION` +1**，
   否则老用户不会被再问一次。单测：`app/src/test/java/com/RobinNotBad/BiliClient/api/TerminalPrivacyConsentTest.kt`。
+  - **设置页开关的写入顺序不能反**：`activity/settings/SettingsAdapter.kt:201-207` 是**先写
+    SharedPreferences、再回调 `onChange`**，所以 `onChange` 里读到的已经是新值。依赖这个顺序的代码
+    （如 `recordPrivacyConsentFromSettings()`）不要改成「先回调、后写入」。
+  - **「不同意」的提示为什么弹在新页面上**：「不同意」的提示走 `MsgUtil.showMsgLong` 的 sticky
+    `SnackEvent`：闪屏（`SplashActivity` 是 `Activity`，**不是** `BaseActivity`）不消费事件，
+    由下一个 `BaseActivity` 在 `onResume` 取出显示并 `removeStickyEvent`，于是刚好弹一次、弹在新页面上。
+    **是有意为之，别改成 Toast。**
 
 **红线（改这里时不要踩）**
 1. **绝不复用带 Cookie 的重载**。`NetWorkUtil.getJson(String)` / `postJson(String,String)` 单参重载用的是
@@ -493,6 +574,9 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
    不改文案就是自相矛盾。改完老用户会重看一次同意弹窗，这是**有意的**。
 3. **账号 ID 默认不带**。`mid` 只在 `FEEDBACK_ATTACH_MID` 打开时才有值，关掉时传 `0`
    （服务端那条记录里根本不会有这个值，不是「传了但不显示」）。
+   **服务端侧同样不存 IP、不存 Cookie**：IP 只用于限流计数、**不入库**。服务端自身的说明在
+   `server/README.md`——注意 `server/` 自 26.10.14 起**已移出版本库**（见 `.gitignore`），
+   只部署在服务器上，所以改服务端时别指望从仓库里能找到它。
 4. `install_id` 是首次调用 `getInstallId()` 时生成的随机 UUID（`SettingsKeys.TELEMETRY_INSTALL_ID`），
    与账号无关，卸载重装即换新。
    **26.10.14 起另有 `device_key`**（`TerminalApi.getDeviceKey()`，存 `SettingsKeys.TELEMETRY_DEVICE_KEY`）：
@@ -1000,7 +1084,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 这一批解决的是「能编译、能跑单测，但没法自动验证真机行为」——`docs/review/device-test-plan.md` 里 88 条用例一条未执行，根因就是 debug 包没给自动化留入口。四个新增物：
 
-- **`debug/DebugBridge`（`app/src/debug/java/...`）**：exported 的 `BroadcastReceiver`，用 `am broadcast -n <包名>/.debug.DebugBridge` 驱动，命令 `ping`/`agent`/`get`/`set`/`remove`/`dump`/`start`/`activities`/`http`/`log`/`logs`/`logclear`/`trail`/`top`。**类与清单都在 debug 源集**，release 编译时该类根本不存在（不需要 R8 规则）。
+- **`debug/DebugBridge`（`app/src/debug/java/...`）**：exported 的 `BroadcastReceiver`，用 `am broadcast -n <包名>/.debug.DebugBridge` 驱动，命令 `ping`/`agent`/`get`/`set`/`remove`/`dump`/`start`/`activities`/`http`/`log`/`logs`/`logclear`/`trail`/`logring`/`top`。**类与清单都在 debug 源集**，release 编译时该类根本不存在（不需要 R8 规则）。
   - **`start` 是它最有价值的命令**：全应用除 `SplashActivity`/`GetIntentActivity` 外都是 `exported="false"`，adb（uid 2000、非 root）拉不起来；而**进程内 `startActivity` 不受 exported 限制**，等于把全部页面开放给 agent。但受 Android 10+ 后台启动限制，应用不可见时会被静默丢弃——需 `adb shell appops set <包名> SYSTEM_ALERT_WINDOW allow`（悬浮窗权限是该限制的豁免条件之一），`start` 的结果里会提示当前是否已授权。
   - **`goAsync()` + `setResultData`**：`onReceive` 在主线程，`http` 命令要发网络请求，直接做会 ANR。`goAsync()` 把广播生命周期延到 `finish()`，真正的活在 `CenterThreadPool` 上跑。**结果同时写 `logs/bridge-last.txt`**——个别 ROM 的 `am` 不转发 receiver 结果，文件是兜底。
 - **`BiliTerminal.AGENT_TEST_MODE` + `applyLogSwitches()`**：Agent 测试模式总开关（`SettingsKeys.DEV_AGENT_MODE`）。**它是日志级别、落盘、HTTP 追踪、UETool 跳过四件事的唯一落地处**——改这些开关一律调 `applyLogSwitches()`，别在别处直接改 `Logu.*`。`agentMode = debugBuild && 开关`，`debugBuild` 是编译期常量，release 下 R8 把整段折叠，行为与改动前一致。
@@ -1061,6 +1145,16 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **手动返回必须按合集抑制**（`suppressedCollectionId`）：返回的位置正是触发切换的那条合集视频，不抑制会被立刻又切回去，按钮形同虚设（真机复现过）。只抑制**这一个**合集，别做成全局——否则收藏夹里别的合集也永远切不进去。**显式操作压过隐式自动化**，这条原则以后遇到类似冲突照用。
 - 展平逻辑是纯函数 `model/Collection.toPlaylist`（有单测）：跨节按节顺序、节内按集顺序；`sections` 为空时退回 `cards`（"收藏的合集"只填 cards）。
 - 台账与真机记录见 `docs/review/fix-progress.md` §3.18；接口侧结论见 `docs/bilibili-api-notes.md` §5。
+
+### 7.44 `Glide.with(activity)` 在异步回调里必崩，统一走 `GlideUtil.canLoad`（26.10.16）
+
+**结论先行**：页面一旦 `finish` / 销毁，`Glide.with(activity)` 会抛 `IllegalArgumentException: You cannot start a load for a destroyed activity`。凡是「**发请求时页面还活着、回来时可能已经关了**」的回调里加载图片，都必须先判活。弱网与低性能设备只是把这个时间窗拉长，不是原因。
+
+- **触发面比想象的大**：`Glide.with(view)` 会沿 View 的 Context 往上找宿主 Activity，最后走到**同一个** `assertNotDestroyed` 判断。所以 `GlideUtil.request/requestRound` 这类「传 View」的写法同样会崩，不是只有传 Activity 才会。
+- **本工程的放大器**：`activity/base/BaseActivity.kt:473` 重写了 `isDestroyed()`，语义是「已销毁 **或** 正在 finish」。Glide 的判活是虚调用，因此**连「只是正在 finish」的窗口也会崩**——比原生 Glide 更容易踩到。
+- **统一入口**：`util/GlideUtil.canLoad(View)`（Java 侧可直接用）。判据是「沿 ContextWrapper 链找到宿主 Activity；找到了才判 `isFinishing() || isDestroyed()`，找不到（View 挂在 Application 上下文上）一律放行」——放行分支保证与改动前行为一致。三个 `request*` 方法已内建这道闸。
+- **页面自己的 `Glide.with(this)` 仍需自己判**：`canLoad` 管不到「传 Activity」的调用点。写法是在 `runOnUiThread {}` **内部**第一行 `if (isDestroyed) return@runOnUiThread`——**不能只在 post 之前判**，判完到 Runnable 真正执行之间主线程完全可能跑完 `onDestroy`。
+- **顺带一条内存约定**：`removeAllViews()` 只是把 View 从父容器摘下来，Glide **不会**因此取消请求，ViewTarget 仍然吊着那个 ImageView。列表重建频繁的页面（每次 `onResume` 重建的那种）必须持有一个页级 `RequestManager` 并显式 `clear(view)`，否则一轮轮往上堆。范例见 `activity/settings/login/AccountSwitchActivity.kt`。
 
 ## 8. UI 基建速查（新增页面临摹用）
 
@@ -1256,6 +1350,16 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 
 > **`Sheet.init` 里 `dialog.window?.setBackgroundDrawable(ColorDrawable(TRANSPARENT))` 不能删**：
 > 不做的话 AppCompat 会在圆角 drawable 底下垫一层方角底衬，圆角白做——这正是「像安卓原生的一样」的直接原因。
+
+> **`Sheet` 的固定底栏（`bottomButtonBar`，26.10.09 加，改 `TerminalDialog` 前必读）**：
+> `Sheet.addButton` 原来把按钮加进 `terminal_dialog_list`（**在 ScrollView 内部**），而 `capScrollHeight()`
+> 把滚动区高度**钉死在屏高 45%**、滚动条又是 `scrollbars="none"`；长正文会把按钮顶到看不见，
+> 配上必要的 `setCancelable(false)` 就是**用户彻底卡在闪屏上**。修法：`Sheet` 加构造参数
+> `bottomButtonBar: Boolean = false`（默认 false = 原行为，既有 12 处 `confirm/alert/menu` 零影响），
+> 只有 `choice()` 用 `true`，按钮改挂 `layout_dialog_terminal.xml` 的固定底栏 `@id/terminal_dialog_buttons`。
+> **为什么必须新增 `choice()` 而不是复用 `confirm()`**：`confirm()` 的取消按钮写死 `dismiss()`（无回调），
+> 且内部是**先 `dismiss()` 再 `onConfirm()`**，`setOnDismissListener` 触发时还拿不到「用户点的其实是确定」，
+> 两条路都会走一遍。
 
 > **教训（判断「某属性全工程缺失」的正确姿势）**：必须**同时 grep 相邻属性做对照组**。
 > 本次最初的错误结论是「弹窗层从未接入主题系统」——被「7 族主题都声明了 `colorSurface`」

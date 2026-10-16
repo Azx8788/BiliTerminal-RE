@@ -21,7 +21,7 @@
 | [upstream-fork-audit.md](review/upstream-fork-audit.md) | 对上游分叉 `Re-BiliTerminal` 的逐条比对快照，§四 处置表 | §四 处置表已被后续提交推翻（F3-e/f/j/k 大半实现）；真缺的 F3-a/(f-a)/k/d 已抽出 |
 | [fork-fix-worklog.md](review/fork-fix-worklog.md) | Wave 1~4 修复过程流水（提交号、编译/单测数字） | 纯过程记录；唯一未勾项实测已完成，真机复验清单由 `device-test-plan.md` 承接 |
 | [dialog-redesign-progress.md](review/dialog-redesign-progress.md) | 弹窗改版（终端列表方案 B）专项中间进度，26.10.05 | 已收官：技术结论并入 `architecture-map.md` §8.7.0 与 `AGENTS.md` 弹窗硬约定；未闭合项（真机目视、对比度重测）已抽出 |
-| [fix-progress-history.md](review/fix-progress-history.md) | `fix-progress.md` 的完整历史正文（§一 ~ §四十三 的逐批次记录，4777 行） | 逐批次流水，最新状态已由 `docs/review/fix-progress.md` 承接 |
+| [fix-progress-history.md](review/fix-progress-history.md) | `fix-progress.md` 的完整历史正文（§一 ~ §四十三 的逐批次记录，4777 行）（含 §3.1 自建反馈/统计的「§四十一」全文；耐久结论已回迁 `architecture-map.md` §6.5 / §8.7.0 与 `server/README.md`） | 逐批次流水，最新状态已由 `docs/review/fix-progress.md` 承接 |
 
 ### 调研报告
 
