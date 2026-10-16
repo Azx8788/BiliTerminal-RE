@@ -178,7 +178,8 @@ object SettingsKeys {
 
     // ==================== 自建终端服务（反馈 / 遥测 / 崩溃报告 / 公告） ====================
     /**
-     * 匿名使用统计开关。默认开（默认值只在 [com.RobinNotBad.BiliClient.util.TelemetryReporter] 里定义一次）。
+     * 匿名使用统计开关。默认开，**默认值与读取落点只在 [TerminalReportPrefs] 定义一次**，
+     * 不要在别处写死 `true`。
      *
      * 上报内容只有随机 install_id + 版本号 + 机型/系统版本，不带任何账号信息，
      * 也绝不携带 Cookie；用途仅为统计唯一安装数与日活。
@@ -208,7 +209,9 @@ object SettingsKeys {
      */
     const val TERMINAL_ANNOUNCEMENT_LAST = "terminal_announcement_last"
 
-    /** 崩溃后是否自动上传错误报告。默认开；关掉后崩溃页仍保留手动上传按钮。 */
+    /**
+     * 崩溃后是否自动上传错误报告。默认开（默认值见 [TerminalReportPrefs]）；关掉后崩溃页仍保留手动上传按钮。
+     */
     const val CRASH_REPORT_AUTO = "terminal_crash_report_auto"
 
     /**

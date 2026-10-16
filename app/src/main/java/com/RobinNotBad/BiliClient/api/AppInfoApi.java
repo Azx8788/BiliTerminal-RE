@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.text.TextUtils;
-import android.util.Log;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
 import com.RobinNotBad.BiliClient.BuildConfig;
@@ -13,6 +12,7 @@ import com.RobinNotBad.BiliClient.R;
 import com.RobinNotBad.BiliClient.model.Announcement;
 import com.RobinNotBad.BiliClient.model.ApiResult;
 import com.RobinNotBad.BiliClient.model.UserInfo;
+import com.RobinNotBad.BiliClient.util.Logu;
 import com.RobinNotBad.BiliClient.util.MsgUtil;
 import com.RobinNotBad.BiliClient.util.NetWorkUtil;
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil;
@@ -96,13 +96,13 @@ public class AppInfoApi {
             }
 
             if (SharedPreferencesUtil.getInt("app_version_check", 0) < curr) {    //限制一天一次
-                Log.e("debug", "检查更新");
+                Logu.e("检查更新");
                 SharedPreferencesUtil.putInt("app_version_check", curr);
             }
         } catch (IOException e) {
             MsgUtil.showMsg("无法连接到终端公告接口\n也许是服务器宕机了？\n（对软件内容无影响）");
         } catch (Exception e) {
-            Log.e("debug-terminal", e.toString());
+            Logu.e(e.toString());
             MsgUtil.err("终端接口出现问题（不影响软件内容）", e);
         }
     }
