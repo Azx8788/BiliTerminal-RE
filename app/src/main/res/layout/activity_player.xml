@@ -672,14 +672,15 @@
                 android:text="选择分P"
                 android:textSize="14sp" />
 
+            <!-- 嵌套层的进出入口：在根目录层显示「进入分P / 进入合集」，进了层显示「← 返回主合集」。
+                 两个方向互斥（要么在层外、要么在层内），所以共用同一行。 -->
             <TextView
-                android:id="@+id/page_selector_back"
+                android:id="@+id/page_selector_nest"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="?android:attr/selectableItemBackground"
                 android:paddingHorizontal="3dp"
                 android:paddingVertical="6dp"
-                android:text="← 返回主合集"
                 android:textSize="13sp"
                 android:visibility="gone" />
 

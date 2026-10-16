@@ -57,6 +57,7 @@ import com.RobinNotBad.BiliClient.model.Collection
 import com.RobinNotBad.BiliClient.model.PlayerData
 import com.RobinNotBad.BiliClient.model.Subtitle
 import com.RobinNotBad.BiliClient.model.SubtitleLink
+import com.RobinNotBad.BiliClient.model.VideoInfo
 import com.RobinNotBad.BiliClient.model.ViewPoint
 import com.RobinNotBad.BiliClient.player.DanmakuManager
 import com.RobinNotBad.BiliClient.player.DanmakuSync
@@ -361,16 +362,52 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var collectionTitle: String? = null
 
     /**
-     * 用户按过「返回主合集」的那个合集 id → 本次播放内不再自动切进**这一个**合集。
+     * 当前播放列表是不是"某个多P视频的分P层"；0 = 不是，否则是该视频的 aid。
      *
-     * <p>不加这个抑制按钮就是失效的：返回的位置正是**触发切换的那条合集视频**，
-     * 一回到收藏夹列表，`switchToOnlinePage` 立刻又检测到合集、又切回去（26.10.15 真机复现）。
-     *
-     * <p>只抑制这一个合集而不是全部：用户拒绝的是"被切进这个合集"，收藏夹里后面若还有
-     * **别的**合集的视频，仍然该按"遇到就切"处理。显式操作压过隐式自动化。
-     * 只在本次播放会话内有效，退出重进即恢复。
+     * <p>第二类"文件夹"（第一类是合集）。合集层存合集 id、这一层存视频 aid，id 空间不同，
+     * 所以各占一个字段；选集卡片按"哪个非 0"决定显示哪一层。
+     * 与合集层的差别：这一层的 `cids` 是真 cid，所以 [isVirtualCollectionMode] 为 false。
      */
-    private var suppressedCollectionId: Long = 0L
+    private var multiPageAid: Long = 0L
+
+    /** 分P层对应视频的标题，只用于选集卡片标题（切分P 后 [videoTitle] 会变成分P 标题）。 */
+    private var multiPageTitle: String? = null
+
+    /**
+     * **根目录层**（收藏夹虚拟合集）的名字，只用于选集卡片标题。
+     *
+     * <p>不能用 [videoTitle]：它会被 `doSwitchPage` 改成**当前条目/分P 的标题**，于是从嵌套层返回后
+     * 卡片会显示成「黑马程序员Java…（1/20）」——看着像个"文件夹名"，其实是列表里的某一条，很误导。
+     */
+    private var rootTitle: String? = null
+
+    /**
+     * 当前这条能不能"进得去"——能的话选集卡片上多一行「进入分P / 进入合集」。
+     *
+     * <p>**进入是用户主动点的，不自动**（26.10.16 用户明确要求）：自动进入会在你只是想在收藏夹里
+     * 顺着听的时候，突然被换成一门 105 讲课程的分P 列表，且收藏夹里排在后面的条目全被跳过。
+     * 所以这里只**记录**"这条可进入"，等用户在选集卡片上点那行才真的换列表。
+     *
+     * <p>两者互斥且合集优先：合集是外层"一系列视频"，分P 是内层"一个视频的段落"。
+     * 每次切到根目录层的条目都会重算（`null` = 这条是普通单视频，进不去）。
+     */
+    private var enterableCollection: Collection? = null
+    private var enterableMultiPage: VideoInfo? = null
+
+    /**
+     * 重算"当前这条能不能进得去"。**必须在主线程调用**（选集卡片直接读这两个字段）。
+     *
+     * <p>合集优先于分P：合集是外层"一系列视频"，分P 是内层"一个视频的段落"。
+     * 传 null（普通单视频 / 分P层内部）即清空。
+     */
+    private fun updateEnterable(videoInfo: VideoInfo?) {
+        val collection = videoInfo?.collection
+        // 只有一集的"合集"不值得套一层，否则用户会莫名看到选集卡片换了个标题
+        enterableCollection = collection?.takeIf { Collection.toPlaylist(it).size > 1 }
+        enterableMultiPage = if (enterableCollection == null &&
+            videoInfo != null && videoInfo.cids.size > 1
+        ) videoInfo else null
+    }
 
     /**
      * 一层返回栈：从收藏夹连播自动切进合集时，收藏夹那条播放列表存在这里，
@@ -442,6 +479,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         Logu.v("标题", title)
         text_title!!.text = title
         videoTitle = title
+        // 从根目录层起播时，Intent 的 title 就是收藏夹名（见 FavoriteVideoListActivity
+        // 的 "$folderName（虚拟合集）"）；返回嵌套层时会被覆盖成返回栈里的 title
+        rootTitle = title
 
         aid = intent.getLongExtra("aid", 0)
         cid = intent.getLongExtra("cid", 0)
@@ -481,12 +521,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             currentPageIndex = intent.getIntExtra("currentPageIndex", 0)
             // 由构建方显式告知，不再靠 aid != cids[i] 猜（真实多P 下那个判据恒真，会把 cid 当 aid）
             isVirtualCollectionMode = intent.getBooleanExtra("virtual_collection", false)
-            // 当前播放列表是不是"某个真实合集"（见 enterCollectionPlaylist）
-            collectionId = intent.getLongExtra("collection_id", 0L)
-            collectionTitle = intent.getStringExtra("collection_title")
-            // 一层返回栈：从收藏夹自动切进合集时存下收藏夹那条列表，合集播完再弹回来
+            // 合集层 / 分P层由选集卡片上的「进入…」在播放器内部建立，不由 Intent 预置
             @Suppress("DEPRECATION")
-            returnPlaylist = intent.getParcelableExtra("return_playlist")
+            updateEnterable(intent.getParcelableExtra("enterable_info"))
         }
 
         initialEdgeId = intent.getLongExtra("edgeId", 0)
@@ -2975,29 +3012,41 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             pageSelectorRecycler.layoutManager = CustomLinearManager(this)
             pageSelectorRecycler.adapter = adapter
 
-            // 标题要说清"现在在哪一层"：同一个"第 3 集"，在收藏夹连播里和在合集里指的是不同的东西
+            // 标题要说清"现在在哪一层"：同一个"第 3 集"，在收藏夹连播里、在合集里、
+            // 在多P视频的分P 里指的是完全不同的东西
             val size = pagenames!!.size
             findViewById<TextView>(R.id.page_selector_title).text = when {
                 collectionId != 0L ->
                     "合集 · ${collectionTitle ?: ""}（${currentPageIndex + 1}/$size）"
+                multiPageAid != 0L ->
+                    "分P · ${multiPageTitle ?: ""}（${currentPageIndex + 1}/$size）"
                 isVirtualCollectionMode ->
-                    "${videoTitle ?: "收藏夹连播"}（${currentPageIndex + 1}/$size）"
+                    "${rootTitle ?: videoTitle ?: "收藏夹连播"}（${currentPageIndex + 1}/$size）"
                 else -> "选择分P"
             }
 
-            // 「返回主合集」只在"从收藏夹切进来的合集层"出现——这是用户中途想回去的唯一入口，
-            // 否则得等上百集播完才会自动返回（见 returnToCallerPlaylist）
-            val backEntry = findViewById<TextView>(R.id.page_selector_back)
-            if (returnPlaylist != null) {
-                backEntry.visibility = View.VISIBLE
-                backEntry.setOnClickListener {
-                    layout_card_bg.visibility = View.GONE
-                    card_page_selector.visibility = View.GONE
+            // 嵌套层的进出入口，两个方向互斥：
+            //  · 已经在层里（returnPlaylist != null）→「← 返回主合集」
+            //  · 在根目录层、且当前这条是"文件夹"（多P / 属于合集）→「进入分P / 进入合集」
+            // **进入必须由用户点这里**，不自动（见 enterableCollection 的注释）。
+            val nestEntry = findViewById<TextView>(R.id.page_selector_nest)
+            val enterable = when {
+                returnPlaylist != null -> null
+                enterableCollection != null -> "进入合集 · ${enterableCollection!!.title ?: ""}" +
+                    "（${Collection.toPlaylist(enterableCollection!!).size} 集）"
+                enterableMultiPage != null -> "进入分P（${enterableMultiPage!!.cids.size} 个）"
+                else -> null
+            }
+            nestEntry.visibility = if (returnPlaylist != null || enterable != null) View.VISIBLE else View.GONE
+            nestEntry.text = if (returnPlaylist != null) "← 返回主合集" else enterable
+            nestEntry.setOnClickListener {
+                layout_card_bg.visibility = View.GONE
+                card_page_selector.visibility = View.GONE
+                if (returnPlaylist != null) {
                     returnToCallerPlaylist(advance = false)
+                } else {
+                    enterCurrentNestLayer()
                 }
-            } else {
-                backEntry.visibility = View.GONE
-                backEntry.setOnClickListener(null)
             }
 
             layout_card_bg.visibility = View.VISIBLE
@@ -3037,29 +3086,20 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 val playerData = PlayerData()
                 val cidValue = cids!![pageIndex]
 
+                // 这条能不能"进得去"（多P 视频 / 属于某个真实合集）。**只记录，不自动进**——
+                // 用户明确要求"点击后主动进入"（26.10.16）：自动进会在你只想顺着收藏夹听的时候
+                // 突然被换成一门 105 讲课程的分P 列表，收藏夹里后面的条目全被跳过。
+                // 这一次 getVideoInfo 本来就要发（为了拿首个 cid），响应里的 ugc_season 是白拿的。
+                var videoInfoForEnter: VideoInfo? = null
+
                 if (isVirtualCollectionMode) {
                     // 虚拟合集模式：cids 里存的是每个视频的 **aid**，要拿它反查该视频的首个 cid
                     playerData.aid = cidValue
                     playerData.cid = 0 // 需要从API获取
                     val videoInfo = com.RobinNotBad.BiliClient.api.VideoInfoApi.getVideoInfo(cidValue)
-                    // 自动切合集：这次 getVideoInfo 本来就要发（为了拿首个 cid），而它的响应里
-                    // 已经带回了整个 ugc_season（实测 336 集带 aid/cid），等于白拿。
-                    // 之前这份数据是解析完就扔的（只用了 cids[0]）。
-                    val collection = videoInfo?.collection
-                    if (collection != null
-                        && collection.id.toLong() != collectionId
-                        && collection.id.toLong() != suppressedCollectionId
-                    ) {
-                        val items = Collection.toPlaylist(collection)
-                        // 只有一集的"合集"不值得套一层，否则用户会莫名看到选集卡片换了个标题
-                        if (items.size > 1) {
-                            runOnUiThread {
-                                if (!destroyed) enterCollectionPlaylist(collection, items, cidValue, pageIndex)
-                            }
-                            return@run
-                        }
-                    }
+                    videoInfoForEnter = videoInfo
                     if (videoInfo != null && videoInfo.cids.isNotEmpty()) {
+                        // 不进去时只播第 1 个分P——想听其它分P 就点选集卡片上的「进入分P」
                         playerData.cid = videoInfo.cids[0]
                     }
                 } else {
@@ -3087,6 +3127,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     // aid 还停在第一个视频上，进度上报就会变成 reportHistory(视频1, 视频N的cid)——
                     // 把 N 的进度写到 1 的记录里（26.10.15 修）
                     if (playerData.aid > 0) aid = playerData.aid
+                    // 在 UI 线程落地"这条能不能进得去"，供选集卡片画那一行（见 enterableCollection）
+                    updateEnterable(videoInfoForEnter)
                     doSwitchPage(newTitle, playerData.videoUrl, playerData.danmakuUrl, pageIndex)
                 }
             } catch (e: Exception) {
@@ -3124,11 +3166,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             // 记住触发的那一条：手动"返回主合集"回到它，合集播完自动返回则用它 +1
             back.currentPageIndex = triggeringIndex
             back.virtualCollection = true
-            back.collectionId = 0L
             returnPlaylist = back
         }
         collectionId = collection.id.toLong()
         collectionTitle = collection.title
+        multiPageAid = 0L
+        multiPageTitle = null
+        // 已经进层了，选集卡片那一行该换成「← 返回主合集」
+        enterableCollection = null
+        enterableMultiPage = null
         pagenames = ArrayList(items.map { it.title })
         cids = ArrayList(items.map { it.aid })
         isVirtualCollectionMode = true
@@ -3136,6 +3182,62 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         currentPageIndex = target
         MsgUtil.showMsg("进入合集：${collection.title ?: ""}")
         switchToOnlinePage(target, pagenames!![target])
+    }
+
+    /**
+     * 用户点了选集卡片上的「进入分P / 进入合集」——把当前这条"文件夹"打开。
+     *
+     * <p>合集优先于分P（外层"一系列视频" vs 内层"一个视频的段落"），与 [enterableCollection]
+     * 的判定顺序保持一致。
+     */
+    private fun enterCurrentNestLayer() {
+        val collection = enterableCollection
+        val multiPage = enterableMultiPage
+        when {
+            collection != null ->
+                enterCollectionPlaylist(collection, Collection.toPlaylist(collection), aid, currentPageIndex)
+            multiPage != null -> enterMultiPageLayer(multiPage, currentPageIndex)
+        }
+    }
+
+    /**
+     * 进入"分P层"：把播放列表换成某个多P视频的各分P，从第 1 个分P 起播。
+     *
+     * <p>这是第二类"文件夹"。用户的心智模型是一棵目录树：虚拟合集是根目录，单视频是根目录下的
+     * MP4，而**多P视频本身是个可进入的目录**——进去看它的各分P，退出来回根目录。
+     *
+     * <p>与合集层的差别：这一层的 `cids` 是**真 cid**（同一个 aid 的多个分P），所以
+     * [isVirtualCollectionMode] 置 false，切页走普通多P 分支（`aid` 不变、`cid = cids[i]`）。
+     * 也正因如此，`aid` 必须在这里换成该视频的 aid——它此前是"收藏夹里的第 N 条"那个概念。
+     *
+     * @param triggeringIndex 触发这次进入的条目在**收藏夹那条列表**里的下标
+     */
+    private fun enterMultiPageLayer(videoInfo: VideoInfo, triggeringIndex: Int) {
+        if (returnPlaylist == null) {
+            val back = PlayerData()
+            back.title = videoTitle ?: ""
+            back.pagenames = ArrayList(pagenames ?: emptyList())
+            back.cids = ArrayList(cids ?: emptyList())
+            back.currentPageIndex = triggeringIndex
+            back.virtualCollection = true
+            returnPlaylist = back
+        }
+        collectionId = 0L
+        collectionTitle = null
+        multiPageAid = videoInfo.aid
+        multiPageTitle = videoInfo.title
+        // 已经进层了，选集卡片那一行该换成「← 返回主合集」
+        enterableCollection = null
+        enterableMultiPage = null
+        pagenames = ArrayList(videoInfo.pagenames)
+        cids = ArrayList(videoInfo.cids)
+        isVirtualCollectionMode = false
+        aid = videoInfo.aid
+        // 从第 1 个分P 起。VideoInfo 没带"上次看到哪个分P"，续播到具体分P 需要另读 player/v2 的
+        // last_play_cid，本轮不做（见台账 §3.24 的未覆盖项）
+        currentPageIndex = 0
+        MsgUtil.showMsg("进入分P：${videoInfo.title ?: ""}")
+        switchToOnlinePage(0, pagenames!![0])
     }
 
     /**
@@ -3150,24 +3252,35 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val backCids = back.cids
         if (backPages.isNullOrEmpty() || backCids.isNullOrEmpty()) return
 
-        // 手动返回 = 用户明确说"别把我切进这个合集"：不抑制的话，返回的位置正是触发切换的
-        // 那条合集视频，会被立刻又切回去，按钮形同虚设
-        if (!advance) suppressedCollectionId = collectionId
+        // 先记下"正要离开的是哪一层"：下面会把两个层字段都清零，之后再判断就只能看到 0 了
+        val leavingCollection = collectionId != 0L
 
         val resume = (back.currentPageIndex + if (advance) 1 else 0)
             .coerceIn(0, backPages.size - 1)
 
         reportProgressNow(true, "返回主合集前")
 
+        // 返回栈里存的就是根目录层那条列表，它的 title 就是收藏夹名——拿它当根层标题，
+        // 否则卡片会退化成"当前条目名"（见 rootTitle 的注释）
+        rootTitle = back.title
         pagenames = ArrayList(backPages)
         cids = ArrayList(backCids)
         isVirtualCollectionMode = back.virtualCollection
         collectionId = 0L
         collectionTitle = null
+        // 两个嵌套层都要清：返回后我们回到的是根目录（收藏夹虚拟合集），不在任何"文件夹"里
+        multiPageAid = 0L
+        multiPageTitle = null
         returnPlaylist = null
         currentPageIndex = resume
 
-        MsgUtil.showMsg(if (advance) "合集播放完毕，继续收藏夹" else "返回主合集")
+        MsgUtil.showMsg(
+            when {
+                !advance -> "返回主合集"
+                leavingCollection -> "合集播放完毕，继续收藏夹"
+                else -> "分P播放完毕，继续收藏夹"
+            }
+        )
         switchToOnlinePage(resume, backPages[resume])
     }
 

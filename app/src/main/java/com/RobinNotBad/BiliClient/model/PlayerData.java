@@ -45,23 +45,13 @@ public class PlayerData implements Parcelable {
      * （26.10.15 真机复现）。
      */
     public boolean virtualCollection = false;
-    /**
-     * 正在播放的**真实合集** id（`ugc_season.id`）；0 表示当前播放列表不是合集。
-     *
-     * <p>用途是"同合集防抖"：自动切合集时，每切一集都会重新查到 `videoInfo.collection`，
-     * 若不做这个判断，正在放合集 C 的第 5 集时会又一次"切进 C"，把播放位置重置。
-     */
-    public long collectionId = 0;
-    /** 合集标题。只用于选集卡片上显示"现在在哪一层"，必须单独传：切集后 [title] 会变成剧集标题。 */
-    public String collectionTitle = "";
-    /**
-     * 一层返回栈：从收藏夹连播自动切进合集时，把**收藏夹那条播放列表**存这里，
-     * 合集播完后再弹回来继续（否则收藏夹剩下的条目永远轮不到，等于被吞了）。
-     *
-     * <p>只允许一层——写的时候必须把被存对象的 [returnPlaylist] 置空、[collectionId] 归零，
-     * 否则会自我嵌套。
-     */
-    public PlayerData returnPlaylist = null;
+    // 注：合集层 / 分P层（"子合集"）的进出**由用户在选集卡片上点那一行**触发，层状态本身是
+    // PlayerActivity 的私有字段、不走 Intent。
+    //
+    // 唯一的例外是**起播的那一条**：它的播放列表是构建方直接拼的，不走播放器的
+    // switchToOnlinePage，所以播放器拿不到它的 videoInfo、也就不知道"这条能不能进得去"。
+    // 构建方已经把这份数据请求过了（为了拿首个 cid），顺手带过去，省掉播放器再请求一次。
+    public VideoInfo enterableInfo = null;
     public int currentPageIndex = 0;
     public DashData dashData; // DASH格式数据
     public String audioUrl = ""; // 单独的音频URL（用于仅音频下载）
@@ -101,9 +91,7 @@ public class PlayerData implements Parcelable {
         liveUrlCandidates = in.createStringArrayList();
         if (liveUrlCandidates == null) liveUrlCandidates = new ArrayList<>();
         virtualCollection = in.readInt() != 0;
-        collectionId = in.readLong();
-        collectionTitle = in.readString();
-        returnPlaylist = in.readParcelable(PlayerData.class.getClassLoader());
+        enterableInfo = in.readParcelable(VideoInfo.class.getClassLoader());
         // dashData不序列化，下载时会重新获取
     }
 
@@ -147,9 +135,7 @@ public class PlayerData implements Parcelable {
         dest.writeInt(seasonType);
         dest.writeStringList(liveUrlCandidates);
         dest.writeInt(virtualCollection ? 1 : 0);
-        dest.writeLong(collectionId);
-        dest.writeString(collectionTitle);
-        dest.writeParcelable(returnPlaylist, flags);
+        dest.writeParcelable(enterableInfo, flags);
         // dashData不序列化，下载时会重新获取
     }
 

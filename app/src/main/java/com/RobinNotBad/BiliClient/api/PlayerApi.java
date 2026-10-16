@@ -486,9 +486,10 @@ public class PlayerApi {
                     // cids 里装的是 cid 还是 aid 必须显式告诉播放器：两种模式的切P 逻辑完全不同，
                     // 靠 aid != cids[i] 猜在真实多P 下恒真（av 号永不等于 cid），会把 cid 当 aid 查
                     intent.putExtra("virtual_collection", playerData.virtualCollection);
-                    intent.putExtra("collection_id", playerData.collectionId);
-                    intent.putExtra("collection_title", playerData.collectionTitle);
-                    intent.putExtra("return_playlist", playerData.returnPlaylist);
+                    // 起播那一条的 videoInfo：播放器靠它决定选集卡片上要不要显示「进入分P/进入合集」
+                    // 必须显式转 Parcelable——VideoInfo 同时实现了 Parcelable 和 Serializable，
+                    // 不转的话 putExtra 两个重载都匹配，编译报"引用不明确"
+                    intent.putExtra("enterable_info", (android.os.Parcelable) playerData.enterableInfo);
                 }
                 break;
 

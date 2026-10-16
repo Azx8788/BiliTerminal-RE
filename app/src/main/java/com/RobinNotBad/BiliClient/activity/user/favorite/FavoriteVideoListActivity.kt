@@ -10,7 +10,6 @@ import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
 import com.RobinNotBad.BiliClient.adapter.video.VideoCardAdapter
 import com.RobinNotBad.BiliClient.api.FavoriteApi
 import com.RobinNotBad.BiliClient.api.PlayerApi
-import com.RobinNotBad.BiliClient.model.Collection
 import com.RobinNotBad.BiliClient.model.PlayerData
 import com.RobinNotBad.BiliClient.model.VideoCard
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
@@ -512,33 +511,15 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                 // 否则会把 aid 当 cid（或反过来）去取流
                 playerData.virtualCollection = true
 
-                // 点开的这一条若属于某个真实合集，就直接以合集起播（"任何时候遇到合集视频都切"，
-                // 包括第一条）。上面这次 getVideoInfo 本来就要发，ugc_season 是白拿的。
-                // 收藏夹这条播放列表压成返回栈，合集播完或用户点「返回主合集」时回来。
-                val collection = videoInfo?.collection
-                val collectionItems = if (collection != null) Collection.toPlaylist(collection) else emptyList()
-                if (collection != null && collectionItems.size > 1) {
-                    // 显式赋值而不是 apply{}：本函数里的 pagenames/cids 是**局部变量**，
-                    // 在 apply 里会遮蔽接收者的同名字段，写出来就成了"给 val 重新赋值"
-                    val back = PlayerData(PlayerData.TYPE_VIDEO)
-                    back.title = "$folderName（虚拟合集）"
-                    back.pagenames = ArrayList(pagenames)
-                    back.cids = ArrayList(cids)
-                    back.currentPageIndex = startPageIndex
-                    back.virtualCollection = true
-                    playerData.returnPlaylist = back
-                    playerData.collectionId = collection.id.toLong()
-                    playerData.collectionTitle = collection.title ?: ""
-                    playerData.title = collection.title ?: "合集"
-                    playerData.pagenames = ArrayList(collectionItems.map { it.title })
-                    playerData.cids = ArrayList(collectionItems.map { it.aid })
-                    val idx = collectionItems.indexOfFirst { it.aid == firstAid }
-                    playerData.currentPageIndex = if (idx >= 0) idx else 0
-                    // 合集里每一集是**不同的视频**，aid/cid 都要跟着换成那一集的
-                    val ep = collectionItems[playerData.currentPageIndex]
-                    playerData.aid = ep.aid
-                    playerData.cid = ep.cid
-                }
+                // **点开一条不等于进入它的"文件夹"**（26.10.16 用户明确要求改成手动）：
+                // 这里只起播收藏夹这条列表。若这一条是多P 视频或属于某个真实合集，
+                // 播放器的选集卡片上会多出一行「进入分P / 进入合集」，由用户点了才换列表。
+                // 自动进入会在你只想顺着收藏夹听的时候，突然被换成一门 105 讲课程的分P 列表，
+                // 收藏夹里后面的条目全被跳过——所以不做。
+                //
+                // 但"这一条能不能进得去"得让播放器知道：起播这条不走播放器的 switchToOnlinePage，
+                // 它拿不到 videoInfo。上面这次请求已经拿到了，顺手带过去（省掉播放器再请求一次）。
+                playerData.enterableInfo = videoInfo
 
                 // 在主线程启动播放
                 runOnUiThread {
