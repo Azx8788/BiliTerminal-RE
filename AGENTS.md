@@ -84,6 +84,8 @@
 
 > **老客户端迁移（一次性）**：26.10.02 及更早的客户端只认 123pan 上那份 `config.json`。发版时若把 `emit_config_json` 打开，工作流会额外产出一份**给老客户端**的 `config.json`（`downloadUrl` = Gitee 上 32 位包的直链、`forceUpdate` 与本次一致）并挂到 Release，需人工把它传到 123pan。**它只用于渠道切换那一次**，新客户端不读它。
 
+> **只想拿包、不想发版**：手工触发 `build-release.yml` 时勾选 `build_only`（26.10.17 新增）。它照常跑单测 + `assembleRelease` + 整理发行 APK + 生成 MD5 并上传 artifact `release-apks`，但**跳过**「计算发行 tag 与发布说明」「创建 GitHub Release」「Notify relay」等全部发行动作——不产生 Release、不占 tag（release immutability）、不同步 Gitee，适合传应用商店或自己装。实现上由 job 级 `env.BUILD_ONLY` 归一化（**推 tag 时 `inputs.*` 恒空，必须显式判 `event_name`**），五处步骤条件前置 `env.BUILD_ONLY != 'true'`，并**比较字符串而非布尔**。「tag 留空」不是等价做法：那条路仍会组装发布说明，`update_log_current` 抽不出条目时会 `::error::` 退出。细节见 `docs/review/fix-progress.md` §3.25。
+
 坑：`gradle.properties` 第 9 行硬编码 `org.gradle.java.home`（Windows 路径），代理配置在第 88-92 行**是注释状态**；release 签名读 gitignore 的 `local.properties`；`copyApkToDesktop` 未挂在 `assembleRelease` 上，需手动跑。
 
 **更容易踩的坑（build cache 回放陈旧资源）**：`gradle.properties` 开着 `org.gradle.configuration-cache` 与 build cache。只要你改动 `res/` 的**文件集合**（新增/删除/移动资源文件），`:app:mergeDebugResources` 可能 `FROM-CACHE` 回放一份旧结果，症状是编译报莫名其妙的 `Unresolved reference 'R.layout.xxx'` 或新的 string/color 找不到，而源文件明明存在。此时必须：

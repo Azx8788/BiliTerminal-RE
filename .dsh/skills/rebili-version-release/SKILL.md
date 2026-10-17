@@ -106,6 +106,19 @@ description: >-
    回落到 GitHub 源（能更新，但国内直连慢）。26.10.11 首次发共存版就踩到这条：Gitee 上只有普通版
    4 个包，手动补传后正常。
 
+**只要签名包、不发版（26.10.17 起，勾 `build_only`）**：手工触发
+`构建发行版并创建 Release` 并**勾选 `build_only`**——照常跑单测、`:app:assembleRelease`、
+整理发行 APK、生成 MD5 并上传 artifact `release-apks`，但**跳过**「计算发行 tag 与发布说明」
+「创建 GitHub Release」「Notify relay」等全部发行动作：**不产生 Release**（因此不进
+`releases/latest`、不会被中转同步到 Gitee）、**不占用 tag**（release immutability 下这点很关键）。
+适用场景：只想拿一份正式签名的包去传应用商店 / 自己装。产物从 Actions run 页面的
+**Artifacts → `release-apks`** 下载。
+
+> ⚠️ **别用「tag 留空」代替 `build_only`**：那条路仍会组装发布说明，`update_log_current`
+> 抽不出条目时会 `::error::` 退出（见上方硬要求）——为拿一个包而被迫先写好当版更新日志并不合理。
+> 实现与取舍（为什么比较字符串而不是布尔、为什么连「计算发行 tag」这步一起跳过）见
+> `docs/review/fix-progress.md` §3.25。
+
 - 客户端更新源：Gitee 发行版优先，失败回落 GitHub 发行版；两处都是公开仓库，读 release 不需要 token。
 - Gitee 直链格式：`https://gitee.com/zisekongling/bili-terminal-re/releases/download/<tag>/<文件名>`。
 - 漏同步 / 想重跑同步：触发 `.github/workflows/relay-notify.yml` 并填 tag（只重发通知，不重新构建）；
@@ -117,6 +130,7 @@ description: >-
   （例如 `26.10.03` 用掉了就用 `26.10.03.1`）；另注意不可变 release 的**附件也不能增删改**，
   发完就没法补传，只能靠 `relay-notify.yml` 重发通知让中转去补。
 - 若需本地出包（不开 CI）：按 §3 构建后手工触发工作流上传；**不要**在本地直接调 Gitee API。
+  **只是想要一份签名的包（传商店 / 自装）就勾 `build_only`**，别为它写当版更新日志，见上方那段。
 
 ### 5. 校验
 - strings.xml 保持 XML 合法（本次只改数组文本）。

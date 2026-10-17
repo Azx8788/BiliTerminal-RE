@@ -2,6 +2,10 @@ name: 构建发行版并创建 Release
 
 # 触发方式：
 # 1) 手工触发（workflow_dispatch）：填 tag 就会建 Release 并上传 APK；不填则只构建并上传 artifact。
+#    **勾选 `build_only` 是「只出包不发版」的显式入口**：照常构建签名 APK 并上传 artifact，
+#    但跳过「计算发行 tag 与发布说明」「创建 GitHub Release」「Notify relay」等全部发行动作——
+#    适合「只想拿一个正式签名的包去传应用商店 / 自己装」，不会污染 Releases 列表、不会同步 Gitee。
+#    （tag 留空也能只构建，但那条路仍会跑发布说明组装、且更新日志抽不到时会红；build_only 直接跳过。）
 # 2) 推送 tag 自动触发：用该 tag 创建 Release 并上传 APK。
 #
 # 两种方式产出的 Release 说明都含**完整更新日志**：手工触发用输入的 release_body，
@@ -27,6 +31,10 @@ on:
         type: boolean
         description: '是否额外产出给老客户端的一次性 config.json（downloadUrl=Gitee 直链）。仅渠道迁移那一次需要'
         default: false
+      build_only:
+        type: boolean
+        description: '仅构建签名 APK 并上传 artifact：不建 Release、不发通知、不同步 Gitee（用于取包传商店/自装）'
+        default: false
   push:
     tags:
       - '*'
@@ -43,6 +51,14 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
+    # 归一化「仅构建」开关：**只有手工触发且勾选 build_only 才是 true**。
+    # 推 tag 时 inputs.* 恒为空（同 published 说明里那条坑），所以这里必须显式判 event_name，
+    # 否则 `${inputs.build_only}` 在 push 下算成空串、下游的 if 判断会依赖隐式真值转换。
+    # 下游一律用 `env.BUILD_ONLY != 'true'` 比较**字符串**，不比较布尔（YAML/表达式里 boolean
+    # 与 'true' 混用是最容易出错的一处）。
+    env:
+      BUILD_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.build_only }}
 
     steps:
       - name: 检出代码
@@ -194,8 +210,11 @@ jobs:
 
       # 计算目标 tag 与发布说明：tag 推送用 pushed ref；手工触发用输入的 tag；为空则跳过 Release。
       # inputs 一律经 env 传入，不直接插进 shell 脚本。
+      # build_only 下整步跳过：不组装发布说明，也就不需要更新日志能抽得出来——
+      # 「只出包」不该因为 strings.xml 还没写当版日志而红掉。
       - name: 计算发行 tag 与发布说明
         id: tag
+        if: env.BUILD_ONLY != 'true'
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -298,7 +317,7 @@ jobs:
       # 发行版直链清单。两个源的 URL 都是可预测的（{源}/releases/download/{tag}/{文件名}），
       # 所以**不必等 Gitee 同步完成**（中转是异步的），两份都列出来：GitHub 立即可用，Gitee 稍后可用。
       - name: 生成发行版直链清单
-        if: steps.tag.outputs.tag != ''
+        if: env.BUILD_ONLY != 'true' && steps.tag.outputs.tag != ''
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -338,7 +357,7 @@ jobs:
       # 若想改成 GitHub 直链（更"立即可用"），只需把下面的 base 换成 github.com 那行。
       # 注意：CI 不部署它 —— 需人工把这份文件传到 123pan 的更新配置位置。
       - name: 生成给老客户端的一次性 config.json
-        if: steps.tag.outputs.tag != '' && inputs.emit_config_json
+        if: env.BUILD_ONLY != 'true' && steps.tag.outputs.tag != '' && inputs.emit_config_json
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.tag }}
@@ -355,7 +374,7 @@ jobs:
           python3 .github/scripts/make_config_json.py
 
       - name: 创建 GitHub Release
-        if: steps.tag.outputs.tag != ''
+        if: env.BUILD_ONLY != 'true' && steps.tag.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
@@ -381,7 +400,7 @@ jobs:
       #    早了会拿到不完整/不存在的附件。签名与请求体必须是**同一份字节**，
       #    所以请求体用 printf 落盘再 --data-binary 发送（echo 会多一个换行导致 401）。
       - name: Notify relay (GitHub -> Gitee 中转)
-        if: success() && steps.tag.outputs.tag != ''
+        if: success() && env.BUILD_ONLY != 'true' && steps.tag.outputs.tag != ''
         shell: bash
         env:
           # 中转地址与共享密钥都走仓库 Secret，不写进代码库（提示里也不要回显）

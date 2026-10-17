@@ -688,6 +688,23 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 
 **未覆盖**：① 「进入合集 · 标题（N 集）」这一行的**文案渲染**未单独截到图（合集分支与分P 分支共用同一行渲染代码，且 `enterCollectionPlaylist` 在 §3.18 已验证可进入；真机上选集卡片在几次尝试里都因 adb/UI 时序没打开）；② 进入分P层一律从**第 1 个分P** 起播（`VideoInfo` 不带"上次看到哪个分P"）；③ 一个视频**既多P 又在合集里**时只给"进入合集"（合集优先），它的分P 仍不可达；④ 本地缓存的虚拟合集走另一条路径（`switchToLocalPage`），未做嵌套层。
 
+### 3.25 CI 新增「只构建不发版」入口 `build_only`（26.10.17）
+
+**动机**：需要一份**正式签名**的 release APK 去传应用商店 / 自己装，但**不想产生 Release**——Release 会进 `releases/latest`（客户端更新检查读它）、会被中转服务同步到 Gitee、并消耗一个不可复用的 tag（release immutability）。原先唯一「只出包」的办法是手工触发时把 `tag` 留空，但那条路仍会执行「计算发行 tag 与发布说明」，于是**只要 `update_log_current` 抽不出条目就会 `::error::` 退出**——为拿一个包而被迫先写好当版更新日志，不合理。
+
+**实现**（`.github/workflows/build-release.yml`，5 处）：
+- `workflow_dispatch` 新增 `build_only`（boolean，默认 `false`）
+- job 级 `env.BUILD_ONLY` 归一化：`${{ github.event_name == 'workflow_dispatch' && inputs.build_only }}`。**必须显式判 `event_name`**——推 tag 时 `inputs.*` 恒空（与发布说明那条坑同源）
+- 「计算发行 tag 与发布说明」「生成发行版直链清单」「生成给老客户端的一次性 config.json」「创建 GitHub Release」「Notify relay」五步的 `if` 前置 `env.BUILD_ONLY != 'true'`
+
+**两个刻意的取舍**：
+1. **比较字符串而非布尔**。`type: boolean` 的输入在表达式里是真布尔，但 `env` 渲染后是字符串 `"true"`／`"false"`，混用布尔与 `'true'` 是这类开关最经典的翻车点（类型强转方向一变，开关就静默失效）。
+2. **跳过「计算发行 tag」这一步本身**，所以 `steps.tag.outputs.tag` 为空 → 下游 `if: steps.tag.outputs.tag != ''` 天然为假。五处条件里既有显式判 `BUILD_ONLY`（自解释、防后人删了 tag 判空），又有 tag 为空这层兜底（**双保险**：任一层失效都不会误建 Release）。
+
+**验证**：`actionlint 1.7.7` 通过（0 问题）；另做**反向对照实验**确认它不是一律放行——同一个表达式写在 **job 级 `if`** 时 actionlint 明确报 `context "env" is not allowed here`，写在 **step 级 `if`** 时通过，说明它对上下文可用性的建模是有效的，因此 step 级用 `env` 可信（job 级 `if` 用 `env` 是 GitHub 的已知限制，见 github/docs#21927）。`yaml.safe_load` 解析通过。
+
+**未验证**：**没有实际触发过一次 CI**（本机无 JDK 17 / Android SDK，无法跑 Gradle；且改动需先推到 main 才能在 Actions 页面手工触发）。首次使用时应确认两点：① artifact `release-apks` 里有 4 个 ABI 的普通版 + 共存版签名包；② **Releases 列表没有新增条目**、Gitee 没有新增发行版。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
