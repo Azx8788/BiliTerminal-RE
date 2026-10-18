@@ -236,7 +236,8 @@ class SplashActivity : Activity() {
     /**
      * Debug 构建下，检查悬浮窗权限：
      * - 已授权 → 返回 false，让启动流程继续
-     * - 未授权 → 跳转系统设置授权页并返回 true，在 onActivityResult 再继续启动
+     * - 未授权且设置页拉得起来 → 跳转系统设置授权页并返回 true，在 onActivityResult 再继续启动
+     * - 未授权且设置页拉不起来（手表 ROM 缺该页）→ 提示一句并返回 false，**照常继续启动**
      *
      * Release 构建不做任何处理。
      *
@@ -252,9 +253,9 @@ class SplashActivity : Activity() {
             Handler(Looper.getMainLooper()).postDelayed({ BiliTerminal.showUEToolMenu() }, 300L)
             return false
         }
-        // 未授权：先跳转授予悬浮窗权限
-        BiliTerminal.requestOverlayPermission(this)
-        return true
+        // 未授权：先跳转授予悬浮窗权限。拉不起来（手表 ROM 没有该设置页）就返回 false，
+        // 让启动流程继续——调试便利不该把启动页卡在一个永远不会回来的 onActivityResult 上。
+        return BiliTerminal.requestOverlayPermission(this)
     }
 
     @Deprecated("Deprecated in Java")

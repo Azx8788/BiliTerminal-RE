@@ -95,9 +95,9 @@ class LocalListActivity : InstanceActivity() {
             }
         }
 
-        if (!FileUtil.checkStoragePermission()) {
-            FileUtil.requestStoragePermission(this)
-        }
+        // 默认缓存目录是应用专属的 Android/media/<包名>/，Android 10+ 写这里无需权限，
+        // 所以先试写、写不进去才要权限（手表 ROM 没有该设置页，见 FileUtil.canWriteDirectory）
+        FileUtil.ensureDirectoryWritable(this, FileUtil.getVideoDownloadPath())
 
         CenterThreadPool.run {
             runOnUiThread { swipeRefreshLayout.setRefreshing(true) }

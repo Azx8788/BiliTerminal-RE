@@ -757,9 +757,11 @@ class VideoInfoFragment : BaseFragment() {
     }
 
     private fun downloadClick() {
-        if (!FileUtil.checkStoragePermission()) {
-            FileUtil.requestStoragePermission(requireActivity())
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        // 判据是「目标目录真的能不能写」，不是「有没有 MANAGE_EXTERNAL_STORAGE」：
+        // 默认下载目录是应用专属的 Android/media/<包名>/，Android 10+ 无需任何权限；
+        // 而手表 ROM 往往没有「所有文件访问」设置页（issue #42），按授权判会把下载永久挡死。
+        if (!FileUtil.ensureDirectoryWritable(requireActivity(), FileUtil.getVideoDownloadPath())) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             requireContext().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
             != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)

@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -12,7 +11,6 @@ import android.provider.Settings;
 import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
 
@@ -107,21 +105,55 @@ public class FileUtil {
         }
     }
 
-    public static boolean checkStoragePermission() {
-        int sdk = Build.VERSION.SDK_INT;
-        if (sdk < 17) return true;
-        Context context = BiliTerminal.context;
-        // Android 11+: 旧存储权限已废弃，需要检查"所有文件访问权限"
-        if (sdk >= Build.VERSION_CODES.R) {
-            return Environment.isExternalStorageManager();
-        }
-        // Android 10: 使用 requestLegacyExternalStorage，且写入目录为 Android/media/<包名>/ 无需额外权限
-        if (sdk >= Build.VERSION_CODES.Q) {
+    /**
+     * 真的到目标目录里试写一个临时文件，用「能不能写」代替「有没有授权」。
+     *
+     * <p>为什么不再只看 `Environment.isExternalStorageManager()`（26.10.18 改）：
+     *
+     * <ul>
+     *   <li>默认下载目录是 `&lt;外部存储&gt;/Android/media/&lt;包名&gt;/`，属**应用专属外部存储**，
+     *       Android 10+ 写这里本来就不需要任何权限，却被授权判据一律判成「没权限」——等于每次下载都
+     *       先把用户顶到系统设置页；</li>
+     *   <li>手表 ROM 普遍没有「所有文件访问」设置页（issue #42：小米手表 M2505W1 / SDK 34），
+     *       用户**永远授不到**这个权限，于是默认路径下的下载被永久挡死。26.10.14 只修了「点设置页崩」
+     *       （见 [requestStoragePermission]），挡死的语义没有动。</li>
+     * </ul>
+     *
+     * <p>改成试写后两种情形都对：默认目录直接放行；用户把保存路径改到公共目录、或下载图片到
+     * `Pictures/` 时，试写会失败，才去要权限。API 29 及以下同理——旧运行时权限没给时试写也失败。
+     *
+     * @param dir 目标目录（不存在则尝试创建）
+     * @return 该目录眼下是否真的能创建文件
+     */
+    public static boolean canWriteDirectory(File dir) {
+        if (dir == null) return false;
+        try {
+            if (!dir.exists() && !dir.mkdirs()) return false;
+            if (!dir.isDirectory()) return false;
+            // 用 createTempFile 而不是固定文件名：并发下载时多个任务可能同时探测同一个根目录，
+            // 固定名会互相把对方刚建的文件当成「已存在」误判成不可写。
+            File probe = File.createTempFile(".write_probe", null, dir);
+            boolean deleted = probe.delete();
+            if (!deleted) Log.w("storage-perm", "探测文件删不掉：" + probe);
             return true;
+        } catch (Throwable t) {
+            // SecurityException / 只读文件系统 / 目录被并发删除 都归为「写不了」
+            return false;
         }
-        // Android 9 及以下：使用旧权限模型
-        return ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * 保证目标目录可写：能写就直接放行，写不了才去要权限。
+     *
+     * @param activity 用于拉起授权页的 Activity
+     * @param dir      调用方真正要写入的目录（**必须传实际目标**，别一律传下载根目录）
+     * @return true 表示现在就能写；false 表示已经尝试拉起授权页/弹过提示，调用方应当停下，
+     * 等用户授权后重新点一次
+     */
+    public static boolean ensureDirectoryWritable(Activity activity, File dir) {
+        if (canWriteDirectory(dir)) return true;
+        requestStoragePermission(activity);
+        return false;
     }
 
     /**

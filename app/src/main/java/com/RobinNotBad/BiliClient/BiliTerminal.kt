@@ -174,16 +174,34 @@ class BiliTerminal : Application() {
             return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context)
         }
 
-        /** 跳转到系统设置页申请悬浮窗权限。 */
+        /**
+         * 跳转到系统设置页申请悬浮窗权限。
+         *
+         * <p>26.10.18：和 [com.RobinNotBad.BiliClient.util.FileUtil.requestStoragePermission] 同一个坑——
+         * 手表 ROM 可能**根本没有**这个设置页，裸 `startActivityForResult` 抛
+         * `ActivityNotFoundException` 会把启动页带崩。拉不起来就只提示，并返回 false 让调用方
+         * **继续启动流程**（否则启动页会一直等一个永远不会到来的 `onActivityResult`）。
+         *
+         * @return 是否成功拉起设置页
+         */
         @JvmStatic
-        fun requestOverlayPermission(activity: Activity) {
+        fun requestOverlayPermission(activity: Activity): Boolean {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !canDrawOverlaysCompat(activity)) {
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:${activity.packageName}")
                 )
-                activity.startActivityForResult(intent, REQUEST_OVERLAY_PERMISSION_FOR_UETOOL)
+                try {
+                    activity.startActivityForResult(intent, REQUEST_OVERLAY_PERMISSION_FOR_UETOOL)
+                    return true
+                } catch (e: Exception) {
+                    // 不只 ActivityNotFoundException：该页存在但未导出时抛 SecurityException，处理方式相同
+                    Logu.w("overlay-perm", "悬浮窗设置页拉不起来：${e.javaClass.simpleName}")
+                    MsgUtil.showMsgLong("此设备打不开悬浮窗权限设置页，UETool 调试悬浮窗不可用")
+                    return false
+                }
             }
+            return false
         }
 
         /**

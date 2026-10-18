@@ -76,7 +76,12 @@ class DownloadActivity : BaseActivity() {
 
         scrHeight = window_height
 
-        if (!FileUtil.checkStoragePermission()) FileUtil.requestStoragePermission(this)
+        // 申请权限前先试写**真正的目标目录**：默认视频目录是应用专属的 Android/media/<包名>/，
+        // Android 10+ 无需权限；只有下载图片到公共 Pictures/（type 0，path 由调用方传入）、
+        // 或用户把保存路径改到公共目录时才真的写到需要权限的地方（见 FileUtil.canWriteDirectory）
+        val permissionTarget =
+            if (type == 0) File(intent.getStringExtra("path") ?: "") else FileUtil.getVideoDownloadPath()
+        FileUtil.ensureDirectoryWritable(this, permissionTarget)
 
         timer.schedule(showText, 100, 100)
         CenterThreadPool.run {
