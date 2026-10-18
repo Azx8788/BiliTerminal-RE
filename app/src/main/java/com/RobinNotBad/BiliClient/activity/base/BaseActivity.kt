@@ -34,6 +34,7 @@ import com.RobinNotBad.BiliClient.event.SnackEvent
 import com.RobinNotBad.BiliClient.tutorial.TutorialPagerActivity
 import com.RobinNotBad.BiliClient.tutorial.TutorialStore
 import com.RobinNotBad.BiliClient.tutorial.Tutorials
+import com.RobinNotBad.BiliClient.ui.widget.RotaryEncoderSupport
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomGridManager
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.ui.appearance.AppearanceApplier
@@ -138,6 +139,8 @@ open class BaseActivity : AppCompatActivity() {
         if (density >= 72) {
             setDensity(density)
         }
+
+        installRotaryFallback()
     }
 
     /**
@@ -172,6 +175,25 @@ open class BaseActivity : AppCompatActivity() {
 
     override fun onBackPressed() {
         if (!SharedPreferencesUtil.getBoolean("back_disable", false)) super.onBackPressed()
+    }
+
+    /**
+     * 表冠事件兜底（26.10.17）。
+     *
+     * 旋转编码器事件**只沿焦点路径分发**：页面上没有任何控件获焦时，事件一路退到 DecorView
+     * 也没人消费。列表页的 `RecyclerView` 默认不抢焦点，旧实现只在 `Rotary*` 控件自身上挂
+     * 监听，于是「设置页里能用、退出就失灵」——设置页能用只是因为点过输入框，`EditText`
+     * 拿了焦点，事件恰好沿焦点链经过外层的 `RotaryRecyclerView`。
+     *
+     * 这里挂在 **DecorView** 上：`ViewRootImpl` 总是先把事件派给 DecorView，而 DecorView 只在
+     * 所有子 View 都没处理时才调用自己的 `onGenericMotionEvent` 监听器，
+     * 因此不会与控件级监听器重复滚动。
+     */
+    private fun installRotaryFallback() {
+        val decor = window?.decorView ?: return
+        decor.setOnGenericMotionListener { _, event ->
+            RotaryEncoderSupport.handlePage(decor, event)
+        }
     }
 
     fun setPageName(name: String) {

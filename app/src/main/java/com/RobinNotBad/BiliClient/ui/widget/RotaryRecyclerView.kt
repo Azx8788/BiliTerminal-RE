@@ -8,6 +8,8 @@ import com.RobinNotBad.BiliClient.util.SettingsKeys
 /**
  * 支持表冠滚动的 `RecyclerView`。
  * 表冠判定与滚动逻辑见 [RotaryEncoderSupport]（三份重复实现已合并到那里）。
+ *
+ * 监听器在构造时就挂上、每次事件现读开关与灵敏度（26.10.17），理由同 [RotaryScrollView]。
  */
 class RotaryRecyclerView @JvmOverloads constructor(
     context: Context,
@@ -15,17 +17,13 @@ class RotaryRecyclerView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : RecyclerView(context, attrs, defStyleAttr) {
 
-    private var scrollMultiple = 0f
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        scrollMultiple = RotaryEncoderSupport.multipleOf(SettingsKeys.UI_ROTATORY_RECYCLER)
-        if (scrollMultiple > 0f) {
-            setOnGenericMotionListener { _, event ->
-                RotaryEncoderSupport.handle(this, event, scrollMultiple, requestFocus = true) {
-                    smoothScrollBy(0, it)
-                }
-            }
+    init {
+        setOnGenericMotionListener { _, event ->
+            RotaryEncoderSupport.handle(
+                this, event,
+                RotaryEncoderSupport.multipleOf(SettingsKeys.UI_ROTATORY_RECYCLER),
+                requestFocus = true
+            ) { smoothScrollBy(0, it) }
         }
     }
 }

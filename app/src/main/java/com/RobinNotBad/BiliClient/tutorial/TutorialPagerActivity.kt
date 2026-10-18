@@ -79,6 +79,8 @@ class TutorialPagerActivity : BaseActivity() {
     private var tutorial: Tutorial? = null
 
     private var elapsedSeconds = 0
+    /** 表冠翻页的累计量：不到 [ROTARY_STEP] 不翻页，避免一格滚轮翻两页。 */
+    private var rotaryAccumulated = 0f
     private val handler = Handler(Looper.getMainLooper())
     private val ticker = object : Runnable {
         override fun run() {
@@ -216,31 +218,43 @@ class TutorialPagerActivity : BaseActivity() {
      * 旋冠翻页：与 `RotaryScrollView` 用同一套开关（`ui_rotatory_enable` / `ui_rotatory_scroll`）。
      *
      * 注意：ViewPager2 内部是 RecyclerView，会自行消费部分滚动事件，
-     * 因此这里直接挂在 pager 上；若真机上手感不对，需要改成自定义容器拦截。
+     * 因此这里直接挂在 pager 上；但 pager 没焦点时事件根本到不了它（旋转编码器只沿焦点路径
+     * 分发），所以再在 DecorView 上兜一层。`BaseActivity` 也装了 DecorView 监听器，
+     * 本页在它之后安装、把「先翻页、翻不动再交给页面级滚动」串起来。
      */
     private fun setupRotaryPaging() {
-        val multiple = RotaryEncoderSupport.multipleOf(SettingsKeys.UI_ROTATORY_SCROLL)
-        if (multiple <= 0f) return
-
-        var accumulated = 0f
-        pager.setOnGenericMotionListener { _, event ->
-            if (event.action != MotionEvent.ACTION_SCROLL ||
-                event.source != InputDevice.SOURCE_ROTARY_ENCODER
-            ) {
-                return@setOnGenericMotionListener false
-            }
-            // 与 RotaryScrollView 保持同向：向下滚 = 往后翻
-            accumulated += -event.getAxisValue(MotionEvent.AXIS_SCROLL) * multiple
-            if (abs(accumulated) >= ROTARY_STEP) {
-                val target = tutorial
-                val next = pager.currentItem + if (accumulated > 0) 1 else -1
-                if (target != null && next in 0 until target.pageCount) {
-                    pager.setCurrentItem(next, true)
-                }
-                accumulated = 0f
-            }
-            true
+        pager.setOnGenericMotionListener { _, event -> handleRotaryPaging(event) }
+        window?.decorView?.setOnGenericMotionListener { _, event ->
+            handleRotaryPaging(event) ||
+                    RotaryEncoderSupport.handlePage(window.decorView, event)
         }
+    }
+
+    /**
+     * 处理一次表冠事件，命中则翻页并返回 true。
+     *
+     * 每次事件现读灵敏度（26.10.17）：旧写法在页面创建时判 > 0 才挂监听器，
+     * 用户在别的页面改完设置回到这里不会重新挂，等于改了不生效。
+     */
+    private fun handleRotaryPaging(event: MotionEvent): Boolean {
+        val multiple = RotaryEncoderSupport.multipleOf(SettingsKeys.UI_ROTATORY_SCROLL)
+        if (multiple <= 0f ||
+            event.action != MotionEvent.ACTION_SCROLL ||
+            event.source != InputDevice.SOURCE_ROTARY_ENCODER
+        ) {
+            return false
+        }
+        // 与 RotaryScrollView 保持同向：向下滚 = 往后翻
+        rotaryAccumulated += -event.getAxisValue(MotionEvent.AXIS_SCROLL) * multiple
+        if (abs(rotaryAccumulated) >= ROTARY_STEP) {
+            val target = tutorial
+            val next = pager.currentItem + if (rotaryAccumulated > 0) 1 else -1
+            if (target != null && next in 0 until target.pageCount) {
+                pager.setCurrentItem(next, true)
+            }
+            rotaryAccumulated = 0f
+        }
+        return true
     }
 
     override fun onBackPressed() {
