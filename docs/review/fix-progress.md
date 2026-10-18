@@ -705,6 +705,57 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 
 **未验证**：**没有实际触发过一次 CI**（本机无 JDK 17 / Android SDK，无法跑 Gradle；且改动需先推到 main 才能在 Actions 页面手工触发）。首次使用时应确认两点：① artifact `release-apks` 里有 4 个 ABI 的普通版 + 共存版签名包；② **Releases 列表没有新增条目**、Gitee 没有新增发行版。
 
+### 3.26 表冠 / 表圈只在设置页内生效（三星 Galaxy Watch 6 Classic 反馈，26.10.17）
+
+**现象**（用户反馈，未附日志）：旋转表圈无反应；开「表冠适配」并把灵敏度调到 1.0 后，**只有在「偏好设置」那一页里能用**，退出即失灵；数值与开关确认已持久化。官方客户端与另一 RE 版本正常。
+
+**根因（源码可证，两处叠加）**：
+1. **旋转编码器事件只沿焦点路径分发**。`RotaryRecyclerView` / `RotaryScrollView` / `RotaryNestedScrollView` 三个控件把监听器挂**自己身上**，而列表页的 `RecyclerView` 默认不抢焦点——页面上没有任何控件获焦时事件没人接。之所以「设置页里能用」：用户点过输入框，`EditText` 拿了焦点，事件恰好沿焦点链经过外层的 `RotaryRecyclerView`；退回上一页后焦点没了，于是又失灵。
+2. **灵敏度在 `onAttachedToWindow` 里只读一次**（`multiple <= 0` 就连监听器都不挂）。返回栈里的页面只是不可见、不会重新 attach，所以「改完设置、旧页面不生效」——这正是设置页文案里那句「打开新页面才能生效」的来历。
+
+**改动**：
+- `ui/widget/RotaryEncoderSupport.kt`：三份重复实现归并后新增页面级入口 `handlePage(root, event)`——找本页第一个「可见且当前能上下滚」的竖直容器并滚动它（横向 `ViewPager2` / 横向 `RecyclerView` 的 `canScrollVertically` 恒 false，天然不抢翻页手势）。
+- `activity/base/BaseActivity.kt`：`onCreate` 末尾 `installRotaryFallback()`，把 `handlePage` 挂在 **DecorView** 的 generic motion 监听器上。DecorView 只在**所有子 View 都没处理**时才会走到自己的监听器，所以不会与控件级监听器重复滚动。**不要改回覆写 `Activity.dispatchGenericMotionEvent`**：generic motion 不是那条路（ViewRootImpl 直接派给 DecorView）。
+- 三个 `Rotary*` 控件 + `tutorial/TutorialPagerActivity`：监听器改为构造/创建时无条件挂上，**每次事件现读开关与灵敏度**（SP 是内存 Map，热路径无性能问题）；教程翻页额外在 DecorView 上兜一层（先翻页，翻不动再交给页面级滚动）。
+- 默认值：灵敏度默认 `0` → `1.0`（`RotaryEncoderSupport.DEFAULT_MULTIPLE`，设置页 `input_float` 的 `defaultValue` 引用它，单一来源）。**开关默认仍是关**——开启后会丢系统表冠震动，代码里补不出触感反馈，默认开等于替所有手表用户做取舍；文案已改成「改完立即生效，无需重进页面」「填 0 等于该类页面不响应表冠」。
+
+**验证**：`:app:assembleDebug` 通过；**未真机验证**（无三星表圈设备）。待验：① 开关打开后各列表页 / 长文页 / 教程翻页均可滚；② 设置页改灵敏度后**不重进页面**立即生效；③ 横向翻页页（番剧选集、教程分页）不被抢成竖滚；④ 关掉开关后行为回到修复前。
+**已知残留**：① 若某设备把表圈事件**完全不上报给应用**（只在系统侧处理），应用侧无解——需要用户提供日志确认事件是否到达；② 页面没有任何竖直滚动容器时（纯按钮页）表圈仍无作用，属预期。
+
+### 3.27 设置页输入框「把值写进别人的键」（互动选项字体大小自己变成 17.0，26.10.18）
+
+**现象**（用户反馈，附「内置播放器设置」页截图）：首次「选择播放器」进入设置页时，最底下「互动选项字体大小」会自己变成 `17.0`；截图里那一格实际填的是 `1.0`（别一行的值）。用户描述「只在首次设置中出现」「不改的话选项不会变，只要改就会变」。
+
+**根因（源码可证）**：`app/src/main/java/com/RobinNotBad/BiliClient/adapter/SettingsAdapter.kt` 的 `InputHolder.bind()` 原本三个分支各自 `input.addTextChangedListener(object : TextWatcher {...})`，旧监听器**既不摘除、又闭包捕获了旧的 `settingSection`**。RecyclerView 复用 holder 时，`bind()` 里的 `setText` 会逐个触发全部历史监听器，把**新行**的值写进**旧行**的键——跨键污染。首次进入所有键都还是默认值，互相覆盖看不出来；改过一个值之后错位才暴露，所以「只在首次设置出现」。滚到底后受害的是弹幕字号 / 弹幕不透明度 / 弹幕速度 / 字幕校准（被写成最后一行的 `17.0`），而「互动选项字体大小」被前一行的 `1.0` 顶掉。
+
+**改动**：
+- `adapter/SettingsAdapter.kt`：`InputHolder` 的监听器改为只在 `init` 装一次，写回目标由 `private var boundSection` 决定；`bind()` 里先 `boundSection = null`（灌值 / 切 `inputType` 期间不落盘，保住「不改就不写」的语义），`setText` 之后再绑定。顺带把 `input.inputType` 提到 `setText` 之前（数字键盘过滤器不会再吃掉已填文本）。
+- `adapter/InteractionDebugAdapter.kt`：`removeTextChangedListener` 移到 `setText` 之前（同一类 bug 的第二处：旧监听器会先用本行值污染上一行的 `var.value`）。
+- **`17.0` 是合法默认值，不是脏值**：`app/src/main/res/layout/cell_interaction_choice.xml` 的 `android:textSize="17sp"` 与播放器里的 `getFloat(..., 17.0f)` 本来就一致。为免再出现「两处真相」，新增 `SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE_DEFAULT = 17f`（`util/SettingsKeys.kt:147`），`activity/settings/SettingTerminalPlayerActivity.kt:170` 的 `defaultValue` 与 `activity/player/PlayerActivity.kt:3672` 的 `createChoiceView()` 都改读它。**要换默认值只改这一个常量 + 布局里的 `17sp`**（XML 读不到 Kotlin 常量，必须两处一起看）。
+
+**验证**：`:app:assembleDebug` 通过、`:app:testStandardDebugUnitTest` 通过；**未真机复现验证**。待验：① 首次进入设置页，滚到底再改中间任意一行的值，其余行不应变化；② 进去后一个字都不改、退出再进，各键不应被写入默认值。修复后首次进入该行仍显示 `17.0`——那是默认值，属预期。
+
+**构建坑（本次实际踩到）**：Kotlin 增量缓存损坏，报 `AssertionError: java.lang.Exception: Could not close incremental caches in app/build/kotlin/compileStandardDebugKotlin/cacheable/caches-jvm/lookups: lookups.tab`（内层 `ArrayIndexOutOfBoundsException: Index 6 out of bounds for length 0`），伴随 `IOException: Couldn't delete …processStandardDebugResources/R.jar`。`--no-build-cache --no-configuration-cache` 不够，`app/build` 整目录删除 + `-Pkotlin.incremental=false` 才通过；另外该参数在 PowerShell 里会被拆成 `-Pkotlin` 与 `.incremental=false` 两个参数（报 `Task '.incremental=false' not found`），要经 `cmd /c "…"` 传。
+
+### 3.28 崩溃 #42 复查：「所有文件访问」判据改成试写（默认目录不再要求权限，26.10.18）
+
+**现象（崩溃后台 #42，版本 26.10.11，`xiaomi grasslte M2505W1` / SDK 34，2026-10-17 16:16）**：`ActivityNotFoundException: No Activity found to handle Intent { act=android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION dat=package: }`，栈顶是 `VideoInfoActivity` 点下载 → `w1.b.x` → `FileUtil.requestStoragePermission`。
+
+**结论一：#42 报的是旧版本，崩溃本身 26.10.14 已修**。见 §3.15 ②（commit `9bd8b72`）：`requestStoragePermission` 已做三级降级 + `startSettings()` 吞所有 `Exception`；tag `26.10.11` 里还是裸 `startActivity`。**升级到 26.10.12+ 即不再崩**，这条无需再改。
+
+**结论二（真正没修的是「永远授不到 → 下载被永久挡死」）**：`FileUtil.checkStoragePermission()` 只看 `Environment.isExternalStorageManager()`。默认视频目录 `Android/media/<包名>/` 是**应用专属外部存储**，API 29+ 写这里**本来不需要任何权限**，却被判「无权限」；手表 ROM 没有该设置页，用户永远授不到 → `VideoInfoFragment.downloadClick` 每次点下载都弹一次设置页然后 `return`，**下载永远开始不了**。§3.15 只修了「点设置页崩」，没动这个语义。
+
+**改动**：
+
+- `util/FileUtil.java`：删 `checkStoragePermission()`；新增 `canWriteDirectory(File)`（不存在先 `mkdirs`，再 `createTempFile(".write_probe")` 试写并删除，`catch (Throwable)` 一律归为不可写）与 `ensureDirectoryWritable(Activity, File)`（能写 → `true`；写不了 → 申请权限后返回 `false`，调用方应停下等用户授权后重试）。
+- 三个调用点改成「按**真实目标目录**判」：`activity/video/info/VideoInfoFragment.kt` `downloadClick()`（视频目录，写不了才 `return` 去授权）、`activity/video/local/LocalListActivity.kt`（视频目录，非阻塞）、`activity/DownloadActivity.kt`（`type == 0` 的图片下载用 Intent 里的 `path`，目标在公共 `Pictures/`；其余类型用视频目录）。
+- 顺带堵同类隐患：`BiliTerminal.requestOverlayPermission` 改为返回 `Boolean`，拉不起设置页就提示 + `false`；`activity/SplashActivity.kt` 只在返回 `true` 时停在启动页——否则启动页会卡在一个**永远不会回来的** `onActivityResult` 上（这条只在 Debug 的 UETool 流程里，release 不可达）。
+- 新增 JVM 单测 `app/src/test/java/com/RobinNotBad/BiliClient/util/FileUtilWriteProbeTest.kt`（5 例：可写目录、深层不存在目录、目录内已有文件、父节点是文件、`null`）。
+
+**为什么用「试写」而不是其他接口探测**：`Environment.isExternalStorageManager()` 回答的是「有没有 `MANAGE_EXTERNAL_STORAGE`」，与「这个目录能不能写」不是一回事；`checkSelfPermission(WRITE_EXTERNAL_STORAGE)` 在 API 30+ 恒 `granted` 且不反映 scoped storage 下的真实访问。试写是唯一同时覆盖「应用专属目录 / 公共目录 / 旧运行时权限 / 只读文件系统 / 目录被并发删除」的判据；探测文件用 `createTempFile` 随机名（固定名在并发下载探测同一目录时会互相误判）。
+
+**验证**：`:app:assembleDebug` 通过、`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 通过（构建手法见 §3.27 末尾的「构建坑」，同一台机器）。**未真机复现**（本机 adb 无在线设备）。待验：① 默认保存目录下点下载**不再弹任何设置页**、直接开始；② 把保存路径改到公共目录后再点下载，才弹授权提示；③ #42 那台设备上升级后悬浮窗设置页缺失只提示、不崩。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

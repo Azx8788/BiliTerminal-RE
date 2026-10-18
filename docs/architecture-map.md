@@ -272,6 +272,8 @@ AppCompatActivity
 
 **两级页面的区别在于顶栏点击行为**：`BaseActivity.onStart()` 里 `if (this !is InstanceActivity) setTopbarExit()`——即非一级页点顶栏就 `finish()`；一级页由 `InstanceActivity.setMenuClick()` 改成打开菜单。
 
+**`BaseActivity.onCreate()` 末尾装了表冠页面级兜底**（26.10.17，`installRotaryFallback()`）：把 `ui/widget/RotaryEncoderSupport.handlePage()` 挂在 **DecorView** 的 generic motion 监听器上，谁都没消费旋转事件时，找出本页第一个「可见且当前能上下滚」的竖直容器（`RecyclerView` / `NestedScrollView` / `ScrollView`）并滚它。原因：**旋转编码器事件只沿焦点路径分发**，列表页的 `RecyclerView` 默认不抢焦点，只把监听器挂在 `Rotary*` 控件自身上的旧写法在「页面上没有任何控件获焦」时永远收不到事件（表现为「设置页里能用、退出即失灵」）。两条约束，改之前先看：① **不要改回覆写 `Activity.dispatchGenericMotionEvent`**——generic motion 由 `ViewRootImpl` 直接派给 DecorView，不走那条路；② DecorView 的监听器只在所有子 View 都没处理后才被调用，所以不会与控件级监听器重复滚动，但**任何新的滚动容器都必须能被 `findScrollTarget` 认出来**，否则那一页的表冠仍然失效。
+
 ### 3.3 导航坑（两条均已在 26.09.08 修复）
 
 - **MENU 键双重触发**：`InstanceActivity.onKeyDown` 打开 MenuActivity 后原本继续走 `super`，被 `BaseActivity.onKeyDown` 又 `finish()` 当前页。现在前者消费按键并 `return true`。
@@ -1122,6 +1124,11 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 `Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` 这类 action **在手表 ROM 上常常没有对应 Activity**，`startActivity` 抛 `ActivityNotFoundException`，从调用页的 `onCreate` 冒出去就是 `Unable to start activity ComponentInfo{…}`。
 **正确姿势**（见 `util/FileUtil.requestStoragePermission`）：带包名的专属页 → 通用列表页 → 只弹提示，三级降级；`startActivity` 包在 try/catch 里，且要吞**所有** `Exception`（部分 ROM 该页存在但未导出，抛 `SecurityException`，处理方式相同）。
 全工程 `Settings.ACTION_*` 跳转只有两处：`FileUtil`（已兜底）与 `BiliTerminal.requestOverlayPermission`（悬浮窗，**只在 Debug 构建的 UETool 流程里调用**，release 不可达）。
+`requestOverlayPermission` 进一步改成**返回 `Boolean`**：拉不起设置页就提示 + `false`，`SplashActivity.ensureUEToolOverlayPermission()` 只在 `true` 时停在启动页等 `onActivityResult`——**别退回「无脑 `return true`」**，那会让启动页卡在一个永远不会回来的回调上（手表 ROM 缺该页时就是死等）。
+
+**③ 存储权限的判据是「这个目录能不能写」，不是「有没有 MANAGE_EXTERNAL_STORAGE」（26.10.18 改）。**
+`Environment.isExternalStorageManager()` 只回答「有没有全盘权限」；而默认视频目录 `Android/media/<包名>/` 是**应用专属外部存储**，API 29+ 写它**根本不需要权限**——按授权判会把默认路径下的下载判成「没权限」，手表 ROM 又没有那个设置页，于是**下载被永久挡死**。
+**正确姿势**（`util/FileUtil.canWriteDirectory` / `ensureDirectoryWritable`）：先 `mkdirs` 再 `createTempFile(".write_probe")` 试写并删除，写不进去才去申请权限。调用点必须传**真实目标目录**：`activity/video/info/VideoInfoFragment.kt` 的 `downloadClick()`、`activity/video/local/LocalListActivity.kt` 传视频目录，`activity/DownloadActivity.kt` 的图片下载（`type == 0`）传 Intent 里的 `path`（公共 `Pictures/`）。新增任何「写文件前先要权限」的路径都按这套来，**别再加 `checkStoragePermission()` 式的授权判据**。
 
 ---
 
