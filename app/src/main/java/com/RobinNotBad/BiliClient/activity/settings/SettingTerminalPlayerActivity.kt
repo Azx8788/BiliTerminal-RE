@@ -167,7 +167,7 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
             add(SettingSection("switch", "显示弹幕按钮", SettingsKeys.PLAYER_UI_SHOW_DANMAKU_BTN, "", "true"))
             add(SettingSection("switch", "显示清晰度按钮", SettingsKeys.PLAYER_UI_SHOW_QUALITY_BTN, "", "true"))
             add(SettingSection("switch", "显示分P按钮", SettingsKeys.PLAYER_UI_SHOW_PAGE_BTN, "", "true"))
-            add(SettingSection("input_float", "互动选项字体大小", SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE, "", "17.0"))
+            add(SettingSection("input_float", "互动选项字体大小", SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE, "", SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE_DEFAULT.toString()))
         }
 
         recyclerView.setHasFixedSize(true)

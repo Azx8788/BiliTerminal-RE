@@ -137,6 +137,14 @@ object SettingsKeys {
     const val PLAYER_UI_SHOW_QUALITY_BTN = "player_ui_showQualityBtn"
     const val PLAYER_UI_SHOW_PAGE_BTN = "player_ui_showPageBtn"
     const val PLAYER_INTERACTION_CHOICE_SIZE = "player_interaction_choice_size"
+    /**
+     * 「互动选项字体大小」的默认值（sp）。
+     *
+     * 与 `res/layout/cell_interaction_choice.xml` 的 `android:textSize="17sp"` 是同一个数，
+     * 也必须是同一个数：设置页只负责覆盖，未设置时播放器直接用布局里的字号。
+     * 改这里就顺手改布局（XML 里读不到 Kotlin 常量，只能两处一起看）。
+     */
+    const val PLAYER_INTERACTION_CHOICE_SIZE_DEFAULT = 17f
 
     // ==================== 播放默认值（开播时自动应用，解析逻辑见 player/PlayerDefaults.kt） ====================
     // 设置页「播放默认值」分组；每项存「模式」，「沿用上次」时再读对应的 PLAYER_LAST_* 记录。

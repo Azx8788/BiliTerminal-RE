@@ -245,6 +245,45 @@ class SettingsAdapter(
         val name: TextView = itemView.findViewById(R.id.setting_input_name)
         val desc: TextView = itemView.findViewById(R.id.setting_input_desc)
 
+        /**
+         * 当前绑定的设置项。`null` = 正在灌值（`setText` / 切 `inputType`），此时不写回。
+         *
+         * 26.10.18 修掉一处把值**写进别的键**的 bug：此前每个分支都 `addTextChangedListener`
+         * 一个新监听器，旧的既不摘除、又闭包捕获了旧行，于是 RecyclerView 复用 holder 时
+         * `setText` 会逐个触发全部历史监听器，把新行的值写进旧行的键。典型现象（用户报的）：
+         * 首次进「内置播放器设置」时所有键都还是默认值，一路滚到底，弹幕字号 / 弹幕不透明度 /
+         * 弹幕速度 / 字幕校准全被写成最后一行的 `17.0`，而「互动选项字体大小」又被前一行的
+         * `1.0` 顶掉，看起来就是「自己会变成 17.0」。
+         * 现在监听器只在 [init] 装一次，写回目标由 [boundSection] 决定。
+         */
+        private var boundSection: SettingSection? = null
+
+        private val watcher = object : TextWatcher {
+            override fun beforeTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
+            override fun onTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
+            override fun afterTextChanged(editable: Editable) {
+                val section = boundSection ?: return
+                val text = editable.toString()
+                val custom = section.extra as? InputExtra
+                if (custom != null) {
+                    custom.save(text)
+                    return
+                }
+                try {
+                    when (section.type) {
+                        "input_int" -> SharedPreferencesUtil.putInt(section.id, text.toInt())
+                        "input_float" -> SharedPreferencesUtil.putFloat(section.id, text.toFloat())
+                        else -> SharedPreferencesUtil.putString(section.id, text)
+                    }
+                } catch (ignored: Exception) {
+                }
+            }
+        }
+
+        init {
+            input.addTextChangedListener(watcher)
+        }
+
         fun bind(settingSection: SettingSection) {
             if (settingSection.desc.isNullOrEmpty())
                 desc.visibility = View.GONE
@@ -253,74 +292,33 @@ class SettingsAdapter(
                 desc.visibility = View.VISIBLE
             }
             name.text = settingSection.name
+
+            // 灌值与切 inputType 之前先摘掉绑定：否则 watcher 会把「显示出来的值」当用户输入落盘，
+            // 首次进入就悄悄写满默认值（原本「不改就不写」的语义会被打破）。
+            boundSection = null
+            val text: String
             when (settingSection.type) {
                 "input_int" -> {
-                    val intValue = SharedPreferencesUtil.getInt(
+                    input.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
+                    text = SharedPreferencesUtil.getInt(
                         settingSection.id,
                         settingSection.defaultValue.toInt()
-                    )
-                    input.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
-                    input.setText(intValue.toString())
-                    input.addTextChangedListener(object : TextWatcher {
-                        override fun beforeTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
-                        override fun onTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
-                        override fun afterTextChanged(editable: Editable) {
-                            val custom = settingSection.extra as? InputExtra
-                            if (custom != null) {
-                                custom.save(editable.toString())
-                            } else {
-                                try {
-                                    SharedPreferencesUtil.putInt(settingSection.id, editable.toString().toInt())
-                                } catch (ignored: Exception) {
-                                }
-                            }
-                        }
-                    })
+                    ).toString()
                 }
                 "input_float" -> {
-                    val floatValue = SharedPreferencesUtil.getFloat(
+                    input.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    text = SharedPreferencesUtil.getFloat(
                         settingSection.id,
                         settingSection.defaultValue.toFloat()
-                    )
-                    input.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-                    input.setText(floatValue.toString())
-                    input.addTextChangedListener(object : TextWatcher {
-                        override fun beforeTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
-                        override fun onTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
-                        override fun afterTextChanged(editable: Editable) {
-                            val custom = settingSection.extra as? InputExtra
-                            if (custom != null) {
-                                custom.save(editable.toString())
-                            } else {
-                                try {
-                                    SharedPreferencesUtil.putFloat(
-                                        settingSection.id,
-                                        editable.toString().toFloat()
-                                    )
-                                } catch (ignored: Exception) {
-                                }
-                            }
-                        }
-                    })
+                    ).toString()
                 }
                 else -> {
-                    val strValue = SharedPreferencesUtil.getString(settingSection.id, settingSection.defaultValue)
                     input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                    input.setText(strValue)
-                    input.addTextChangedListener(object : TextWatcher {
-                        override fun beforeTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
-                        override fun onTextChanged(charSequence: CharSequence, i: Int, i1: Int, i2: Int) {}
-                        override fun afterTextChanged(editable: Editable) {
-                            val custom = settingSection.extra as? InputExtra
-                            if (custom != null) {
-                                custom.save(editable.toString())
-                            } else {
-                                SharedPreferencesUtil.putString(settingSection.id, editable.toString())
-                            }
-                        }
-                    })
+                    text = SharedPreferencesUtil.getString(settingSection.id, settingSection.defaultValue)
                 }
             }
+            input.setText(text)
+            boundSection = settingSection
         }
     }
 

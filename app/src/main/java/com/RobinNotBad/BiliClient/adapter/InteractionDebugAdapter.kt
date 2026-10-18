@@ -25,9 +25,10 @@ class InteractionDebugAdapter(
         val `var` = varList[position]
         val varName = if (`var`.name != null && !`var`.name!!.isEmpty()) `var`.name else `var`.id
         holder.nameText.text = varName + " (" + `var`.id + ")"
-        holder.valueEdit.setText(`var`.value.toString())
-
+        // 先摘监听器再 setText：顺序反了的话，setText 会先触发**上一个位置**的旧监听器，
+        // 把本行的值写进上一行的变量（与 SettingsAdapter.InputHolder 同一类 bug）。
         holder.valueEdit.removeTextChangedListener(holder.textWatcher)
+        holder.valueEdit.setText(`var`.value.toString())
         holder.textWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {}

@@ -3669,7 +3669,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun createChoiceView(choice: InteractionVideoData.InteractionChoice): TextView {
         val choiceView = LayoutInflater.from(this).inflate(R.layout.cell_interaction_choice, null) as TextView
         choiceView.text = choice.option
-        val fontSize = SharedPreferencesUtil.getFloat("player_interaction_choice_size", 17.0f)
+        val fontSize = SharedPreferencesUtil.getFloat(
+            SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE,
+            SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE_DEFAULT
+        )
         choiceView.textSize = fontSize
         choiceView.setOnClickListener { handleChoiceSelection(choice) }
         return choiceView
