@@ -63,6 +63,7 @@ import com.RobinNotBad.BiliClient.model.VideoInfo
 import com.RobinNotBad.BiliClient.model.ViewPoint
 import com.RobinNotBad.BiliClient.player.DanmakuManager
 import com.RobinNotBad.BiliClient.player.DanmakuSync
+import com.RobinNotBad.BiliClient.player.IjkNativeLibs
 import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
@@ -599,9 +600,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             initMediaSession()
         }
 
-        IjkMediaPlayer.loadLibrariesOnce(null)
-
-        ijkPlayer = IjkMediaPlayer()
+        // 原生库加载失败在个别设备上是常态（#48：dlopen 报 Bad file descriptor），
+        // 必须走能兜住 Error 的路径——失败时提示用户并结束页面，绝不让 UnsatisfiedLinkError
+        // 冒到主线程。往后的初始化（battery / 动画 / mainHandler / setDisplay 的定时任务）
+        // 全都依赖 ijkPlayer 非空，所以这里直接 return，避免半初始化状态继续跑。
+        ijkPlayer = createIjkPlayerOrBail() ?: return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
@@ -1019,11 +1022,55 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         if (menu_opened) btn_menu.performClick()
     }
 
+    /**
+     * 创建播放器实例；原生库不可用时提示用户并结束页面，返回 null。
+     *
+     * 为什么集中在这里而不是各调用点各写一遍 try/catch：
+     * 1. `IjkMediaPlayer.loadLibrariesOnce` 抛的是 `UnsatisfiedLinkError`（继承自 `Error`，
+     *    不是 `Exception`），本文件里既有的 `catch (e: Exception)` 一律兜不住；
+     * 2. `IjkMediaPlayer()` 构造内部会**再加载一次**同样的库（`mIsLibLoaded` 在失败时仍为
+     *    false），所以只包住 `loadLibrariesOnce` 不够，构造本身也必须兜住；
+     * 3. [IjkNativeLibs] 会把"本进程已失败"锁死，避免用户每开一个页面就重试一遍、刷一遍日志。
+     *
+     * 注意：失败时**不抛异常**，所以调用方必须判空。
+     */
+    private fun createIjkPlayerOrBail(): IjkMediaPlayer? {
+        if (!IjkNativeLibs.ensureLoaded(this)) {
+            bailOnNativeFailure()
+            return null
+        }
+        return try {
+            IjkMediaPlayer()
+        } catch (t: Throwable) {
+            // 库加载成功、但构造内部（initNativeOnce 等）仍抛 Throwable：按"不可用"处理
+            IjkNativeLibs.reportCreateFailure(this, t)
+            bailOnNativeFailure()
+            null
+        }
+    }
+
+    /**
+     * 原生库不可用时的统一降级：提示 + 退出播放页。
+     *
+     * 本项目没有系统播放器回落能力（ijk 是唯一内核），所以不做"降级播放"，只做可靠退出。
+     * 诊断信息（ABI、库目录、每个 .so 的存在/可读/大小）已由 [IjkNativeLibs] 写日志并按需上报。
+     *
+     * 提示用 Toast 而不是 `MsgUtil.showMsgLong`：SnackEvent 走 EventBus sticky，而本页在
+     * onCreate 里就 finish() 了（本页的 onEvent 见 `isFinishing` 直接 return、不消费事件），
+     * 能不能弹出来取决于"上一个页面返回时还读不读得到这条 sticky"，不可靠；
+     * Toast 与 Activity 生命周期无关，是这条"立刻退出"路径上唯一保证用户能看见的通道。
+     */
+    private fun bailOnNativeFailure() {
+        Logu.e("PlayerActivity", "原生播放库不可用，无法创建播放器，退出播放页")
+        MsgUtil.toastLong(IjkNativeLibs.failureText(this))
+        finish()
+    }
+
     private fun setDisplay() {
         Logu.v("创建播放器")
         Logu.v("url", video_url)
 
-        runOnUiThread { loading_text0.text = "初始化播放" }
+        runOnUiThread { loading_text0.text = UiText.of("初始化播放") }
 
         if (isAudioOnlyMode) {
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "vn", 1)
@@ -1959,14 +2006,22 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     // 这 100ms 里用户可能已经退出页面：onDestroy 会 release 并置空 ijkPlayer，
                     // 此处若无守卫就会重建出一个永不释放的 native 播放器。
                     if (destroyed || isFinishing()) return@runOnUiThread
-                    ijkPlayer = IjkMediaPlayer()
+                    // 重试同样可能撞上原生库不可用（例如加载过一次成功、之后库文件被系统回收），
+                    // 因此和 onCreate 一样走 helper：失败时它已提示并 finish，这里只收掉加载动画。
+                    val player = createIjkPlayerOrBail()
+                    if (player == null) {
+                        loading_info.visibility = View.GONE
+                        anim_loading!!.stop()
+                        return@runOnUiThread
+                    }
+                    ijkPlayer = player
                     progress_history = resumePosition
                     setDisplay()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
                     if (destroyed) return@runOnUiThread
-                    MsgUtil.showMsg("重新载入失败，请重试")
+                    MsgUtil.showMsg(UiText.of("重新载入失败，请重试"))
                     loading_info.visibility = View.GONE
                     anim_loading!!.stop()
                 }
