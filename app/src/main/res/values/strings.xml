@@ -2164,4 +2164,5 @@
     <!-- 播放器原生库（libijkffmpeg/libijksdl/libijkplayer）加载失败时的提示。
          #48（26.10.16）现场：dlopen libijksdl.so 报 Bad file descriptor，属于安装残留/存储异常一类
          的设备侧问题，客户端只能提示并退出播放页，没有系统播放器可回落。 -->
+    <string name="msg_ijk_native_load_failed">播放器组件加载失败，无法播放视频，请重装应用后再试</string>
 </resources>
