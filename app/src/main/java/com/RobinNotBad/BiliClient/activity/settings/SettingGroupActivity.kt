@@ -645,15 +645,7 @@ class SettingGroupActivity : RefreshListActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001 && resultCode == RESULT_OK && data != null) {
-            val position = data.getIntExtra("position", -1)
-            val value = data.getStringExtra("value") ?: return
-            if (position < 0 || position >= sections.size) return
-            val section = sections[position]
-            val oldValue = SharedPreferencesUtil.getString(section.id, section.defaultValue)
-            SharedPreferencesUtil.putString(section.id, value)
-            adapter?.notifyItemChanged(position)
-            (section.extra as? SettingsAdapter.ListChooseHolder.ListChooseExtra)?.onSelect?.invoke(oldValue, value)
-        }
+        // 回写逻辑与播放器设置页共用 applyListChooseResult：各页只提供自己的适配器刷新方式
+        applyListChooseResult(requestCode, resultCode, data, sections) { adapter?.notifyItemChanged(it) }
     }
 }

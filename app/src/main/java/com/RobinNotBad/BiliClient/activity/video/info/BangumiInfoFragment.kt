@@ -53,6 +53,13 @@ class BangumiInfoFragment : Fragment() {
 
     /** 追番按钮的当前状态；点击时按「取反」发请求，成功后原地翻转 */
     private var followed = false
+
+    /**
+     * 追番状态查询的世代号：每次 setupFollowButton（首屏 + 每次切季）或用户点按钮都 +1，
+     * 回到主线程时值变了说明这份响应已经过期，直接丢掉。
+     * 否则慢到的旧响应会把用户刚改的状态覆盖回去（切季尤甚：两季的 season_id 不同，状态却写进同一个按钮）。
+     */
+    private var followFetchToken = 0
     private var bangumi: Bangumi? = null
 
     /** 当前展示的季；首屏是 info.season_id，页内切季后会变，播放上报必须用它 */
@@ -226,7 +233,7 @@ class BangumiInfoFragment : Fragment() {
         }
 
         if (bangumi!!.info.publish != null && bangumi!!.info.publish!!.pub_time_show != null && bangumi!!.info.publish!!.pub_time_show!!.isNotEmpty()) {
-            val status = if (bangumi!!.info.publish!!.is_finish == 1) "已完结" else "连载中"
+            val status = if (bangumi!!.info.publish!!.is_finish == 1) UiText.of("已完结") else UiText.of("连载中")
             pubTime.text = bangumi!!.info.publish!!.pub_time_show + " " + status
             pubTime.visibility = View.VISIBLE
         } else {
@@ -491,6 +498,10 @@ class BangumiInfoFragment : Fragment() {
         tab.seasonType = currentSeasonType
         tab.statusDesc = meta.statusDesc
 
+        // 追番状态是"季级"的：currentSeasonId 一换就重画按钮、并按本季 season_id 重新校正。
+        // 放在换分区之前，下面「空分区提前 return」时也不会把上一季的按钮状态留在屏幕上。
+        setupFollowButton()
+
         sections = meta.sectionList
 
         // 越界兜底：服务端数据随时可能变，记忆里的下标不能直接信
@@ -534,7 +545,9 @@ class BangumiInfoFragment : Fragment() {
     @SuppressLint("SetTextI18n")
     private fun setupFollowButton() {
         val button = followButton ?: return
-        val seasonId = bangumi?.info?.season_id ?: 0L
+        // 必须用当前展示的季：首屏调用时 currentSeasonId 还没赋值（:0），此时退回 info 上的主季；
+        // 切季后 currentSeasonId 已是目标季，继续用 info 会拿主季的状态去点亮别的季的按钮
+        val seasonId = currentSeasonId.takeIf { it > 0L } ?: (bangumi?.info?.season_id ?: 0L)
         if (seasonId <= 0L) {
             // season_id 都没有的壳数据（反查失败等情况）不该给一个点了会失败的按钮
             button.visibility = View.GONE
@@ -557,6 +570,8 @@ class BangumiInfoFragment : Fragment() {
                 return@setOnClickListener
             }
             val target = !followed
+            // 用户已经明确表态，正在路上的状态查询（首屏/切季那次）不能再回写覆盖它
+            followFetchToken++
             button.isEnabled = false
             CenterThreadPool.run {
                 try {
@@ -564,8 +579,11 @@ class BangumiInfoFragment : Fragment() {
                     CenterThreadPool.runOnUiThread {
                         button.isEnabled = true
                         if (code == 0) {
-                            applyFollowed(target)
+                            // 缓存按发起请求时的季写，换季后也不能丢；
+                            // 但按钮只在仍停在这一季时才翻转——切季在途时把上一季的结果画到本季上会误导用户
                             SharedPreferencesUtil.putBoolean(BangumiApi.FOLLOW_KEY_PREFIX + seasonId, target)
+                            val shownSeasonId = currentSeasonId.takeIf { it > 0L } ?: (bangumi?.info?.season_id ?: 0L)
+                            if (shownSeasonId == seasonId) applyFollowed(target)
                             MsgUtil.showMsg(if (target) UiText.of("已追番") else UiText.of("已取消追番"))
                         } else {
                             MsgUtil.showMsg(UiText.of("操作失败，请稍后重试"))
@@ -583,10 +601,13 @@ class BangumiInfoFragment : Fragment() {
 
         if (!loggedIn) return
 
+        val token = ++followFetchToken
         CenterThreadPool.run {
             try {
                 val remote = BangumiApi.getFollowStatus(seasonId)
                 CenterThreadPool.runOnUiThread {
+                    // 期间切过季、或用户点过按钮：这份响应说的是旧季/旧状态，丢弃
+                    if (token != followFetchToken || !isAdded) return@runOnUiThread
                     applyFollowed(remote)
                     SharedPreferencesUtil.putBoolean(BangumiApi.FOLLOW_KEY_PREFIX + seasonId, remote)
                 }
@@ -658,7 +679,7 @@ class BangumiInfoFragment : Fragment() {
 
         val status = episodeStatusText(seasonDesc, infoDesc, isFinish, mainEpCount)
         episodeChoose?.text =
-            if (status == STATUS_TEXT_FALLBACK) STATUS_TEXT_FALLBACK else "选集 · " + status
+            if (status == STATUS_TEXT_FALLBACK) STATUS_TEXT_FALLBACK else UiText.fmt("选集 · %1\$s", status)
     }
 
     /**
@@ -699,7 +720,10 @@ class BangumiInfoFragment : Fragment() {
             for (e in episodes.indices) {
                 val episode = episodes[e]
                 val name = episode.title + "." + episode.title_long
-                labels.add(if (multiSection) "【" + (sections[s].title ?: "") + "】" + name else name)
+                labels.add(
+                    if (multiSection) UiText.fmt("【%1\$s】%2\$s", sections[s].title ?: "", name)
+                    else name
+                )
                 positions.add(intArrayOf(s, e))
             }
         }
@@ -707,7 +731,7 @@ class BangumiInfoFragment : Fragment() {
         // 双保险：数据刷新后仍可能落到空季上，空列表既不能建下标也不能建选择项
         if (labels.isEmpty()) {
             MsgUtil.showMsg(UiText.of("该季暂无剧集"))
-            dialog = TerminalDialog.alert(requireContext(), message = "该季暂无剧集")
+            dialog = TerminalDialog.alert(requireContext(), message = UiText.of("该季暂无剧集"))
             return dialog!!
         }
 
@@ -748,8 +772,8 @@ class BangumiInfoFragment : Fragment() {
 
     private fun formatNumber(num: Int): String {
         return when {
-            num >= 100000000 -> String.format("%.1f亿", num / 100000000.0)
-            num >= 10000 -> String.format("%.1f万", num / 10000.0)
+            num >= 100000000 -> String.format(UiText.of("%.1f亿"), num / 100000000.0)
+            num >= 10000 -> String.format(UiText.of("%.1f万"), num / 10000.0)
             else -> num.toString()
         }
     }

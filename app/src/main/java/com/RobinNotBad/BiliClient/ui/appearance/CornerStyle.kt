@@ -51,7 +51,7 @@ object CornerStyle {
     val VALUES = listOf(SQUARE, ROUNDED)
 
     /** 供设置页展示的中文名（与 [VALUES] 一一对应）。 */
-    val DISPLAY_NAMES = listOf(UiText.of("方角"), "圆角")
+    val DISPLAY_NAMES = listOf(UiText.of("方角"), UiText.of("圆角"))
 
     /**
      * 把存档值规整到合法档位。

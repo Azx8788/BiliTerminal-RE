@@ -83,8 +83,11 @@ class ReplyAdapter(
         this.listener = listener
     }
 
-    // 主评论列表（非详情页）的排序名。0/1 位置写「未知排序」是因为主列表走服务端排序的 2/3 两档
-    private val sortNames = arrayOf(UiText.of("未知排序"), "未知排序", "时间排序", "热度排序")
+    // 主评论列表（非详情页）的排序名。0/1 位置写「未知排序」是因为主列表走服务端排序的 2/3 两档。
+    // 四项都走 UiText：这组值只用于展示（判据是 sort 的整数），所以能安全迁移。
+    private val sortNames = arrayOf(
+        UiText.of("未知排序"), UiText.of("未知排序"), UiText.of("时间排序"), UiText.of("热度排序")
+    )
 
     /**
      * 排序按钮上的文案。
@@ -93,7 +96,7 @@ class ReplyAdapter(
      * 主列表用服务端的 2/3 两档，取值不一样必须分开取名——否则详情页永远显示「未知排序」。
      */
     private fun sortLabel(): String =
-        if (isDetail) (if (sort == Reply.SORT_TIME) "时间排序" else "热度排序")
+        if (isDetail) (if (sort == Reply.SORT_TIME) UiText.of("时间排序") else UiText.of("热度排序"))
         else sortNames.getOrElse(sort) { UiText.of("未知排序") }
 
     /**
@@ -109,7 +112,7 @@ class ReplyAdapter(
             reply.liked = false
             reply.likeCount = (reply.likeCount - 1).coerceAtLeast(0)
             holder.likeCount.text = StringUtil.toWan(reply.likeCount.toLong())
-            holder.likeCount.setTextColor(Color.rgb(0xff, 0xff, 0xff))
+            holder.likeCount.setTextColor(ColorScheme.TEXT_PRIMARY)
             holder.likeCount.setCompoundDrawablesWithIntrinsicBounds(likeDrawable0, null, null, null)
         }
         reply.disliked = disliked
@@ -256,7 +259,8 @@ class ReplyAdapter(
                 replyHolder.likeCount.setCompoundDrawablesWithIntrinsicBounds(
                         likeDrawable1, null, null, null)
             } else {
-                replyHolder.likeCount.setTextColor(Color.rgb(0xff, 0xff, 0xff))
+                // 「未点赞」的文字色跟主题走，不再写死纯白：浅色主题下纯白会看不见
+                replyHolder.likeCount.setTextColor(ColorScheme.TEXT_PRIMARY)
                 replyHolder.likeCount.setCompoundDrawablesWithIntrinsicBounds(
                         likeDrawable0, null, null, null)
             }
@@ -420,7 +424,7 @@ class ReplyAdapter(
                                     (context as Activity).runOnUiThread {
                                         MsgUtil.showMsg(UiText.of("取消成功"))
                                         replyHolder.likeCount.text = StringUtil.toWan((--reply.likeCount).toLong())
-                                        replyHolder.likeCount.setTextColor(Color.rgb(0xff, 0xff, 0xff))
+                                        replyHolder.likeCount.setTextColor(ColorScheme.TEXT_PRIMARY)
                                         replyHolder.likeCount.setCompoundDrawablesWithIntrinsicBounds(
                                                 likeDrawable0, null, null,
                                                 null)
@@ -522,6 +526,22 @@ class ReplyAdapter(
     }
 
     /**
+     * 操作面板里的一项。
+     *
+     * [kind] 是本项的身份、[danger] 是「要不要用危险色」——两者都不能从 [label] 反推：
+     * 展示文案会跟着翻译/措辞改动，拿它当判据（原先的 `first == "复制文字"` / `startsWith("删除")`）
+     * 会在文案一改时静默失配，表现是「只有一项时不直接复制」「删除项不再是红色」。
+     */
+    private class ManageAction(
+        val kind: Kind,
+        val label: String,
+        val danger: Boolean,
+        val run: () -> Unit
+    ) {
+        enum class Kind { COPY, TOP, UNTOP, DELETE }
+    }
+
+    /**
      * 评论操作面板（长按正文、点击/长按末列操作按钮，都走这里）。
      *
      * <p>「复制」从「注册一个长按监听」改成面板里的一项：长按正文时用户先看到有哪些操作，
@@ -533,19 +553,27 @@ class ReplyAdapter(
      * 评论区管理员（非 UP）的场景留给以后，判定逻辑与权限完全分开。
      */
     private fun showManageMenu(reply: Reply) {
-        val actions = ArrayList<Pair<String, () -> Unit>>()
+        val actions = ArrayList<ManageAction>()
         // 复制项受 copy_enable 约束，正文为空时也不列（点了只会看到一个空界面）。
         // reply.message 在 Java 侧是 CharSequence，复制界面只收 String，这里统一转一次。
         val content = reply.message?.toString().orEmpty()
         if (LongPressPrefs.shouldOfferCopy(StringUtil.isCopyEnabled(), content))
-            actions.add(UiText.of("复制文字") to { StringUtil.openCopyPage(context, content) })
+            actions.add(ManageAction(ManageAction.Kind.COPY, UiText.of("复制文字"), false) {
+                StringUtil.openCopyPage(context, content)
+            })
         if (isManager) {
-            actions.add((if (reply.isTop) UiText.of("取消置顶") else UiText.of("置顶评论")) to
-                    { setReplyTop(reply, !reply.isTop) })
+            actions.add(
+                if (reply.isTop)
+                    ManageAction(ManageAction.Kind.UNTOP, UiText.of("取消置顶"), false) { setReplyTop(reply, false) }
+                else
+                    ManageAction(ManageAction.Kind.TOP, UiText.of("置顶评论"), false) { setReplyTop(reply, true) }
+            )
         }
         // 「删除评论」的门槛必须在这里再判一次：本方法原来只被管理按钮调用（按钮本身就
         // 只在 canManage 时可见），现在别人的评论长按也会进来，漏判就会给出一个必然失败的删除项。
-        if (canManage(reply)) actions.add(UiText.of("删除评论") to { confirmDeleteReply(reply) })
+        if (canManage(reply)) actions.add(ManageAction(ManageAction.Kind.DELETE, UiText.of("删除评论"), true) {
+            confirmDeleteReply(reply)
+        })
 
         if (actions.isEmpty()) {
             MsgUtil.showMsg(UiText.of("没有可操作的项"))
@@ -555,18 +583,18 @@ class ReplyAdapter(
         // 只剩「复制文字」一项时，不必弹一个只有单选项的菜单——直接进复制界面。
         // 别人的评论（非管理员、也不是自己发的）就是这种情况：以前长按会弹一个孤零零的
         // 「复制文字」，多一次点击才拿到本来就该直接给的东西。
-        if (actions.size == 1 && actions[0].first == "复制文字") {
-            actions[0].second()
+        if (actions.size == 1 && actions[0].kind == ManageAction.Kind.COPY) {
+            actions[0].run()
             return
         }
 
         // 「删除评论」是破坏性操作，用危险色标出来（原实现里它和「置顶评论」同色）
-        val dangerIndex = actions.indexOfFirst { it.first.startsWith(UiText.of("删除")) }
+        val dangerIndex = actions.indexOfFirst { it.danger }
         TerminalDialog.menu(
             context = context,
-            items = actions.map { it.first },
+            items = actions.map { it.label },
             danger = if (dangerIndex >= 0) setOf(dangerIndex) else emptySet()
-        ) { which -> actions[which].second() }.show()
+        ) { which -> actions[which].run() }.show()
     }
 
     /**

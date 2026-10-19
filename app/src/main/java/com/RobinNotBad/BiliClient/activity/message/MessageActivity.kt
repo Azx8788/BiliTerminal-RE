@@ -52,6 +52,9 @@ class MessageActivity : InstanceActivity() {
 
         asyncInflate(R.layout.activity_message) { _, _ ->
             swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
+            // 下拉刷新只作为失败后的重试入口：首屏加载期间禁用，加载失败时才打开（见 loadSessions）。
+            // 没有这个监听时，isEnabled 打开也拉不动，用户只能退出去重进。
+            swipeRefreshLayout.setOnRefreshListener { loadSessions() }
             swipeRefreshLayout.isEnabled = false
             swipeRefreshLayout.isRefreshing = true
 
@@ -157,7 +160,12 @@ class MessageActivity : InstanceActivity() {
                     }
                 }
             } catch (e: Exception) {
-                runOnUiThread { MsgUtil.err(e) }
+                runOnUiThread {
+                    // 失败必须复位，否则转圈永远不停、下拉又被禁用，用户没有任何自救路径
+                    swipeRefreshLayout.isRefreshing = false
+                    swipeRefreshLayout.isEnabled = true
+                    MsgUtil.err(e)
+                }
             }
         }
     }

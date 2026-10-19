@@ -286,7 +286,7 @@ class BiliTerminal : Application() {
     /**
      * 取当前进程名。
      *
-     * 26.10.04 批次 3（B8）：minSdk 24 用不了 API 28 才有的 `Application.getProcessName()`，
+     * 26.10.04 批次 3（B8）：minSdk 19 用不了 API 28 才有的 `Application.getProcessName()`，
      * 只能读 `/proc/self/cmdline`——内核把进程名按 NUL 结尾写进去，`readLine` 会把那个 NUL 一起带回来。
      */
     private fun currentProcessName(): String = try {

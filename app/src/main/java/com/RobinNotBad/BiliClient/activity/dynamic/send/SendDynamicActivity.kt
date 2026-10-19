@@ -93,7 +93,7 @@ class SendDynamicActivity : BaseActivity() {
         val uri = result.data?.data
         if (result.resultCode == RESULT_OK && uri != null) {
             if (imageUris.size >= ImageApi.MAX_IMAGE_COUNT) {
-                MsgUtil.showMsg("最多${ImageApi.MAX_IMAGE_COUNT}张图片")
+                MsgUtil.showMsg(UiText.fmt("最多%1\$d张图片", ImageApi.MAX_IMAGE_COUNT))
                 return@registerForActivityResult
             }
             imageUris.add(uri)
@@ -291,7 +291,10 @@ class SendDynamicActivity : BaseActivity() {
      */
     private fun showTimerPicker() {
         val now = System.currentTimeMillis() / 1000
-        val items = arrayOf(UiText.of("10 分钟后"), "30 分钟后", "1 小时后", "2 小时后", "明天 12:00", "不定时")
+        val items = arrayOf(
+            UiText.of("10 分钟后"), UiText.of("30 分钟后"), UiText.of("1 小时后"),
+            UiText.of("2 小时后"), UiText.of("明天 12:00"), UiText.of("不定时")
+        )
         TerminalDialog.menu(
             context = this,
             title = UiText.of("定时发布"),
@@ -375,7 +378,7 @@ class SendDynamicActivity : BaseActivity() {
                         finish()
                     } else {
                         sending = false
-                        MsgUtil.showMsg(DynamicApi.editErrorMsg(code).ifEmpty { "修改失败（$code）" })
+                        MsgUtil.showMsg(DynamicApi.editErrorMsg(code).ifEmpty { UiText.fmt("修改失败（%1\$s）", code) })
                     }
                 }
             } catch (e: Exception) {
@@ -415,7 +418,8 @@ class SendDynamicActivity : BaseActivity() {
                 picsPreview.addView(imageView)
             }
         }
-        addPicText.text = if (imageUris.isEmpty()) UiText.of("添加图片") else "添加图片(${imageUris.size})"
+        addPicText.text =
+            if (imageUris.isEmpty()) UiText.of("添加图片") else UiText.fmt("添加图片(%1\$d)", imageUris.size)
     }
 
     /**
@@ -424,7 +428,7 @@ class SendDynamicActivity : BaseActivity() {
     private fun addOptionEdit() {
         val index = optionEditTexts.size + 1
         val editText = EditText(this).apply {
-            hint = "选项 $index"
+            hint = UiText.fmt("选项 %1\$d", index)
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             setBackgroundResource(R.drawable.background_edittext)
             setPadding(8, 4, 8, 4)

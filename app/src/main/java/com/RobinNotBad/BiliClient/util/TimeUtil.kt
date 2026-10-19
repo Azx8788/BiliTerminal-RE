@@ -34,7 +34,7 @@ object TimeUtil {
      */
     const val PATTERN_DATE_TIME_12H = "yyyy-MM-dd hh:mm"
 
-    // 不用 ThreadLocal.withInitial(...) —— 它依赖 java.util.function，API 24 才有，minSdk 21 上会 NoClassDefFoundError
+    // 不用 ThreadLocal.withInitial(...) —— 它依赖 java.util.function（API 24 才有），minSdk 19 的 API 19~23 上会 NoClassDefFoundError
     private val cache = object : ThreadLocal<HashMap<String, SimpleDateFormat>>() {
         override fun initialValue(): HashMap<String, SimpleDateFormat> = HashMap()
     }

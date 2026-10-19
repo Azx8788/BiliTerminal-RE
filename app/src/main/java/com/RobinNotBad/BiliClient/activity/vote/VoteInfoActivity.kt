@@ -95,7 +95,7 @@ class VoteInfoActivity : BaseActivity() {
                 return@setOnClickListener
             }
             if (selectedOptions.size < info.choice_cnt) {
-                MsgUtil.showMsg("还需选择 ${info.choice_cnt - selectedOptions.size} 项")
+                MsgUtil.showMsg(UiText.fmt("还需选择 %1\$d 项", info.choice_cnt - selectedOptions.size))
                 return@setOnClickListener
             }
             doVote(info, ArrayList(selectedOptions))
@@ -151,7 +151,7 @@ class VoteInfoActivity : BaseActivity() {
         }
 
         // 参与人数
-        voteJoinNum.text = "${info.join_num} 人参与"
+        voteJoinNum.text = UiText.fmt("%1\$s 人参与", info.join_num)
         if (info.isExpired()) {
             voteJoinNum.append(UiText.of(" · 已结束"))
         }
@@ -206,7 +206,7 @@ class VoteInfoActivity : BaseActivity() {
             val showResult = !canVote && totalCnt > 0
             if (showResult) {
                 val percent = (option.cnt * 100f / totalCnt).toInt()
-                textView.text = "${option.opt_desc}  ${option.cnt}票 ($percent%)"
+                textView.text = UiText.fmt("%1\$s  %2\$s票 (%3\$s%%)", option.opt_desc, option.cnt, percent)
             }
 
             // 已选中状态（已投 / 多选时临时选中）
@@ -239,7 +239,7 @@ class VoteInfoActivity : BaseActivity() {
                         selectedOptions.remove(option.opt_idx)
                     } else {
                         if (selectedOptions.size >= info.choice_cnt) {
-                            MsgUtil.showMsg("最多选择 ${info.choice_cnt} 项")
+                            MsgUtil.showMsg(UiText.fmt("最多选择 %1\$d 项", info.choice_cnt))
                             return@setOnClickListener
                         }
                         selectedOptions.add(option.opt_idx)
@@ -262,9 +262,9 @@ class VoteInfoActivity : BaseActivity() {
         } else if (canVote) {
             voteHint.visibility = View.VISIBLE
             voteHint.text = if (selectedOptions.isEmpty()) {
-                "请选择 ${info.choice_cnt} 项"
+                UiText.fmt("请选择 %1\$d 项", info.choice_cnt)
             } else {
-                "请选择 ${info.choice_cnt} 项（已选 ${selectedOptions.size}）"
+                UiText.fmt("请选择 %1\$d 项（已选 %2\$d）", info.choice_cnt, selectedOptions.size)
             }
             voteSubmitBtn.visibility = View.VISIBLE
             voteSubmitBtn.isEnabled = true
@@ -309,7 +309,7 @@ class VoteInfoActivity : BaseActivity() {
                         } else {
                             val msg = when (result) {
                                 -111 -> UiText.of("需要重新登录")
-                                else -> "投票失败：$result"
+                                else -> UiText.fmt("投票失败：%1\$s", result)
                             }
                             MsgUtil.showMsg(msg)
                         }
@@ -347,7 +347,7 @@ class VoteInfoActivity : BaseActivity() {
                                 MsgUtil.showMsg(UiText.of("删除成功"))
                                 finish()
                             } else {
-                                MsgUtil.showMsg("删除失败：$result")
+                                MsgUtil.showMsg(UiText.fmt("删除失败：%1\$s", result))
                             }
                             isVoting = false
                         }

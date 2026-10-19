@@ -72,10 +72,14 @@ class DynamicAdapter(
                 writeDynamicLauncher.launch(intent)
             }
             writeDynamic.type.setOnClickListener {
+                // 显示文案与筛选类型的取值分开传：取值是稳定 key，列表项文案可以随便迁移/本地化，
+                // 以前只在传输时把首项包了 UiText，页面上却按显示串反查取值，两边一旦不同步就选不中
                 dynamicActivity.selectTypeLauncher
                     .launch(
-                        Intent().setClass(context, ListChooseActivity::class.java).putExtra("title", UiText.of("选择类型"))
-                            .putExtra("items", java.util.ArrayList(listOf(UiText.of("全部"), "视频投稿", "追番", "专栏")))
+                        Intent().setClass(context, ListChooseActivity::class.java)
+                            .putExtra("title", UiText.of("选择类型"))
+                            .putExtra("items", java.util.ArrayList(listOf(UiText.of("全部"), UiText.of("视频投稿"), UiText.of("追番"), UiText.of("专栏"))))
+                            .putExtra("values", java.util.ArrayList(listOf("all", "video", "pgc", "article")))
                     )
             }
             writeDynamic.live.setOnClickListener {

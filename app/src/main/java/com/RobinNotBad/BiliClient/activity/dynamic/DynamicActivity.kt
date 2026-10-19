@@ -35,6 +35,10 @@ class DynamicActivity : RefreshMainActivity() {
     private var type: String = "all"
 
     companion object {
+        /** 动态页允许的筛选类型；取值是稳定的 key，与列表项显示文案无关 */
+        private val VALID_TYPES = setOf("all", "video", "pgc", "article")
+
+        /** 老的显示文案 → 取值映射；只作为没带 "value" 额外项的回传方兜底 */
         private val typeNameMap = mapOf(
             UiText.of("全部") to "all",
             UiText.of("视频投稿") to "video",
@@ -108,8 +112,10 @@ class DynamicActivity : RefreshMainActivity() {
         val code = result.resultCode
         val data = result.data
         if (code == RESULT_OK && data != null && data.getStringExtra("item") != null) {
-            val type = typeNameMap[data.getStringExtra("item")]
-            if (type != null) {
+            // 优先读 ListChooseActivity 回传的稳定取值；老的回传方只带显示文案时再退回查表
+            val chosen = data.getStringExtra("value")
+            val type = if (chosen.isNullOrEmpty()) typeNameMap[data.getStringExtra("item")] else chosen
+            if (type != null && type in VALID_TYPES) {
                 if (isRefreshing) {
                     MsgUtil.showMsg(UiText.of("还在加载中OvO"))
                 } else {

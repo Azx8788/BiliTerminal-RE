@@ -34,7 +34,7 @@ public class CenterThreadPool {
     private static final CoroutineScope COROUTINE_SCOPE;
 
     static {
-        // 原来这里按 SDK_INT < 17 分出一个裸线程池分支；本项目 minSdk 24，该分支不可达，
+        // 原来这里按 SDK_INT < 17 分出一个裸线程池分支；本项目 minSdk 19（> 17），该分支不可达，
         // 连带 THREAD_POOL 字段、getThreadPoolInstance()（首行拿到 null 就返回）以及
         // run() 里的 `else if (THREAD_POOL != null)` 全是死代码，已一并删除。
         COROUTINE_SCOPE = CoroutineScopeKt.CoroutineScope((CoroutineContext) Dispatchers.getIO());

@@ -462,7 +462,7 @@ class VideoInfoFragment : BaseFragment() {
                     } else if (isAdded) {
                         var msg = ApiErrorText.opFailedWithDetail(result)
                         when (result) {
-                            -403 -> msg = "当前请求触发B站风控"
+                            -403 -> msg = UiText.of("当前请求触发B站风控")
                             65006 -> {
                                 msg = UiText.of("已经点赞过了喵~")
                                 videoInfo!!.stats.liked = true
@@ -736,9 +736,9 @@ class VideoInfoFragment : BaseFragment() {
             SharedPreferencesUtil.putBoolean("first_play", false)
 
             if (SharedPreferencesUtil.getBoolean("cover_play_enable", true))
-                MsgUtil.showDialog("播放视频", getString(R.string.tutorial_cover_play_enabled))
+                MsgUtil.showDialog(UiText.of("播放视频"), getString(R.string.tutorial_cover_play_enabled))
             else
-                MsgUtil.showDialog("播放视频", getString(R.string.tutorial_cover_play_disabled))
+                MsgUtil.showDialog(UiText.of("播放视频"), getString(R.string.tutorial_cover_play_disabled))
 
             return
         }
@@ -778,7 +778,10 @@ class VideoInfoFragment : BaseFragment() {
 
         if (downPath.exists() && videoInfo!!.pagenames.size == 1) {
             val fileSign = File(downPath, ".DOWNLOADING")
-            MsgUtil.showMsg(if (fileSign.exists()) "已在下载队列\n如有异常，长按可清空文件" else UiText.of("已下载完成"))
+            MsgUtil.showMsg(
+                if (fileSign.exists()) UiText.of("已在下载队列\n如有异常，长按可清空文件")
+                else UiText.of("已下载完成")
+            )
         } else {
             if (videoInfo!!.pagenames.size > 1) {
                 // 与 playClick 同理：多P下载要把当前分P数据交给 MultiPageActivity，

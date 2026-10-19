@@ -76,7 +76,7 @@ class UserInfoActivity : BaseActivity() {
             3 -> UiText.of("收藏夹")
             else -> ""
         }
-        setPageName(if (sub.isEmpty()) UiText.of("用户信息") else "用户信息-$sub")
+        setPageName(if (sub.isEmpty()) UiText.of("用户信息") else UiText.fmt("用户信息-%1\$s", sub))
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, @Nullable data: Intent?) {

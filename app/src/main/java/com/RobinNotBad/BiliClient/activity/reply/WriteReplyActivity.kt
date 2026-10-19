@@ -373,10 +373,17 @@ class WriteReplyActivity : BaseActivity() {
         imageText.text = if (pendingUploads > 0) "$base・上传中($pendingUploads)" else base
     }
 
+    /**
+     * 这条正文有没有「敏感词」——用于决定是否弹一次提示。
+     *
+     * 关键词表是判定键不是展示文案：它们只喂给 contains，不能走 UiText 变成资源文案，
+     * 否则文案一改名判定就静默失配（依据 STRINGS-MIGRATION.md §4「用作 key 的字符串不要迁移」）。
+     */
     private fun checkKy(str: String): Boolean {
-        if (str.contains(UiText.of("哔哩终端"))) return true
-        if (str.contains(UiText.of("终端"))) {
-            return str.contains(UiText.of("表")) || str.contains(UiText.of("b站")) || str.contains(UiText.of("B站")) || str.contains("bili") || str.contains(UiText.of("哔"))
+        if (str.contains("哔哩终端")) return true
+        if (str.contains("终端")) {
+            return str.contains("表") || str.contains("b站") || str.contains("B站") ||
+                    str.contains("bili") || str.contains("哔")
         }
         return false
     }

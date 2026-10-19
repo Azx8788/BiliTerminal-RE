@@ -158,7 +158,8 @@ class NoteActivity : BaseActivity() {
 
     private fun tagText(block: NoteBlock): String {
         val time = NoteApi.formatTagSeconds(block.tagSeconds)
-        return if (block.tagIndex >= 0) "[分P${block.tagIndex + 1} $time]" else "[视频进度 $time]"
+        return if (block.tagIndex >= 0) UiText.fmt("[分P%1\$d %2\$s]", block.tagIndex + 1, time)
+        else UiText.fmt("[视频进度 %1\$s]", time)
     }
 
     private fun applyStyle(builder: SpannableStringBuilder, block: NoteBlock, start: Int) {

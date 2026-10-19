@@ -28,7 +28,6 @@ import android.text.style.ClickableSpan;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.ImageSpan;
 import android.util.Pair;
-import android.util.TypedValue;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
@@ -60,6 +59,29 @@ public class StringUtil {
     private static final Pattern ESCAPE_PATTERN = Pattern.compile("\\\\(.)");
 
     private static volatile float cachedTextHeight;
+
+    /** 徽章与行高统一取的正文基准字号（sp）。 */
+    private static final float TEXT_HEIGHT_SP = 12f;
+
+    /**
+     * 按密度把 {@link #TEXT_HEIGHT_SP} 折算成像素。
+     *
+     * <p>纯函数（不碰 android.graphics）：原实现直接 {@code new Paint()} 取 FontMetrics，
+     * 纯 JVM 下 Paint 是桩、一构造就抛 "not mocked"，单测只能永远走 catch，等于没有断言。
+     */
+    public static float textHeightSizePx(float density) {
+        return TEXT_HEIGHT_SP * density;
+    }
+
+    /**
+     * 由 FontMetrics 的 ascent/descent 算行高（纯函数）。
+     *
+     * <p>descent 为正、ascent 为负，相减才是字形实际占高；拆出来是为了让「减反了」
+     * 这种改动在 JVM 单测里能被钉住。
+     */
+    public static float lineHeightOf(float ascent, float descent) {
+        return descent - ascent;
+    }
 
     static final int[] levelBadges = {
             R.mipmap.level_0,
@@ -176,7 +198,7 @@ public class StringUtil {
      * 的话，将来改键名或改默认值必然漏掉一处。
      */
     public static boolean isCopyEnabled() {
-        return SharedPreferencesUtil.getBoolean("copy_enable", true);
+        return SharedPreferencesUtil.getBoolean(SettingsKeys.COPY_ENABLE, true);
     }
 
     /**
@@ -386,13 +408,14 @@ public class StringUtil {
         if (cached > 0) return cached;
         Paint paint = new Paint();
         if (context != null) {
-            paint.setTextSize(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 12, context.getResources().getDisplayMetrics()));
+            // 12sp 按 scaledDensity 折算，与 TypedValue.applyDimension(COMPLEX_UNIT_SP, …) 等价
+            paint.setTextSize(textHeightSizePx(context.getResources().getDisplayMetrics().scaledDensity));
         } else {
             // context 可能为 null（单元测试或异常路径），回退到系统默认密度
-            paint.setTextSize(12 * android.content.res.Resources.getSystem().getDisplayMetrics().density);
+            paint.setTextSize(textHeightSizePx(android.content.res.Resources.getSystem().getDisplayMetrics().density));
         }
         Paint.FontMetrics fontMetrics = paint.getFontMetrics();
-        float height = fontMetrics.descent - fontMetrics.ascent;
+        float height = lineHeightOf(fontMetrics.ascent, fontMetrics.descent);
         cachedTextHeight = height;
         return height;
     }

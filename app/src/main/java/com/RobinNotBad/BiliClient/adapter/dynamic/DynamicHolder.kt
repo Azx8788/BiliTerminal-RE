@@ -54,6 +54,23 @@ import java.util.ArrayList
 import java.util.Collections
 import java.util.HashSet
 
+/**
+ * 动态管理菜单里的一项。
+ *
+ * 以前这里是 `Pair<String, () -> Unit>`，菜单项的**身份**只能靠显示文案反查
+ * （比较 "复制文字" / startsWith("删除")）。文案一旦迁进 strings.xml 或被本地化，反查就会静默失效：
+ * 单项菜单不再直连复制界面、破坏性项也丢掉危险色。现在身份放进 [kind]，[text] 只用于展示。
+ */
+private data class ManageAction(
+    val kind: ManageActionKind,
+    val text: String,
+    val danger: Boolean,
+    val action: () -> Unit
+)
+
+/** 动态管理菜单的动作种类；只用于判定身份，不要拿来当显示文案。 */
+private enum class ManageActionKind { COPY, EDIT, TOP, DELETE }
+
 class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Boolean) :
     RecyclerView.ViewHolder(itemView) {
 
@@ -233,21 +250,42 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
             activity: BaseActivity, dynamic: Dynamic,
             onEdited: ((String) -> Unit)?, onChanged: (() -> Unit)?, onDeleted: () -> Unit
         ) {
-            val actions = ArrayList<Pair<String, () -> Unit>>()
+            val actions = ArrayList<ManageAction>()
             // 「复制」收进面板：长按正文时用户先看见有哪些操作，而不是被直接送进复制界面。
             // 受 copy_enable 约束，正文为空时也不列（点了只会看到一个空界面）。
             // 注意本方法同时服务「管理」按钮和长按正文两个入口，所以复制项只按 copy_enable
             // 决定——`long_press_panel_enable` 管的是「长按走哪条路」，不是「面板里有什么」。
             val content = dynamic.content?.toString().orEmpty()
-            if (LongPressPrefs.shouldOfferCopy(StringUtil.isCopyEnabled(), content))
-                actions.add(UiText.of("复制文字") to { StringUtil.openCopyPage(activity, content) })
-            if (dynamic.canEdit) actions.add(UiText.of("编辑动态") to { launchEdit(activity, dynamic, onEdited) })
-            if (dynamic.canDelete) {
-                actions.add((if (dynamic.isTop) UiText.of("取消置顶") else UiText.of("置顶动态")) to {
-                    toggleTop(activity, dynamic, onChanged)
-                })
+            if (LongPressPrefs.shouldOfferCopy(StringUtil.isCopyEnabled(), content)) {
+                actions.add(
+                    ManageAction(ManageActionKind.COPY, UiText.of("复制文字"), false) {
+                        StringUtil.openCopyPage(activity, content)
+                    }
+                )
             }
-            if (dynamic.canDelete) actions.add(UiText.of("删除动态") to { confirmDelete(activity, dynamic, onDeleted) })
+            if (dynamic.canEdit) {
+                actions.add(
+                    ManageAction(ManageActionKind.EDIT, UiText.of("编辑动态"), false) {
+                        launchEdit(activity, dynamic, onEdited)
+                    }
+                )
+            }
+            if (dynamic.canDelete) {
+                actions.add(
+                    ManageAction(
+                        ManageActionKind.TOP,
+                        if (dynamic.isTop) UiText.of("取消置顶") else UiText.of("置顶动态"),
+                        false
+                    ) { toggleTop(activity, dynamic, onChanged) }
+                )
+            }
+            if (dynamic.canDelete) {
+                actions.add(
+                    ManageAction(ManageActionKind.DELETE, UiText.of("删除动态"), true) {
+                        confirmDelete(activity, dynamic, onDeleted)
+                    }
+                )
+            }
             if (actions.isEmpty()) {
                 MsgUtil.showMsg(UiText.of("没有可操作的项"))
                 return
@@ -255,17 +293,16 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
             // 只剩「复制文字」一项时，不必弹一个只有单选项的菜单——直接进复制界面。
             // 别人的动态（都是 canEdit=false / canDelete=false）就是这种情况：以前长按会弹一个
             // 孤零零的「复制文字」，多一次点击才拿到本来就该直接给的东西。
-            if (actions.size == 1 && actions[0].first == "复制文字") {
-                actions[0].second()
+            if (actions.size == 1 && actions[0].kind == ManageActionKind.COPY) {
+                actions[0].action()
                 return
             }
-            // 「删除动态」是破坏性操作，用危险色标出来
-            val dangerIndex = actions.indexOfFirst { it.first.startsWith(UiText.of("删除")) }
+            // 破坏性项由动作类型标出危险色，不再匹配文案前缀
             TerminalDialog.menu(
                 context = activity,
-                items = actions.map { it.first },
-                danger = if (dangerIndex >= 0) setOf(dangerIndex) else emptySet()
-            ) { which -> actions[which].second() }.show()
+                items = actions.map { it.text },
+                danger = actions.indices.filter { actions[it].danger }.toSet()
+            ) { which -> actions[which].action() }.show()
         }
 
         private fun launchEdit(activity: BaseActivity, dynamic: Dynamic, onEdited: ((String) -> Unit)?) {
@@ -328,8 +365,8 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                         } else {
                             var msg = ApiErrorText.opFailedWithDetail(result)
                             when (result) {
-                                500404 -> msg = "已经删除过了哦~"
-                                500406 -> msg = "不是自己的动态！"
+                                500404 -> msg = UiText.of("已经删除过了哦~")
+                                500406 -> msg = UiText.of("不是自己的动态！")
                             }
                             val finalMsg = msg
                             activity.runOnUiThread { MsgUtil.showMsg(finalMsg) }
@@ -495,7 +532,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
         titleView.text = if (voteInfo.title.isNotEmpty()) voteInfo.title else UiText.of("投票")
 
         // 设置参与人数
-        joinNumView.text = "${voteInfo.join_num}人参与"
+        joinNumView.text = UiText.fmt("%1\$s人参与", voteInfo.join_num)
 
         // 清空并重新填充选项
         container.removeAllViews()
@@ -590,7 +627,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
             val totalCnt = voteInfo.options.sumOf { it.cnt }
             if (totalCnt > 0) {
                 val percent = (option.cnt * 100f / totalCnt).toInt()
-                optionText.text = "${option.opt_desc}  ${option.cnt}票 ($percent%)"
+                optionText.text = UiText.fmt("%1\$s  %2\$s票 (%3\$s%%)", option.opt_desc, option.cnt, percent)
             }
         }
 
@@ -658,7 +695,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                     } else {
                         val msg = when (result) {
                             -111 -> UiText.of("需要重新登录")
-                            else -> "投票失败：$result"
+                            else -> UiText.fmt("投票失败：%1\$s", result)
                         }
                         (context as? Activity)?.runOnUiThread {
                             MsgUtil.showMsg(msg)

@@ -56,7 +56,7 @@ class FollowUsersActivity : RefreshListActivity() {
         val currentUserMid = SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0)
         groupMode = mode == 0 && mid == currentUserMid && SharedPreferencesUtil.getBoolean("follow_group_mode", false)
 
-        setPageName(if (mode == 0) "关注列表" else "粉丝列表")
+        setPageName(if (mode == 0) UiText.of("关注列表") else UiText.of("粉丝列表"))
 
         recyclerView.setHasFixedSize(true)
 
@@ -142,7 +142,7 @@ class FollowUsersActivity : RefreshListActivity() {
         TerminalDialog.menu(
             context = this,
             title = tag.name,
-            items = listOf(UiText.of("重命名分组"), "删除分组"),
+            items = listOf(UiText.of("重命名分组"), UiText.of("删除分组")),
             danger = setOf(1)
         ) { which ->
             when (which) {
@@ -172,13 +172,14 @@ class FollowUsersActivity : RefreshListActivity() {
         }
 
         val items = targets.map { it.name }
-        TerminalDialog.singleChoice(
+        // 目标列表恒排除当前分组，不存在「当前选中项」，所以用普通菜单而不是单选列表：
+        // singleChoice 必须给一个 checked 下标，会把第 0 项误标成已勾选，像是默认要移去那一组。
+        TerminalDialog.menu(
             context = this,
-            title = "把「${user.name}」移动到",
+            title = UiText.fmt("把「%1\$s」移动到", user.name),
             items = items
-        ) { sheet, which ->
-            sheet.dialog.dismiss()
-            val target = targets.getOrNull(which) ?: return@singleChoice
+        ) { which ->
+            val target = targets.getOrNull(which) ?: return@menu
             confirmMoveUser(fromTag, target, user)
         }.show()
     }
@@ -188,7 +189,7 @@ class FollowUsersActivity : RefreshListActivity() {
         TerminalDialog.confirm(
             context = this,
             title = UiText.of("移动分组"),
-            message = "把「${user.name}」从「${fromTag.name}」移动到「${toTag.name}」？",
+            message = UiText.fmt("把「%1\$s」从「%2\$s」移动到「%3\$s」？", user.name, fromTag.name, toTag.name),
             confirmText = UiText.of("移动"),
             confirmIsDanger = false
         ) {
@@ -197,7 +198,7 @@ class FollowUsersActivity : RefreshListActivity() {
                     val code = FollowApi.moveFollowTagUsers(fromTag.tagid, toTag.tagid, listOf(user.mid))
                     runOnUiThread {
                         if (code == 0) {
-                            MsgUtil.showMsg("已移动到「${toTag.name}」")
+                            MsgUtil.showMsg(UiText.fmt("已移动到「%1\$s」", toTag.name))
                             // 分组归属和人数都变了，整页重拉最稳（服务端才是唯一真相）
                             loadGroupMode()
                         } else {
@@ -237,7 +238,7 @@ class FollowUsersActivity : RefreshListActivity() {
         inputLauncher.launch(
             Intent(this, InputDialogActivity::class.java)
                 .putExtra("title", UiText.of("新建分组"))
-                .putExtra("hint", "请输入分组名（最多 ${FollowApi.TAG_NAME_MAX_LENGTH} 个字）")
+                .putExtra("hint", UiText.fmt("请输入分组名（最多 %1\$d 个字）", FollowApi.TAG_NAME_MAX_LENGTH))
         )
     }
 
@@ -254,7 +255,7 @@ class FollowUsersActivity : RefreshListActivity() {
                         val code = FollowApi.renameFollowTag(tag.tagid, name)
                         runOnUiThread {
                             if (code == 0) {
-                                MsgUtil.showMsg("已重命名为「${name.trim()}」")
+                                MsgUtil.showMsg(UiText.fmt("已重命名为「%1\$s」", name.trim()))
                                 loadGroupMode()
                             } else {
                                 MsgUtil.showMsg(FollowApi.tagErrorMsg(code))
@@ -277,7 +278,7 @@ class FollowUsersActivity : RefreshListActivity() {
         TerminalDialog.confirm(
             context = this,
             title = UiText.of("删除分组"),
-            message = "确定删除「${tag.name}」吗？\n分组里的关注不会取关，只是回到默认分组。",
+            message = UiText.fmt("确定删除「%1\$s」吗？\n分组里的关注不会取关，只是回到默认分组。", tag.name),
             confirmText = UiText.of("删除")
         ) {
             CenterThreadPool.run {

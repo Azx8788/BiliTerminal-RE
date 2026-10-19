@@ -46,8 +46,8 @@ object MsgNotifier {
      */
     fun summaryText(privateMsgUnread: Int, otherUnread: Int): String {
         val parts = ArrayList<String>(2)
-        if (privateMsgUnread > 0) parts.add("$privateMsgUnread 条新私信")
-        if (otherUnread > 0) parts.add("$otherUnread 条新消息")
+        if (privateMsgUnread > 0) parts.add(UiText.fmt(UiText.of("%1\$d 条新私信"), privateMsgUnread))
+        if (otherUnread > 0) parts.add(UiText.fmt(UiText.of("%1\$d 条新消息"), otherUnread))
         return if (parts.isEmpty()) UiText.of("有新消息") else parts.joinToString("、")
     }
 
@@ -110,8 +110,8 @@ object MsgNotifier {
      */
     fun bangumiSummaryText(titles: List<String>): String = when {
         titles.isEmpty() -> UiText.of("有追番更新了")
-        titles.size == 1 -> "《${titles[0]}》更新了"
-        else -> "《${titles[0]}》等 ${titles.size} 部追番更新了"
+        titles.size == 1 -> UiText.fmt(UiText.of("《%1\$s》更新了"), titles[0])
+        else -> UiText.fmt(UiText.of("《%1\$s》等 %2\$d 部追番更新了"), titles[0], titles.size)
     }
 
     /**

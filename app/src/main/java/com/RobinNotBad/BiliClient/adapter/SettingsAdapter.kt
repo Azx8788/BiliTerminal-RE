@@ -144,6 +144,9 @@ class SettingsAdapter(
         const val TYPE_DIVIDER = 8
         const val TYPE_TITLE = 9
 
+        /** list_choose 用 [ListChooseActivity] 选值时的请求码；承接结果的页面统一走 applyListChooseResult。 */
+        const val REQUEST_CODE_LIST_CHOOSE = 1001
+
         val typeMap: Map<String, Int> = mapOf(
             "switch" to TYPE_SWITCH,
             "choose" to TYPE_CHOOSE,
@@ -379,7 +382,7 @@ class SettingsAdapter(
                         intent.putExtra("items", ArrayList(extra.displayNames))
                         intent.putExtra("values", ArrayList(extra.actualValues))
                         intent.putExtra("position", position)
-                        activity.startActivityForResult(intent, 1001)
+                        activity.startActivityForResult(intent, SettingsAdapter.REQUEST_CODE_LIST_CHOOSE)
                     }
                 }
             }

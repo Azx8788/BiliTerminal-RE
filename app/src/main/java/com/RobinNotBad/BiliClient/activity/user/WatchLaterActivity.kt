@@ -133,7 +133,7 @@ class WatchLaterActivity : RefreshListActivity() {
                         MsgUtil.showMsg(UiText.of("已清除所有已看完"))
                         loadWatchLater()
                     } else {
-                        MsgUtil.showMsg("清除失败，错误码：$code")
+                        MsgUtil.showMsg(UiText.fmt("清除失败，错误码：%1\$s", code))
                     }
                 }
             } catch (e: Exception) {
@@ -179,23 +179,23 @@ class WatchLaterActivity : RefreshListActivity() {
         TerminalDialog.menu(
             context = this,
             title = card.title,
-            items = listOf(UiText.of("视频详情"), "移除稍后再看"),
+            items = listOf(UiText.of("视频详情"), UiText.of("移除稍后再看")),
             danger = setOf(1)
         ) { which ->
             when (which) {
                 0 -> TerminalContext.getInstance()
                     .enterVideoDetailPage(this, card.aid, card.bvid, "video")
-                1 -> confirmRemove(card, position)
+                1 -> confirmRemove(card)
             }
         }.show()
     }
 
     /** 「移除稍后再看」——破坏性且不可撤销，先过二次确认，确认按钮走危险色。 */
-    private fun confirmRemove(card: VideoCard, position: Int) {
+    private fun confirmRemove(card: VideoCard) {
         TerminalDialog.confirm(
             context = this,
             title = UiText.of("移除稍后再看"),
-            message = "确定把《${card.title}》从稍后再看里移除吗？",
+            message = UiText.fmt("确定把《%1\$s》从稍后再看里移除吗？", card.title),
             confirmText = UiText.of("移除"),
             confirmIsDanger = true
         ) {
@@ -205,14 +205,19 @@ class WatchLaterActivity : RefreshListActivity() {
                     runOnUiThread {
                         if (result == 0) {
                             MsgUtil.showMsg(UiText.of("已移除"))
-                            // shownList 是筛选后的视图、allList 是接口全集，两边都要同步删
-                            if (position in shownList.indices) shownList.removeAt(position)
-                            allList.remove(card)
-                            adapter?.notifyItemRemoved(position)
-                            adapter?.notifyItemRangeChanged(position, shownList.size - position)
+                            // shownList 是筛选后的视图、allList 是接口全集，两边都要同步删。
+                            // 删的位置要按 aid 重新找：确认框还开着的时候列表可能已经刷新/换过筛选档，
+                            // 用长按那一刻记下的下标会删错行（甚至越界）。找不到就说明这行已经没了，只清接口侧数据。
+                            val index = shownList.indexOfFirst { it.aid == card.aid }
+                            allList.removeAll { it.aid == card.aid }
+                            if (index >= 0) {
+                                shownList.removeAt(index)
+                                adapter?.notifyItemRemoved(index)
+                                adapter?.notifyItemRangeChanged(index, shownList.size - index)
+                            }
                             if (shownList.isEmpty()) showEmptyView()
                         } else {
-                            MsgUtil.showMsg("移除失败，错误码：$result")
+                            MsgUtil.showMsg(UiText.fmt("移除失败，错误码：%1\$s", result))
                         }
                     }
                 } catch (e: Exception) {

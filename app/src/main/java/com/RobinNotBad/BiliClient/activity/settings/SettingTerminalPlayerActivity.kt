@@ -184,22 +184,14 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
     }
 
     /**
-     * 承接 `list_choose` 的选择结果。
+     * 承接 list_choose 的选择结果。
      *
-     * `SettingsAdapter` 用 `startActivityForResult(..., 1001)` 打开 [com.RobinNotBad.BiliClient.activity.ListChooseActivity]，
-     * 此前只有 `SettingGroupActivity` 处理这个回调，所以本页直接用 `list_choose` 会「点了没反应」。
+     * SettingsAdapter 用 SettingsAdapter.REQUEST_CODE_LIST_CHOOSE 打开
+     * [com.RobinNotBad.BiliClient.activity.ListChooseActivity]；回写逻辑与分组页共用
+     * [applyListChooseResult]（此前只有分组页处理这个回调，所以本页的 list_choose「点了没反应」）。
      */
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001 && resultCode == RESULT_OK && data != null) {
-            val position = data.getIntExtra("position", -1)
-            val value = data.getStringExtra("value") ?: return
-            if (position < 0 || position >= sections.size) return
-            val section = sections[position]
-            val oldValue = SharedPreferencesUtil.getString(section.id, section.defaultValue)
-            SharedPreferencesUtil.putString(section.id, value)
-            settingsAdapter?.notifyItemChanged(position)
-            (section.extra as? SettingsAdapter.ListChooseHolder.ListChooseExtra)?.onSelect?.invoke(oldValue, value)
-        }
+        applyListChooseResult(requestCode, resultCode, data, sections) { settingsAdapter?.notifyItemChanged(it) }
     }
 }

@@ -53,9 +53,13 @@ class FavoriteVideoListActivity : RefreshListActivity() {
     /** 未选中档位的颜色，创建时从布局里的默认文字色抓一次 */
     private var unselectedColor: Int = 0
 
-    // 没有 media_id 的老兜底：4 秒内连点两次长按才删
-    private var longClickPosition = -1
-    private var longClickTimestamp: Long = 0
+    /**
+     * 长按菜单里的一项。
+     *
+     * 以前是 `Pair<String, () -> Unit>`，破坏性项只能靠显示文案反查（`it.first == "取消收藏"`）。
+     * 文案一改（迁 strings.xml / 本地化）危险色就静默丢失，所以把身份与展示分开。
+     */
+    private class FavoriteAction(val text: String, val danger: Boolean, val action: () -> Unit)
 
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,14 +100,6 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         sortView?.setOnClickListener { switchSort(FavoriteApi.ORDER_VIEW) }
         sortPubtime?.setOnClickListener { switchSort(FavoriteApi.ORDER_PUBTIME) }
         updateSortColors()
-
-        // 临时诊断埋点（26.10.04 批次 7）：用户在真机上反馈「没看到排序行」，静态排查已确认
-        // 点亮是无条件的、资源也进了包，需要一行日志确认运行时状态。
-        // 真机排查：adb logcat -s "debug-收藏夹排序"（应看到 visibility=0 VISIBLE）。
-        Log.e(
-            UiText.of("debug-收藏夹排序"),
-            "sortBar.visibility=${findViewById<View>(R.id.sortBar).visibility} mediaId=$mediaId fid=$fid readOnly=$readOnly"
-        )
     }
 
     private fun switchSort(order: String) {
@@ -179,7 +175,8 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         findViewById<View>(R.id.manageBar).visibility = if (selectionMode) View.VISIBLE else View.GONE
         manageToggle?.text = if (selectionMode) UiText.of("退出多选") else UiText.of("多选")
         manageToggle?.setTextColor(if (selectionMode) ColorScheme.PRIMARY else unselectedColor)
-        manageDelete?.text = if (selectedAids.isEmpty()) UiText.of("删除") else "删除(${selectedAids.size})"
+        manageDelete?.text =
+            if (selectedAids.isEmpty()) UiText.of("删除") else UiText.fmt("删除(%1\$d)", selectedAids.size)
         // 没选东西时把「删除」压暗，点了给提示而不是弹一个空确认框
         manageDelete?.alpha = if (selectedAids.isEmpty()) 0.5f else 1f
         manageDelete?.setTextColor(if (selectedAids.isEmpty()) unselectedColor else ColorScheme.PRIMARY)
@@ -198,7 +195,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         TerminalDialog.confirm(
             context = this,
             title = UiText.of("删除收藏内容"),
-            message = "确定把选中的 ${targets.size} 条从收藏夹里移除吗？",
+            message = UiText.fmt("确定把选中的 %1\$d 条从收藏夹里移除吗？", targets.size),
             confirmText = UiText.of("删除")
         ) {
             CenterThreadPool.run {
@@ -206,7 +203,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                     val code = FavoriteApi.batchDeleteResources(mediaId, targets)
                     runOnUiThread {
                         if (code == 0) {
-                            MsgUtil.showMsg("已删除 ${targets.size} 条")
+                            MsgUtil.showMsg(UiText.fmt("已删除 %1\$d 条", targets.size))
                             applyRemoved(targets)
                             exitSelectionMode()
                         } else {
@@ -295,34 +292,43 @@ class FavoriteVideoListActivity : RefreshListActivity() {
             showReadOnlyMenu(position)
             return true
         }
-        // 拿不到 media_id 的老链路：保留原有的连点两次长按删除
-        if (!readOnly) {
-            val timestamp = System.currentTimeMillis()
-            if (longClickPosition == position && timestamp - longClickTimestamp < 4000) {
-                CenterThreadPool.run {
-                    try {
-                        val delResult = FavoriteApi.deleteFavorite(videoList[position].aid, fid)
-                        longClickPosition = -1
-                        if (delResult == 0) runOnUiThread {
+        // 拿不到 media_id 的老链路：以前是「4 秒内连点两次长按」直接删，手势不可发现且没有确认。
+        // 现在一次长按就弹确认框，删哪一条按 aid 重新定位（见 confirmLegacyRemove）。
+        val card = videoList.getOrNull(position) ?: return false
+        confirmLegacyRemove(card)
+        return true
+    }
+
+    /**
+     * 老链路（拿不到 media_id）的「取消收藏」：先确认再删。
+     *
+     * 删除位置在确认回调里按 aid 重新找：确认框开着的时候列表可能已经刷新过，
+     * 用长按那一刻记下的下标会删错行。
+     */
+    private fun confirmLegacyRemove(card: VideoCard) {
+        TerminalDialog.confirm(
+            context = this,
+            title = UiText.of("取消收藏"),
+            message = UiText.fmt("确定把《%1\$s》从收藏夹里去掉吗？", card.title),
+            confirmText = UiText.of("取消收藏"),
+            confirmIsDanger = true
+        ) {
+            CenterThreadPool.run {
+                try {
+                    val delResult = FavoriteApi.deleteFavorite(card.aid, fid)
+                    runOnUiThread {
+                        if (delResult == 0) {
                             MsgUtil.showMsg(UiText.of("删除成功"))
-                            videoList.removeAt(position)
-                            videoCardAdapter!!.notifyItemRemoved(position)
-                            videoCardAdapter!!.notifyItemRangeChanged(position, videoList.size - position)
+                            removeItem(card)
+                        } else {
+                            MsgUtil.showMsg(UiText.fmt("删除失败，错误码：%1\$s", delResult))
                         }
-                        else
-                            runOnUiThread { MsgUtil.showMsg("删除失败，错误码：$delResult") }
-                    } catch (e: Exception) {
-                        report(e)
                     }
+                } catch (e: Exception) {
+                    report(e)
                 }
-            } else {
-                longClickPosition = position
-                longClickTimestamp = timestamp
-                MsgUtil.showMsg(UiText.of("再次长按管理"))
             }
-            return true
-        }
-        return false
+        }.show()
     }
 
     /** 别人收藏夹（只读）的长按菜单：只有「视频详情」这一项。 */
@@ -339,27 +345,26 @@ class FavoriteVideoListActivity : RefreshListActivity() {
 
     private fun showManageMenu(position: Int) {
         val card = videoList.getOrNull(position) ?: return
-        val actions = ArrayList<Pair<String, () -> Unit>>()
+        val actions = ArrayList<FavoriteAction>()
         // 默认点击在虚拟合档下是「整个收藏夹连播」，用户想去某一条的详情页时没有入口，
         // 只能关掉虚拟合集开关——所以这里补一个直达详情页的项。
         // 放第一位：它是唯一「看信息」而非「改收藏夹结构」的动作。
-        actions.add(UiText.of("视频详情") to {
+        actions.add(FavoriteAction(UiText.of("视频详情"), false) {
             TerminalContext.getInstance().enterVideoDetailPage(this, card.aid, card.bvid, "video")
         })
-        actions.add(UiText.of("复制到…") to { showTargetFolderPicker(card, false) })
-        actions.add(UiText.of("移动到…") to { showTargetFolderPicker(card, true) })
+        actions.add(FavoriteAction(UiText.of("复制到…"), false) { showTargetFolderPicker(card, false) })
+        actions.add(FavoriteAction(UiText.of("移动到…"), false) { showTargetFolderPicker(card, true) })
         // 多选的入口。原来靠列表顶上一整行常亮的「多选」按钮，用户反馈那一行平时白占地方，
         // 所以把入口收进长按菜单、并把那一行改成只在多选态出现（见 setupManageBar）。
-        if (writable) actions.add(UiText.of("多选") to { enterSelectionMode() })
-        actions.add(UiText.of("取消收藏") to { confirmRemoveFavorite(card) })
-        // 「取消收藏」是破坏性操作，用危险色标出来。
-        // 用 indexOfFirst 而不是写死下标：上面每加一项都要记得改下标，早晚会标错行。
+        if (writable) actions.add(FavoriteAction(UiText.of("多选"), false) { enterSelectionMode() })
+        // 「取消收藏」是破坏性操作，用 danger 标出危险色（不再按显示文案找出它）
+        actions.add(FavoriteAction(UiText.of("取消收藏"), true) { confirmRemoveFavorite(card) })
         TerminalDialog.menu(
             context = this,
             title = card.title,
-            items = actions.map { it.first },
-            danger = setOf(actions.indexOfFirst { it.first == "取消收藏" })
-        ) { which -> actions[which].second() }.show()
+            items = actions.map { it.text },
+            danger = actions.indices.filter { actions[it].danger }.toSet()
+        ) { which -> actions[which].action() }.show()
     }
 
     /** 拉自己的收藏夹列表让用户选目标（排除当前这个） */
@@ -407,7 +412,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         TerminalDialog.confirm(
             context = this,
             title = UiText.of("取消收藏"),
-            message = "确定把《${card.title}》从收藏夹里去掉吗？",
+            message = UiText.fmt("确定把《%1\$s》从收藏夹里去掉吗？", card.title),
             confirmText = UiText.of("确定")
         ) {
             CenterThreadPool.run {
@@ -418,7 +423,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                             MsgUtil.showMsg(UiText.of("已取消收藏"))
                             removeItem(card)
                         } else {
-                            MsgUtil.showMsg("取消失败，错误码：$code")
+                            MsgUtil.showMsg(UiText.fmt("取消失败，错误码：%1\$s", code))
                         }
                     }
                 } catch (e: Exception) {
@@ -430,7 +435,8 @@ class FavoriteVideoListActivity : RefreshListActivity() {
 
     @SuppressLint("NotifyDataSetChanged")
     private fun removeItem(card: VideoCard) {
-        val index = videoList.indexOf(card)
+        // 按 aid 反查而不是 indexOf：列表可能已经刷新过，对象相等性不可靠，aid 才是这条稿件的身份
+        val index = videoList.indexOfFirst { it.aid == card.aid }
         if (index < 0) return
         videoList.removeAt(index)
         videoCardAdapter?.notifyItemRemoved(index)
@@ -503,7 +509,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
 
                 // 构建PlayerData
                 val playerData = PlayerData(PlayerData.TYPE_VIDEO)
-                playerData.title = "$folderName（虚拟合集）"
+                playerData.title = UiText.fmt("%1\$s（虚拟合集）", folderName)
                 playerData.aid = firstAid
                 playerData.cid = firstCid
                 playerData.pagenames = pagenames

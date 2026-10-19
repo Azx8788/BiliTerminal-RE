@@ -135,10 +135,10 @@ object FontStyle {
                 temp.outputStream().use { output -> input.copyTo(output) }
             } ?: return UiText.of("无法读取该文件")
             if (size <= 0L) return UiText.of("文件为空")
-            if (size > MAX_BYTES) return "文件过大（超过 ${MAX_BYTES / 1024 / 1024}MB）"
+            if (size > MAX_BYTES) return UiText.fmt(UiText.of("文件过大（超过 %1\$dMB）"), MAX_BYTES / 1024 / 1024)
         } catch (e: Throwable) {
             temp.delete()
-            return "复制失败：${e.message ?: e.javaClass.simpleName}"
+            return UiText.fmt(UiText.of("复制失败：%1\$s"), e.message ?: e.javaClass.simpleName)
         }
 
         // 换名到目标位置（同一目录内，原子性足够）
@@ -181,7 +181,7 @@ object FontStyle {
      * @return `null` 表示看起来是合法字体；否则返回中文拒绝原因。
      */
     fun rejectReason(header: ByteArray?): String? {
-        if (header == null || header.size < 4) return "文件不是字体（内容太短）"
+        if (header == null || header.size < 4) return UiText.of("文件不是字体（内容太短）")
         val tag = String(header, 0, 4, Charsets.US_ASCII)
         return when {
             // WOFF/WOFF2 是网页字体，Android 的 Typeface 解析不了——单独给出提示，

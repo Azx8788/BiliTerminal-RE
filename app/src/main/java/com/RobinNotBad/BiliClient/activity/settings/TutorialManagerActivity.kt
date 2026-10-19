@@ -2,16 +2,17 @@ package com.RobinNotBad.BiliClient.activity.settings
 
 import android.annotation.SuppressLint
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.google.android.material.button.MaterialButton
@@ -158,6 +159,12 @@ class TutorialManagerActivity : BaseActivity() {
             )
         }
 
+        // 颜色一律走主题色或既有语义色资源，不写死色值：写死白色在浅色主题下看不见标题，
+        // 写死绿/橙也不跟主题走（依据 AGENTS.md「颜色只读 ?attr/ 或既有 color 资源」）。
+        val textOnColor = ContextCompat.getColor(this, R.color.text_on_primary)
+        val successColor = ContextCompat.getColor(this, R.color.status_success)
+        val warningColor = ContextCompat.getColor(this, R.color.status_warning)
+
         val titleRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
@@ -175,7 +182,7 @@ class TutorialManagerActivity : BaseActivity() {
             )
             text = item.name
             textSize = 13f
-            setTextColor(Color.parseColor("#ffffff"))
+            setTextColor(ColorScheme.TEXT_PRIMARY)
         }
 
         val statusBadge = TextView(this).apply {
@@ -192,14 +199,14 @@ class TutorialManagerActivity : BaseActivity() {
 
         if (isCompleted) {
             statusBadge.text = getString(R.string.text_tutorial_done)
-            statusBadge.setTextColor(Color.parseColor("#ffffff"))
+            statusBadge.setTextColor(textOnColor)
             // View.backgroundTintList 的 setter 是 API 21 才有的，minSdk 19 上要走 ViewCompat；
             // API < 21 时它等价于 no-op（statusBadge 本身没设 background），不会崩。
-            ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(Color.parseColor("#27ae60")))
+            ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(successColor))
         } else {
             statusBadge.text = getString(R.string.text_tutorial_undone)
-            statusBadge.setTextColor(Color.parseColor("#ffffff"))
-            ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(Color.parseColor("#e67e22")))
+            statusBadge.setTextColor(textOnColor)
+            ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(warningColor))
         }
 
         titleRow.addView(titleText)
@@ -214,7 +221,7 @@ class TutorialManagerActivity : BaseActivity() {
             }
             text = item.description
             textSize = 11f
-            setTextColor(Color.parseColor("#aaaaaa"))
+            setTextColor(ColorScheme.TEXT_SECONDARY)
         }
 
         val historyText = TextView(this).apply {
@@ -230,7 +237,7 @@ class TutorialManagerActivity : BaseActivity() {
 
         if (!item.isPager && hasTutorialHistory(item.tag)) {
             historyText.text = getString(R.string.text_tutorial_history_done, getTutorialVersion(item.tag))
-            historyText.setTextColor(Color.parseColor("#888888"))
+            historyText.setTextColor(ColorScheme.TEXT_TERTIARY)
             historyText.visibility = View.VISIBLE
         }
 

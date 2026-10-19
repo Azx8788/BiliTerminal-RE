@@ -137,8 +137,9 @@ class NoticeActivity : RefreshListActivity() {
                     }
                 }
 
-                // 列表变更与状态读取统一收敛到主线程，避免后台线程改 UI 数据；
-                // bottom 是基类的普通字段（非 @Volatile），从后台线程写它有可见性风险
+                // 列表变更与状态写入统一收敛到主线程，避免后台线程改 UI 数据。
+                // bottom 本身已是基类的 @Volatile 字段（见 RefreshListActivity.bottom），
+                // 但 notifyItemRangeInserted 只能在主线程调，所以这里仍然整体切主线程
                 val newCursor = cursor
                 runOnUiThread {
                     if (isDestroyed) return@runOnUiThread

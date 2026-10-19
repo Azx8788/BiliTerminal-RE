@@ -77,8 +77,11 @@ class SearchActivity : InstanceActivity() {
     // 默认搜索类别顺序（番剧紧跟视频，与上游一致）
     private val defaultCategoryOrder = arrayOf("video", "bangumi", "article", "user", "live")
 
-    var specialList = arrayOf(UiText.of("心理疾病"), "自杀", "自尽", "自残", "抑郁", "双相", "安眠药")
-    var specialNamesList = arrayOf(UiText.of("严炜"), "陈学峰", "徐波", "易德元", "舒微函", "张自东", "杨国明", "张俊胜")
+    // 这两组是「关键词匹配表」，不是展示文案：它们只参与 keyword.contains 判定，
+    // 一旦被 UiText 包成资源文案，判定键就跟着改名一起漂，彩蛋会静默失效。
+    // 依据 docs/copy-inventory/STRINGS-MIGRATION.md §4「用作 key 的字符串不要迁移」。
+    var specialList = arrayOf("心理疾病", "自杀", "自尽", "自残", "抑郁", "双相", "安眠药")
+    var specialNamesList = arrayOf("严炜", "陈学峰", "徐波", "易德元", "舒微函", "张自东", "杨国明", "张俊胜")
 
     @SuppressLint("MissingInflatedId", "NotifyDataSetChanged", "InflateParams")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -421,11 +424,11 @@ class SearchActivity : InstanceActivity() {
     fun searchKeyword(str: String) {
         var keyword = str
         if (keyword.contains("Robin") || keyword.contains("robin")) {
-            if (keyword.contains(UiText.of("撅"))) {
+            if (keyword.contains("撅")) {
                 MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_special))
                 return
             }
-            if (keyword.contains(UiText.of("纳西妲"))) {
+            if (keyword.contains("纳西妲")) {
                 MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_robin_nahida))
                 return
             }

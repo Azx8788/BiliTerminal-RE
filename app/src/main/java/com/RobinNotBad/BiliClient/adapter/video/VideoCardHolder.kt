@@ -134,6 +134,11 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         longPressRunnable?.let { v.removeCallbacks(it) }
                         longPressRunnable = null
+                        // 长按立起的标记只该吞掉「同一次手势抬手时补发的那次点击」。
+                        // 以前只在点击分支里清：这次手势若没有补发点击（被滑动取消、或长按回调把事件接管了），
+                        // 标记会一直留到下一次真实点击上，表现为「长按之后点条目没反应」。
+                        // post 让清理排在本次事件分发结束之后：既不提前清掉要吞的那次点击，又不污染后续点击。
+                        if (suppressClickAfterLongPress) v.post { suppressClickAfterLongPress = false }
                         false
                     }
                     else -> false
