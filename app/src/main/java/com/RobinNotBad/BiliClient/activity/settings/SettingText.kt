@@ -349,6 +349,7 @@ object SettingText {
         "暂无更新日志" to R.string.settingtext_updatehistoryactivity_001,
         "长按倍速" to R.string.settingtext_settingsindex_044,
         "长按打开操作面板" to R.string.settingtext_settingprefactivity_003,
+        "长按顶部打开菜单" to R.string.settingtext_settingprefactivity_028,
         "长按复制" to R.string.settingtext_settingprefactivity_002,
         "长按视频快速缓存" to R.string.settingtext_settingsindex_026,
         "账号切换" to R.string.pagename_account_switch,

@@ -48,6 +48,7 @@ import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
+import com.RobinNotBad.BiliClient.util.TopbarLongPressPrefs
 import com.RobinNotBad.BiliClient.util.ViewCapabilityProbe
 
 import org.greenrobot.eventbus.EventBus
@@ -325,11 +326,14 @@ open class BaseActivity : AppCompatActivity() {
     }
 
     /**
-     * 长按顶栏（右侧时间区域）快速回到主菜单。
+     * 长按顶栏（整条 `R.id.top`，不只是右侧时间区域）快速打开菜单列表。
      *
      * readme 与 `docs/FEATURES.md` 一直承诺了这个手势，但代码里此前只有视频详情页实现了类似行为
      * （见 `VideoInfoActivity.setupLongPressToRoot`），这里补齐通用实现。
      * 子类若已自定义顶栏长按（如视频详情页），此处不覆盖。
+     *
+     * 手势本身受 `SettingsKeys.TOPBAR_LONG_PRESS_MENU_ENABLE`（`util/TopbarLongPressPrefs`）控制：
+     * 关掉后监听器**仍然安装**，只是在按下的回调里返回 true 把手势吞掉。
      */
     private fun setupTopbarLongPressToHome() {
         val topBar = findViewById<View>(R.id.top) ?: return
@@ -341,6 +345,11 @@ open class BaseActivity : AppCompatActivity() {
         if (this is MenuActivity) return
         topbarLongPressInstalled = true
         topBar.setOnLongClickListener {
+            // 开关在按下这一刻才读：用户可能在别的页面改完设置再回来，监听器不必重装。
+            // 关掉时必须返回 true 把手势吃掉，不能返回 false——长按回调返回 false 时 Android
+            // 会在抬手时把它回落成一次单击，而顶栏单击是「退出当前页 / 打开菜单」，等于把用户
+            // 想关掉的手势换成了另一种误触。
+            if (!TopbarLongPressPrefs.isEnabled()) return@setOnLongClickListener true
             val intent = Intent(this, MenuActivity::class.java)
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             startActivity(intent)

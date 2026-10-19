@@ -11,6 +11,7 @@ import com.RobinNotBad.BiliClient.ui.widget.RotaryEncoderSupport
 import com.RobinNotBad.BiliClient.util.LongPressPrefs
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
+import com.RobinNotBad.BiliClient.util.TopbarLongPressPrefs
 
 class SettingPrefActivity : RefreshListActivity() {
 
@@ -27,6 +28,10 @@ class SettingPrefActivity : RefreshListActivity() {
             // 与适配器里读的默认值不一致，症状是「设置页显示开着、长按却不是面板」。
             add(SettingSection("switch", "长按打开操作面板", SettingsKeys.LONG_PRESS_PANEL_ENABLE,
                 getString(R.string.desc_long_press_panel_enable), LongPressPrefs.DEFAULT_ENABLED.toString()))
+            // 同上：默认值引用 TopbarLongPressPrefs.DEFAULT_ENABLED，别写死 "true"。
+            add(SettingSection("switch", "长按顶部打开菜单", SettingsKeys.TOPBAR_LONG_PRESS_MENU_ENABLE,
+                getString(R.string.desc_topbar_long_press_menu_enable),
+                TopbarLongPressPrefs.DEFAULT_ENABLED.toString()))
             add(SettingSection("switch", "创作中心", SettingsKeys.CREATIVE_ENABLE, getString(R.string.desc_creative_enable), "true"))
             add(SettingSection("switch", "搜索建议", SettingsKeys.SEARCH_SUGGESTIONS_ENABLE,
                 getString(R.string.desc_search_suggestions_enable), "true"))

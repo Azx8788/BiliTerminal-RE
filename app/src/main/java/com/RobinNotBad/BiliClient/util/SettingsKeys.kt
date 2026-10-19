@@ -47,6 +47,12 @@ object SettingsKeys {
      * 默认值与判据见 `util/LongPressPrefs`，不要在别处写死字面量。
      */
     const val LONG_PRESS_PANEL_ENABLE = "long_press_panel_enable"
+    /**
+     * 长按顶部标题栏是否打开菜单列表页。
+     *
+     * 默认值与判据见 `util/TopbarLongPressPrefs`，不要在别处写死默认值。
+     */
+    const val TOPBAR_LONG_PRESS_MENU_ENABLE = "topbar_long_press_menu_enable"
     const val CREATIVE_ENABLE = "creative_enable"
     const val SEARCH_SUGGESTIONS_ENABLE = "search_suggestions_enable"
     const val BACK_DISABLE = "back_disable"
