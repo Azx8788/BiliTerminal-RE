@@ -1,8 +1,5 @@
 package com.RobinNotBad.BiliClient.api;
 
-import com.RobinNotBad.BiliClient.BiliTerminal;
-import com.RobinNotBad.BiliClient.R;
-
 import com.RobinNotBad.BiliClient.model.InteractionVideoData;
 import com.RobinNotBad.BiliClient.util.Logu;
 import com.RobinNotBad.BiliClient.util.NetWorkUtil;
@@ -40,7 +37,10 @@ public class InteractionVideoApi {
         
         int code = response.optInt("code", -1);
         if (code != 0) {
-            String message = response.optString("message", BiliTerminal.context.getString(R.string.msg_unknown_error));
+            // 默认值不能读资源：API 层不得碰 BiliTerminal.context（审计 M9），
+            // 而且 getString 在 JVM 单测里必然空指针
+            String message = response.optString("message", "");
+            if (message.isEmpty()) message = ApiErrorText.opFailed(code);
             throw new IOException("API返回错误: " + code + " - " + message);
         }
         

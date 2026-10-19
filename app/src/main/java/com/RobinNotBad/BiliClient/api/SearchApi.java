@@ -117,29 +117,21 @@ public class SearchApi {
                     videoCardList.add(new VideoCard(title, upName, playTimesStr, cover, aid, bvid, type));
                 }
             } else if (type.equals("media_bangumi") && first) {
+                // 聚合搜索里的番剧条目与 search_type=media_bangumi 的 data.result 同构，
+                // 不再保留第二套解析：旧实现用 getString 取字段（缺 index_show 时整页抛 JSONException）、
+                // 封面也没补 scheme。两处统一走 getBangumiFromSearchResult，容错与封面规则只维护一份。
                 JSONArray data = typecard.getJSONArray("data");
-                for (int j = 0; j < data.length(); j++) {
-                    JSONObject card = data.getJSONObject(j); // 获得番剧卡片
-
-                    String title = card.getString("title");
-                    title = title.replace("<em class=\"keyword\">", "").replace("</em>", "");
-                    // 标题里的红字,直接上面复制粘贴
-                    title = StringUtil.htmlToString(title);
-                    String cover = card.getString("cover");
-                    String upName = card.getString("areas");
-                    long aid = card.getLong("media_id");
-                    String bvid = card.getString("season_id");
-                    String playTimesStr = card.getString("index_show");
-                    videoCardList.add(new VideoCard(title, upName, playTimesStr, cover, aid, bvid, type));
-                }
+                getBangumiFromSearchResult(data, videoCardList);
             }
         }
     }
 
     /**
-     * 单独搜索番剧（search_type=media_bangumi）的结果拆解。
-     * 与 {@link #getVideosFromSearchResult} 里的 media_bangumi 分支不同：这里的 input 就是
-     * data.result 本身（一个番剧条目数组），外面没有再套一层 result_type，所以直接遍历即可。
+     * 番剧条目解析：聚合搜索与单独搜索共用这一份。
+     * <p>
+     * 单独搜索（search_type=media_bangumi）时 input 就是 data.result 本身（一个番剧条目数组），
+     * 外面没有再套一层 result_type；{@link #getVideosFromSearchResult} 的 media_bangumi 分支
+     * 则把 type 卡里的 data 数组传进来，两者条目同构，故复用同一套容错与封面规则。
      * <p>
      * 番剧条目里没有 aid/bvid，借用 VideoCard 的已有字段承载：
      * aid=media_id（剧集 mdid，番剧详情页正是用它拉取信息）、bvid=season_id（ssid，仅作稳定 id 用）、

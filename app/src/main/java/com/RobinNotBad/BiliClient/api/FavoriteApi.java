@@ -1,5 +1,5 @@
 package com.RobinNotBad.BiliClient.api;
-
+
 import com.RobinNotBad.BiliClient.R;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
@@ -494,11 +494,11 @@ public class FavoriteApi {
             case 0:
                 return "";
             case -101:
-                return "还没有登录喵~";
+                return ApiErrorText.loginRequired();
             case -111:
-                return "登录凭证已失效，请重新登录";
+                return ApiErrorText.tokenExpired();
             case -400:
-                return "请求出错了，请稍后再试";
+                return ApiErrorText.requestIllegal();
             case 11010:
                 return "内容不存在，可能已经被删除了";
             default:

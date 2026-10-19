@@ -422,7 +422,9 @@ public class NetWorkUtil {
 
     public static Response post(String url, String data, List<String> headers, String contentType) throws IOException {
         Logu.d("post-url", url);
-        Logu.d("post-data", data);
+        // 只记长度、不记 body：body 里常有 csrf（bili_jct）、refresh_token、access_key 等凭据，
+        // 而 Logu.d 的 logcat 这一路**不做脱敏**（脱敏只发生在落盘的 toFile 里），原文会直接进 logcat。
+        Logu.d("post-data", data == null ? "null" : ("length=" + data.length()));
         OkHttpClient client = getOkHttpInstance();
         RequestBody body = RequestBody.create(MediaType.parse(contentType + "; charset=utf-8"), data);
         Request.Builder requestBuilder = new Request.Builder().url(url).post(body);
@@ -433,7 +435,17 @@ public class NetWorkUtil {
             requestBuilder.addHeader(key, val);
         }
         Request request = requestBuilder.build();
-        return client.newCall(request).execute();
+        Response response = client.newCall(request).execute();
+        // 非 2xx 失败关闭：body 往往是空串或风控 HTML，交给调用方 new JSONObject() 只会退化成
+        // 「未知错误」，也可能让调用方把半截内容当成成功数据。口径与响应消费侧一致
+        // （UpdateManager.kt / DownloadService.kt 都先判 isSuccessful）。3xx 同样落在这里：
+        // 白名单外重定向由拦截器原样放回，本来就不该当成功处理。
+        if (!response.isSuccessful()) {
+            int code = response.code();
+            response.close();
+            throw new IOException("HTTP " + code + " " + request.url().encodedPath());
+        }
+        return response;
     }
 
     public static Response post(String url, String data, List<String> headers) throws IOException {
@@ -804,7 +816,9 @@ public class NetWorkUtil {
                 if (responseBody != null) sb.append(" | res=").append(responseBody);
 
                 String line = sb.toString();
-                Logu.d("http", line);
+                // logcat 这一路不过 [Logu.toFile]，不会自动脱敏：req=/res= 摘要里可能带 csrf（bili_jct）、
+                // refresh_token 等凭据，所以这里显式脱敏后再进 logcat；落盘那一路由 appendToFile 内部脱敏。
+                Logu.d("http", LogSanitizer.sanitize(line));
                 Logu.appendToFile(Logu.HTTP_LOG_NAME, "H", line);
             } catch (Exception ignored) {
                 // 追踪失败不影响请求本身

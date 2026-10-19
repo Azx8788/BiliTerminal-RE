@@ -190,9 +190,9 @@ public class NoteApi {
             case 0:
                 return "";
             case -101:
-                return "还没有登录喵~";
+                return ApiErrorText.loginRequired();
             case -400:
-                return "请求出错了，请稍后再试";
+                return ApiErrorText.requestIllegal();
             case 79502:
                 return "没有找到这篇笔记";
             case 79503:

@@ -1,5 +1,5 @@
 package com.RobinNotBad.BiliClient.api;
-
+
 import com.RobinNotBad.BiliClient.R;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
@@ -134,7 +134,7 @@ public class PrivateMsgApi {
                 user.mid = userJson.getLong("mid");
                 user.name = userJson.getString("name");
                 user.avatar = userJson.getString("face");
-                Log.e("", user.mid + user.name + user.avatar);
+                // 不再打印 mid + 昵称 + 头像：三者拼起来足以定位一个真实用户（审计 M12-a 的同类）
                 userMap.put(user.mid, user);
             }
         }
@@ -323,10 +323,13 @@ public class PrivateMsgApi {
                 + "&mobi_app=web";
 
         Response response = NetWorkUtil.post(url, per, NetWorkUtil.webHeaders);
-        if (response.body() != null) {
-            return new JSONObject(response.body().string());
+        if (response == null) return new JSONObject();
+        // 非 2xx（412 风控 / 5xx）时 body 是 HTML，解析会抛 JSONException；返回空对象，
+        // 调用方 optInt("code", -1) 拿到 -1，再由 sessionErrorMsg 翻译成人话
+        try (Response resp = response) {
+            if (!resp.isSuccessful() || resp.body() == null) return new JSONObject();
+            return new JSONObject(resp.body().string());
         }
-        return new JSONObject();
     }
 
     /**
@@ -399,7 +402,7 @@ public class PrivateMsgApi {
             case 0:
                 return "";
             case -101:
-                return "还没有登录喵~";
+                return ApiErrorText.loginRequired();
             case -400:
                 return "请求错误，会话可能已不存在";
             default:

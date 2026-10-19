@@ -1,5 +1,5 @@
 package com.RobinNotBad.BiliClient.api;
-
+
 import com.RobinNotBad.BiliClient.R;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
@@ -421,13 +421,13 @@ public class ReplyApi {
             case 0:
                 return "";
             case -101:
-                return "还没有登录喵~";
+                return ApiErrorText.loginRequired();
             case -102:
                 return "账号已被封停";
             case -111:
-                return "登录凭证已失效，请重新登录";
+                return ApiErrorText.tokenExpired();
             case -400:
-                return "请求错误";
+                return ApiErrorText.requestIllegal();
             case -404:
                 return "评论不存在";
             case -509:

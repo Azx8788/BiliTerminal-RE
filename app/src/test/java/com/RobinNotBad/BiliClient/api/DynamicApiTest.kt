@@ -2,6 +2,7 @@ package com.RobinNotBad.BiliClient.api
 
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,11 +18,13 @@ class DynamicApiTest {
     }
 
     @Test
-    fun buildUploadId_isDeterministicForSameInput() {
-        assertEquals(
-            DynamicApi.buildUploadId(1L, 2L, 3),
-            DynamicApi.buildUploadId(1L, 2L, 3)
-        )
+    fun buildUploadId_不同输入产生不同id() {
+        // 同参两次相等是纯函数恒真断言，抓不到任何实现错误；
+        // 这里钉住三个分量都参与拼接（具体格式由上面 buildUploadId_matchesExpectedFormat 钉死）。
+        val base = DynamicApi.buildUploadId(12345L, 1700000000L, 6789)
+        assertNotEquals(base, DynamicApi.buildUploadId(12346L, 1700000000L, 6789))
+        assertNotEquals(base, DynamicApi.buildUploadId(12345L, 1700000001L, 6789))
+        assertNotEquals(base, DynamicApi.buildUploadId(12345L, 1700000000L, 6790))
     }
 
     @Test
@@ -233,5 +236,64 @@ class DynamicApiTest {
         assertEquals("字段必须是真值，不能是 Android 桩的 null", "#人话#", node.text)
         assertEquals(42L, node.topicId)
         assertTrue(node.isClickable)
+    }
+
+    // ==================== 表情 / @ 混排（26.10.19：修掉「无 @ 时正文重复一遍」） ====================
+
+    private fun rawTexts(contents: JSONArray): List<String> =
+        (0 until contents.length()).map { contents.getJSONObject(it).getString("raw_text") }
+
+    private fun nodeTypes(contents: JSONArray): List<Int> =
+        (0 until contents.length()).map { contents.getJSONObject(it).getInt("type") }
+
+    /**
+     * 回归守卫：`parseAtContent` 在没有 @ 时曾把整段正文 put 两遍（尾部补一次 + isEmpty 分支再补一次）。
+     * 症状是发布出去的文本动态正文重复一遍——所以要钉住**节点数**，不能只比文本内容。
+     */
+    @Test
+    fun parseAtContent_withoutAtEmitsBodyOnce() {
+        val contents = DynamicApi.parseAtContent("今天天气不错", emptyMap())
+        assertEquals(1, contents.length())
+        assertEquals(listOf("今天天气不错"), rawTexts(contents))
+        assertEquals(listOf(1), nodeTypes(contents))
+    }
+
+    /** emoteTexts 里确实有的 [xxx] 才转 type 9（否则用户随手打的方括号会被当成表情发出去）。 */
+    @Test
+    fun buildContents_emoteInSetBecomesType9() {
+        val contents = DynamicApi.buildContents("转发[doge]", emptyMap(), setOf("[doge]"))
+        assertEquals(listOf(1, 9), nodeTypes(contents))
+        assertEquals(listOf("转发", "[doge]"), rawTexts(contents))
+    }
+
+    @Test
+    fun buildContents_emoteNotInSetStaysPlainText() {
+        val contents = DynamicApi.buildContents("转发[doge]", emptyMap(), emptySet())
+        assertEquals(1, contents.length())
+        assertEquals(listOf(1), nodeTypes(contents))
+        assertEquals(listOf("转发[doge]"), rawTexts(contents))
+
+        // emoteTexts 非空但不含这个表情时也不能转
+        val other = DynamicApi.buildContents("[doge]", emptyMap(), setOf("[妙]"))
+        assertEquals(1, other.length())
+        assertEquals(listOf("[doge]"), rawTexts(other))
+    }
+
+    /** @ 节点与紧跟的表情节点必须相邻、顺序不乱（biz_id 是 uid 字符串）。 */
+    @Test
+    fun buildContents_atNodeIsAdjacentToEmoteNode() {
+        val contents = DynamicApi.buildContents("@某人 [doge]", mapOf("某人" to 123L), setOf("[doge]"))
+        assertEquals(listOf(2, 9), nodeTypes(contents))
+        assertEquals("@某人 ", contents.getJSONObject(0).getString("raw_text"))
+        assertEquals("123", contents.getJSONObject(0).getString("biz_id"))
+        assertEquals("[doge]", contents.getJSONObject(1).getString("raw_text"))
+    }
+
+    /** 表情后面还剩的正文要作为独立的 type 1 节点留下，不能丢。 */
+    @Test
+    fun buildContents_keepsTrailingTextAfterEmote() {
+        val contents = DynamicApi.buildContents("@某人 哈哈哈哈[doge]", mapOf("某人" to 7L), setOf("[doge]"))
+        assertEquals(listOf(2, 1, 9), nodeTypes(contents))
+        assertEquals(listOf("@某人 ", "哈哈哈哈", "[doge]"), rawTexts(contents))
     }
 }

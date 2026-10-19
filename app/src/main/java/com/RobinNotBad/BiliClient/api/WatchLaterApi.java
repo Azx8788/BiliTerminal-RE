@@ -174,8 +174,10 @@ public class WatchLaterApi {
         }
 
         Response response = NetWorkUtil.getOkHttpInstance().newCall(request).execute();
-        JSONObject result = new JSONObject(Objects.requireNonNull(response.body()).string());
-
-        return result.getInt("code");
+        // 412 风控页 / 5xx 返回 HTML，直接 new JSONObject 会抛 JSONException；-1 表示请求没成功
+        try (Response resp = response) {
+            if (!resp.isSuccessful() || resp.body() == null) return -1;
+            return new JSONObject(resp.body().string()).optInt("code", -1);
+        }
     }
 }

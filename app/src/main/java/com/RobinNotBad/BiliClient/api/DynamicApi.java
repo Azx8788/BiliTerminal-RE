@@ -35,6 +35,8 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -200,11 +202,14 @@ public class DynamicApi {
                 .put("dyn_id_str", String.valueOf(dynId));
 
         Logu.v("editDynamic reqBody=" + body);
-        Response resp = Objects.requireNonNull(NetWorkUtil.postJson(signedUrl, body.toString()));
-        ResponseBody responseBody = resp.body();
-        if (responseBody == null) return -1;
-        JSONObject result = new JSONObject(responseBody.string());
-        return result.optInt("code", -1);
+        Response resp = NetWorkUtil.postJson(signedUrl, body.toString());
+        // 412 风控页 / 5xx 时 body 是 HTML，直接 new JSONObject 会把「失败」变成一次 JSONException；
+        // 用 -1 表示「请求没成功」，调用方按非 0 码提示即可
+        if (resp == null) return -1;
+        try (Response response = resp) {
+            if (!response.isSuccessful() || response.body() == null) return -1;
+            return new JSONObject(response.body().string()).optInt("code", -1);
+        }
     }
 
     /**
@@ -221,11 +226,13 @@ public class DynamicApi {
         String url = "https://api.bilibili.com/x/dynamic/feed/" + topPath(top)
                 + "?csrf=" + NetWorkUtil.currentCsrf();
         JSONObject body = new JSONObject().put("dyn_str", String.valueOf(dynId));
-        Response resp = Objects.requireNonNull(NetWorkUtil.postJson(url, body.toString()));
-        ResponseBody responseBody = resp.body();
-        if (responseBody == null) return -1;
-        JSONObject result = new JSONObject(responseBody.string());
-        return result.optInt("code", -1);
+        Response resp = NetWorkUtil.postJson(url, body.toString());
+        // 同上：非 2xx 时不解析，直接按失败返回
+        if (resp == null) return -1;
+        try (Response response = resp) {
+            if (!response.isSuccessful() || response.body() == null) return -1;
+            return new JSONObject(response.body().string()).optInt("code", -1);
+        }
     }
 
     /**
@@ -253,10 +260,10 @@ public class DynamicApi {
             case 0:
                 return "";
             case -101:
-                return "还没有登录喵~";
+                return ApiErrorText.loginRequired();
             case -102:
             case -111:
-                return "登录凭证已失效，请重新登录";
+                return ApiErrorText.tokenExpired();
             case 4100001:
                 return "动态 id 不对，请刷新后重试";
             case -404:
@@ -288,7 +295,7 @@ public class DynamicApi {
             case -101:
             case -102:
             case -111:
-                return "登录凭证已失效，请重新登录";
+                return ApiErrorText.tokenExpired();
             case -400:
                 return "编辑的内容不合规范，请修改后再试";
             case -403:
@@ -577,43 +584,77 @@ public class DynamicApi {
     public static JSONArray parseAtContent(String content, Map<String, Long> atUserUid) throws JSONException {
         JSONArray contentJSONArray = new JSONArray();
 
-        Set<Pair<Integer, Integer>> indexes = new HashSet<>();
-        Map<Pair<Integer, Integer>, Long> uidIndexes = new HashMap<>();
+        Set<AtRange> indexes = new HashSet<>();
+        Map<AtRange, Long> uidIndexes = new HashMap<>();
         for (Map.Entry<String, Long> entry : atUserUid.entrySet()) {
             String key = entry.getKey();
             long val = entry.getValue();
 
             Pattern pattern = Pattern.compile("@" + Pattern.quote(key) + " ");  //昵称里可能带 .*[\ 等正则元字符，不转义会抛 PatternSyntaxException
             Matcher matcher = pattern.matcher(content);
-            List<Pair<Integer, Integer>> mIndex = new ArrayList<>();
+            List<AtRange> mIndex = new ArrayList<>();
             while (matcher.find()) {
                 int start = matcher.start();
                 // 不包含空格，我直接按照我抓的请求内容弄的
                 int end = matcher.end();
-                Pair<Integer, Integer> pair = new Pair<>(start, end);
-                mIndex.add(pair);
-                uidIndexes.put(pair, val);
+                AtRange range = new AtRange(start, end);
+                mIndex.add(range);
+                uidIndexes.put(range, val);
             }
             indexes.addAll(mIndex);
         }
 
-        ArrayList<Pair<Integer, Integer>> indexesList = new ArrayList<>(indexes);
+        ArrayList<AtRange> indexesList = new ArrayList<>(indexes);
+        // 多个 @ 时必须按出现位置升序切；HashSet 的顺序不保证升序，乱序时 substring(pos, start) 会 start < pos 直接抛越界
+        Collections.sort(indexesList, new Comparator<AtRange>() {
+            @Override
+            public int compare(AtRange a, AtRange b) {
+                return Integer.compare(a.start, b.start);
+            }
+        });
         int pos = 0;
-        for (Pair<Integer, Integer> index : indexesList) {
-            int start = index.first;
-            int end = index.second;
-            String sub = content.substring(pos, start);
+        for (AtRange index : indexesList) {
+            String sub = content.substring(pos, index.start);
             if (!sub.isEmpty()) contentJSONArray.put(Content.create(sub, 1, null));
-            String subAt = content.substring(start, end);
+            String subAt = content.substring(index.start, index.end);
             if (!subAt.isEmpty())
                 contentJSONArray.put(Content.create(subAt, 2, String.valueOf(uidIndexes.get(index))));
-            pos = end;
+            pos = index.end;
         }
+        // 尾部剩余正文只在这里补一次。旧实现下面还有一行 indexesList.isEmpty() 时整段 content 再 put 一遍，
+        // 没有 @ 的文本会被当成两个正文节点发出去（buildContents 的调用方全都会走这里）
         String sub = content.substring(pos);
         if (!sub.isEmpty()) contentJSONArray.put(Content.create(sub, 1, null));
-
-        if (indexesList.isEmpty()) contentJSONArray.put(Content.create(content, 1, null));
         return contentJSONArray;
+    }
+
+    /**
+     * 一个 @ 片段在正文里的位置区间。
+     * <p>
+     * 刻意不用 {@code android.util.Pair}：它在 JVM 单测里是 Android 桩，构造出的对象字段恒为 null，
+     * 会让 {@link #parseAtContent} / {@link #buildContents} 完全无法单测。
+     */
+    private static final class AtRange {
+        final int start;
+        final int end;
+
+        AtRange(int start, int end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof AtRange)) return false;
+            AtRange other = (AtRange) o;
+            return start == other.start && end == other.end;
+        }
+
+        @Override
+        public int hashCode() {
+            return start * 31 + end;
+        }
     }
 
     /**
