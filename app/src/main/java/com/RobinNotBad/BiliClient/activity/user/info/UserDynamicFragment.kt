@@ -54,8 +54,10 @@ class UserDynamicFragment : RefreshListFragment() {
                 val userInfo = UserInfoApi.getUserInfo(mid)
                 if (userInfo == null) {
                     runOnUiThread {
-                        MsgUtil.showMsg("用户不存在")
-                        requireActivity().finish()
+                        MsgUtil.showMsg(UiText.of("用户不存在"))
+                        // 这里用 activity? 而不是 requireActivity()：回调是 post 到主线程的，
+                        // 真正执行时 Fragment 可能已经 onDetach，requireActivity() 会抛 ISE
+                        activity?.finish()
                     }
                     return@run
                 }
@@ -70,11 +72,14 @@ class UserDynamicFragment : RefreshListFragment() {
                 }
 
                 if (isAdded) {
-                    adapter = UserDynamicAdapter(requireContext(), dynamicList, userInfo)
-                    setAdapter(adapter!!)
+                    val newAdapter = UserDynamicAdapter(requireContext(), dynamicList, userInfo)
+                    adapter = newAdapter
+                    setAdapter(newAdapter)
                     setRefreshing(false)
                 }
             } catch (e: Exception) {
+                // 首屏失败时 adapter 会一直是 null（本页没有重试入口），
+                // 后续翻页回调必须容忍 adapter 为空，见 continueLoading()
                 loadFail(e)
             }
         }
@@ -87,20 +92,35 @@ class UserDynamicFragment : RefreshListFragment() {
                 val list: MutableList<Dynamic> = ArrayList()
                 offset = DynamicApi.getDynamicList(list, offset, mid, null)
                 runOnUiThread {
+                    // 数据在主线程累加：adapter 持有的就是 dynamicList 这一个实例，
+                    // 所以即使下面不通知 UI，数据也不会丢。
                     dynamicList.addAll(list)
-                    adapter!!.notifyItemRangeInserted(dynamicList.size - list.size + 1, list.size)
+                    // 26.10.16 线上 NPE(#43–#49，无 message) 就出在这句 adapter!! 上：
+                    // 首屏加载失败时 onViewCreated 的 catch 只调了 loadFail()（已把刷新态复位）、
+                    // adapter 从未被赋值，用户再拖动列表就会触发翻页，回调里 adapter!! 直接抛 NPE。
+                    // 另外 view 已销毁时也不要再碰 UI（防止对已解绑的 RecyclerView 发通知）。
+                    if (isAdded && view != null) {
+                        adapter?.notifyItemRangeInserted(
+                            dynamicList.size - list.size + 1,
+                            list.size
+                        )
+                    }
                 }
                 bottom = (offset == -1L)
-                setRefreshing(false)
             } catch (e: Exception) {
                 loadFail(e)
+            } finally {
+                // 成功、失败、以及上面 UI 回调里的提前放弃都不能卡住刷新态，
+                // 否则下拉/翻页会永久转圈（协议：加载完必须 setRefreshing(false)）
+                setRefreshing(false)
             }
         }
     }
 
     fun onDynamicRemove(position: Int) {
         try {
-            DynamicHolder.removeDynamicFromList(dynamicList, position, adapter!!)
+            // 首屏失败时 adapter 可能为 null；位置也可能是旧的（动态已被删除）→ 保持原有吞异常行为
+            adapter?.let { DynamicHolder.removeDynamicFromList(dynamicList, position, it) }
         } catch (ignored: Throwable) {
         }
     }
