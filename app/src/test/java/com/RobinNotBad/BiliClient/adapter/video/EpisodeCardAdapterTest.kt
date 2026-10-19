@@ -28,4 +28,16 @@ class EpisodeCardAdapterTest {
         assertEquals(BadgeKind.NONE, EpisodeCardAdapter.badgeKind(null))
         assertEquals(BadgeKind.NONE, EpisodeCardAdapter.badgeKind(""))
     }
+
+
+    @Test
+    fun badgeKind_含关键字的文案_也按关键字归类() {
+        // 服务端文案不是稳定枚举：会带前后缀（"大会员"、"会员抢先"），所以判据必须是 contains。
+        assertEquals(BadgeKind.VIP, EpisodeCardAdapter.badgeKind("大会员"))
+        assertEquals(BadgeKind.VIP, EpisodeCardAdapter.badgeKind("会员抢先"))
+        // "限时免费"不含"限免"两字，走的是 OTHER 分支——这是当前实现的确定行为，
+        // 若将来服务端给这个词而我们要显示成免费，必须先改 badgeKind 再加用例。
+        assertEquals(BadgeKind.OTHER, EpisodeCardAdapter.badgeKind("限时免费"))
+        assertEquals(BadgeKind.FREE, EpisodeCardAdapter.badgeKind("限免试看"))
+    }
 }

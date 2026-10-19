@@ -106,7 +106,7 @@ adb pull $LOG/bridge-last.txt ./bridge-last.txt        # 拷到本地（实测�
 | `start` | `--es activity` `[--es extras "aid=2;seekReply=-1"]` `[--ez keepstack true]` | **进程内拉起任意 Activity**（含 `exported=false` 的）；默认 `CLEAR_TOP`，即目标页之上一律清掉 |
 | `activities` | — | 列出全部可启动的 Activity 全名 |
 | `notutorials` | — | 把全部教程标记为已读（不做的后果见 §6） |
-| `http` | `--es url` `[--es method]` `[--es data]` `[--es headers '<JSON>']` `[--ez appheaders false]` | 用**应用自己的登录态与请求头**发一次请求，响应体全文落盘 |
+| `http` | `--es url` `[--es method]` `[--es data]` `[--es headers '<JSON>']` `[--ez appheaders true]` | 发一次请求，响应体全文落盘。**`appheaders` 默认 false（26.10.19 起）：不带应用请求头（含登录 Cookie / `X-Install-Id`）；显式传 true 才用应用自己的登录态与请求头** |
 | `log` | `[--es file]` `[--es bytes]` | 读日志尾部（默认 `rebili.log`，65536 字节） |
 | `logs` | — | 列出日志文件及大小 |
 | `logclear` | `[--es file]` | 清空日志 |

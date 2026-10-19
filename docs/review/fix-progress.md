@@ -792,6 +792,20 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - B 路刻意未动 `PlayerActivity` 另外 4 处「加载成功之后」的 `IjkMediaPlayer()` 构造（听视频切换 / 直播换线路 / 切清晰度 / 换 P），此时 `mIsLibLoaded` 已为 true，不会再碰 .so。
 - #43–#49 是否绝迹要看下一版发布后的后台；若同一 `T0.A.run` 栈再现，需要**用新版 mapping 重新 retrace**（mapping 不进版本库，`clean` 后即失）。
 
+### 3.30 全面代码审查修复批次（26.10.19，基线 `2d2b63b` → `0ea6ce4`）
+
+- **来源**：用户 `/code-review`，从上次安全审计（`docs/archive/review/audit-2026-09-24.md`，基线 `2d2b63b`）审到 HEAD。两轴（Standards / Spec）、8 个审查单元，共 **18 条硬性 + 56 条判断 + 若干 Spec 缺口**；本轮集中修复，明确跳过的项列在最后。
+- **凭据落盘**：`util/Logu.java` 的 `appendToFile` 改为**先 `LogSanitizer.sanitize` → 再 shorten → 再 enqueue**；`util/NetWorkUtil.java` 的 HTTP 追踪进 logcat 前同样先脱敏；`util/LogSanitizer.kt` 扩到 **4 种形态**（`键=值` / URL 编码 / JSON 键值 / 裸手机号）并补 `access_token`、`buvid3/4`、`phone` 等键，`LogSanitizerTest.kt` 18 个用例。**这是唯一未过脱敏的落盘入口，现在闭环。**
+- **隐私闸**：`TerminalApi.headers()` 的 `X-Install-Id` 挂 `hasPrivacyConsent()`（同意前不上报）；`buildCrashPayload` 补 `is_coexist`（保留旧 21 参重载供单测）；DebugBridge 的 `get` 与 `dump` 统一打码、`http` 的 `appheaders` 默认改 **false**；反馈输入框补 `maxLength=4000`。
+- **网络 / 下载**：`NetWorkUtil.post` 非 2xx 关流并抛 `IOException`（不再把错误页当成功）；`DownloadActivity` 写盘前判 `isSuccessful` + `content-length`、`onDestroy` 只删本次写过的文件；`FileUtil.cleanDownloadTempFiles` 改为**成品缺失时用 `.bak` 恢复**、成品存在才删 `.bak`；DASH 音视频替换原子化（失败回滚）；失败分片的已计字节回滚；`DownloadSqlHelper` 的 `ALTER` 失败不再 drop 整表。
+- **播放器**：直播分支补 `reconnect_at_eof=1`（点播不加，见 `docs/architecture-map.md` §7.45）；短视频删 `infbuf=1`（与 `max-buffer-size` 矛盾）；起 `PlaybackService` 前判 `isPlaying`；跨线程播放状态字段补 `@Volatile`；片头片尾功能关闭时不再 `buildSegments`；4 处裸 `IjkMediaPlayer()` 改走 `createIjkPlayerOrBail()`；8 处文案迁 `R.string`。
+- **API**：七张散落的错误码表收敛到 `api/ApiErrorText.kt`（新增 `loginRequired` / `tokenExpired` / `requestIllegal`）；三个新 POST 补 `isSuccessful` 与 try-with-resources；`SearchApi` 番剧卡片解析复用纯函数（删第二套）；`DynamicApi.parseAtContent` 修「无 @ 时正文写两遍」并按 `start` 排序；`buildContents` / `containsEmoteText` 补 5 个单测；私信日志去 PII。
+- **UI**：`MessageActivity` 失败分支复位 `isRefreshing` / `isEnabled`（不再永久转圈）；`DynamicHolder` / `ReplyAdapter` / `FavoriteVideoListActivity` 的管理动作改为**结构化 `kind` + `danger`**，不再拿显示文案当身份标识；收藏夹 / 稍后再看 / 关注分组改确认弹窗并按 `aid` 重定位；`BangumiInfoFragment` 追番状态加 token 世代守卫、切季后重取 `seasonId`；`DynamicAdapter` 的筛选参数改稳定 `value`；`SearchActivity` / `WriteReplyActivity` 的匹配关键词还原成普通字符串；写死色值改 `?attr/` 或 `ColorScheme`；文案迁移补 **63 个资源键**（strings.xml + `UiText` MAP 56 条）。
+- **基建**：`ci.yml` 的 upload 路径适配 flavor 产物目录（`apk/*/debug/*.apk`）；minSdk 注释统一到 19；`PasswordEncryptUtil` 的 `strip()`（API 33）改 `trim()` —— 这是 **API 19–32 密码登录静默失败**的根因。
+- **明确跳过 / 保留**：`tutorial/Tutorials.kt` 的过度拆分未回并（不在本轮范围）；`TopicDynamicAdapter` 仍用旧入口；`episodeStatusText` / `STATUS_TEXT_FALLBACK` 仍字面量（被 `BangumiInfoFragmentTest` 断言钉死）；`LocalPageChooseActivity` 同类路径问题；`WatchLater` multipart 收敛与 `ConfInfoApi.signWBI` 锁（改动风险大）；`DownloadActivity` 覆盖同名成品仍直接截断（中途断流会丢旧成品）。
+- **台账更正**：§3.18 里「`PlayerData` 加 `collectionId`/`collectionTitle`/`returnPlaylist`（Parcelable）」是**当时的描述**；现状是这三个字段为 `PlayerActivity` 私有字段（`PlayerData` 只有 `virtualCollection` / `enterableInfo`），系统重建时会丢返回栈，见本次 Spec 报告。
+- **验证（26.10.19 全绿）**：`:app:clean`（42s）→ `:app:assembleDebug`（2m10s，standard + coexist 各 4 个 ABI 包，`BUILD SUCCESSFUL`）→ `:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest`（18s，`BUILD SUCCESSFUL`）。单测读自 `app/build/test-results/`：两个 flavor 各自 **62 suites / 629 tests / 0 failures / 0 errors / 0 skipped**（较上轮 61/601 增加 1 套 27 例：`SearchApiTest`、`DynamicApiTest` 新增用例、`LogSanitizerTest` 扩充等）。命令均带 `--offline --no-configuration-cache`；`clean` 与 `assemble` 分两次调用。未跑真机（本机无在线设备），UI 时序类修复仍需真机复测。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

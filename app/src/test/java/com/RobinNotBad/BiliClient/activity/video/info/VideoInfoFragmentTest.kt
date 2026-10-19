@@ -20,11 +20,9 @@ class VideoInfoFragmentTest {
         assertTrue(VideoInfoFragment.shouldReportHistoryOnEnter(cidHistory = 1001L, cid = 1001L))
     }
 
-    /** 场景②：本分P有续播位置，原样回写，幂等无害。 */
-    @Test
-    fun 本分P有续播进度_原样回写() {
-        assertTrue(VideoInfoFragment.shouldReportHistoryOnEnter(cidHistory = 1001L, cid = 1001L))
-    }
+    // 场景②（本分P有续播位置、原样回写）与场景①在本判据上传入参数相同（都满足
+    // cid != 0 && cidHistory == cid），所以不另设用例——多一条同样的断言只会制造
+    // "测了两件事"的假象。判据本身在 VideoInfoFragment.kt:218-219 只有这一条。
 
     /**
      * 场景③：多P视频，上次看的是第 3P（cidHistory=3003），详情页预取的是第 1P（cid=1001）。

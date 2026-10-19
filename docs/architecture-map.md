@@ -1185,6 +1185,18 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 全文见 `docs/review/fix-progress.md` §3.19 / §3.29。
 
+### 7.45 26.10.19 审查修复批次留下的新约束
+
+1. **落盘必须先脱敏**：`util/Logu.java` 的 `appendToFile` 现在是「`LogSanitizer.sanitize` → shorten → enqueue」，`util/NetWorkUtil.java` 的 HTTP 追踪进 logcat 前也先脱敏。**新增任何写文件/打日志的通道要复用 `LogSanitizer`**，别再直接 `write` 原始请求体；Agent 测试模式的 `logs/http.log` 是历史泄露点，已闭环。
+2. **`LogSanitizer` 的边界**（`util/LogSanitizer.kt`）：覆盖 `键=值`、URL 编码、JSON 键值、裸 11 位手机号四形态；JSON 的数字值、以及任何 `1[3-9]` 开头 11 位数字都会被替换成 `***`（误伤是有意代价）。键表见文件里的 `EXTRA_SENSITIVE_KEYS`。
+3. **`.bak` 不是垃圾**：`DownloadService.safeReplaceTemp(..., keepBackup = true)`（`service/DownloadService.kt:798-830`）会在切清晰度重下时把旧成品改名成 `.bak`；`util/FileUtil.cleanDownloadTempFiles`（`util/FileUtil.java:85-111`）必须**成品缺失才用 `.bak` 恢复、成品存在才删**。改清理逻辑时别再一句 `delete("*.bak")`。
+4. **`reconnect_at_eof=1` 只放直播分支**：`activity/player/PlayerActivity.kt:1126-1132`，在 `isLiveMode` 内才设；点播设了会在播完后无限重连（见 `docs/superpowers/specs/2026-10-11-player-network-resilience.md` P0-1）。
+5. **`NetWorkUtil.post` 非 2xx 现在会抛 `IOException`**（`util/NetWorkUtil.java:443-447`），调用点必须按失败处理；`get` 仍不 `followRedirects`，3xx 原样返回，下载链路要自己判 `code()`（`activity/DownloadActivity.kt`）。
+6. **DebugBridge 的 `http` 默认不带应用请求头**（`appheaders` 默认 false，`app/src/debug/.../debug/DebugBridge.kt:521` 附近）：要带登录态必须显式 `--ez appheaders true`，这是为了不再无脑把 Cookie 写进 `logs/`。
+7. **`X-Install-Id` 受隐私同意闸控制**（`api/TerminalApi.java:535-547` 的 `headers()`）；反馈链路另走 `feedbackHeaders()`（`:763-778`）在未同意时补回，否则反馈无归属。改这两处前先读注释。
+8. **CI 的 debug APK 路径已适配 flavor**：`.github/workflows/ci.yml:106-108` 是 `app/build/outputs/apk/*/debug/*.apk`；再写死 `apk/debug` 会每次 push 必红。
+9. **minSdk 19 线上不要用 `String.strip()`**（API 33）：`util/PasswordEncryptUtil.java:18` 从 `strip()` 改回 `trim()`，否则 API 19–32 密码登录静默失败（`NoSuchMethodError` 是 `Error`，外层 `catch (Exception)` 兜不住）。同批把 6 处过时 minSdk 注释（写 21/24）统一到 `app/build.gradle:21` 的 19。
+
 ## 8. UI 基建速查（新增页面临摹用）
 
 ### 8.1 完整继承体系
