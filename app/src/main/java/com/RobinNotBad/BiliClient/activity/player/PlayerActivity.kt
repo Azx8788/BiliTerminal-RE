@@ -108,6 +108,9 @@ import java.util.regex.Pattern
 import kotlin.math.abs
 
 class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
+    // @Volatile：PlaybackService 的定时线程会读它（见下方「后台播放服务（PlaybackService）状态桥」），
+    // 不加的话主线程写的值不保证被服务线程看见。
+    @Volatile
     private var destroyed = false
 
     private var ijkPlayer: IjkMediaPlayer? = null
@@ -184,9 +187,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var danmaku_url: String = ""
     private var mediaSession: MediaSession? = null
 
+    @Volatile // 被 PlaybackService 定时线程读（serviceIsPlaying）
     private var isPlaying: Boolean = false
     // 主线程写、弹幕渲染线程读（见 bindDanmakuView 里的位置回调），必须 volatile，
     // 否则弹幕线程可能长时间读到过期的 true，继续把重建窗口期的脏位置灌进 DanmakuTimer
+    // 另：PlaybackService 的定时线程也会读它（serviceIsPlaying），同样需要可见性保证
     @Volatile
     private var isPrepared: Boolean = false
     private var hasDanmaku: Boolean = false
@@ -214,10 +219,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         private const val STALL_RECOVERED_MS = 5_000
     }
 
+    @Volatile // 被 PlaybackService 定时线程读（serviceDurationMs）
     private var video_all: Int = 0
     // 主线程的 progressChange 定时器写、弹幕渲染线程读（见 bindDanmakuView 的位置回调），
     // 必须 volatile：弹幕线程不再直接调 ijkPlayer.currentPosition（那是取原生锁的 JNI 调用），
     // 只读这个内存值，没有 volatile 可能长期读到 0 / 过期位置，导致弹幕时间轴错乱。
+    // 另：PlaybackService 的定时线程也会读它（servicePositionMs），同样需要可见性保证
     @Volatile
     private var video_now: Int = 0
     private var video_now_last: Int = 0
@@ -421,6 +428,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var pagenames: ArrayList<String>? = null
     private var cids: ArrayList<Long>? = null
     private var currentPageIndex = 0
+    @Volatile // 被 PlaybackService 定时线程读（serviceTitle）
     private var videoTitle: String? = null
 
     private var qnStrList: Array<String>? = null
@@ -1115,6 +1123,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "addrinfo_timeout", 5_000_000L)
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_streamed", 1L)
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_delay_max", 5L)
+            // 4) reconnect_at_eof：直播流被服务端"正常收尾"（chunked 响应干净 EOF）时，
+            //    ffmpeg 会当成播完了，reconnect/reconnect_streamed 都不会触发。只有直播加这一项
+            //    （spec 的 P0-1 明确要求，见 docs/superpowers/specs/2026-10-11-player-network-resilience.md
+            //    §1 第 3 条、§4 P0-1）；点播的 EOF 就是真的播完，加了会无限重连，故只放在直播分支。
+            if (isLiveMode) {
+                ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_at_eof", 1L)
+            }
             Logu.v("设置ua")
         }
 
@@ -2194,10 +2209,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         reportProgressNow(false, UiText.of("切后台"))
         if (!SharedPreferencesUtil.getBoolean("player_background", false)) {
             playerPause()
-        } else if (!isFinishing && isPrepared && !finishWatching) {
+        } else if (!isFinishing && isPrepared && !finishWatching && isPlaying) {
             // 开了"后台/熄屏继续播放"：交给前台服务保活，同时挂出通知栏遥控。
             // 起前台服务放在 onPause 是刻意的——此时应用还有可见界面，落在 Android 12
             // 后台启动限制的豁免范围内；退到完全后台后再起会被平台直接拒绝。
+            // 暂停态不必起服务：没有声音要保活，通知也无事可报；若起了，onResume 会立刻
+            // PlaybackService.stop 掉，等于白起白停一次（还闪一下通知）。
             PlaybackService.start(this, this)
         }
     }
@@ -2934,7 +2951,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         // onDestroy 已置 destroyed=true 并 release/置空 ijkPlayer，此处若无守卫就会重建出一个
                         // 永不释放的 native 播放器（泄漏，且 surface 已销毁时可能直接崩）。
                         if (destroyed || isFinishing()) return@runOnUiThread
-                        ijkPlayer = IjkMediaPlayer()
+                        // 原生库不可用时 helper 自己提示并 finish，这里只需停下重建
+                        ijkPlayer = createIjkPlayerOrBail() ?: return@runOnUiThread
                         progress_history = currentPosition
                         setDisplay()
                     }
@@ -3072,13 +3090,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             // 标题要说清"现在在哪一层"：同一个"第 3 集"，在收藏夹连播里、在合集里、
             // 在多P视频的分P 里指的是完全不同的东西
             val size = pagenames!!.size
+            // 层级标题 + 位置后缀：「合集 · 名字（3/12）」这类文案不再硬编码，
+            // 前缀复用 UiText 里已有的「合集 · %s」，位置后缀是共享模板（三种层级都用）。
+            val pagePosition = getString(R.string.text_player_page_position, currentPageIndex + 1, size)
             findViewById<TextView>(R.id.page_selector_title).text = when {
                 collectionId != 0L ->
-                    "合集 · ${collectionTitle ?: ""}（${currentPageIndex + 1}/$size）"
+                    UiText.fmt(UiText.of("合集 · %s"), collectionTitle ?: "") + pagePosition
                 multiPageAid != 0L ->
-                    "分P · ${multiPageTitle ?: ""}（${currentPageIndex + 1}/$size）"
+                    getString(R.string.text_player_multi_page_prefix, multiPageTitle ?: "") + pagePosition
                 isVirtualCollectionMode ->
-                    "${rootTitle ?: videoTitle ?: UiText.of("收藏夹连播")}（${currentPageIndex + 1}/$size）"
+                    "${rootTitle ?: videoTitle ?: UiText.of("收藏夹连播")}" + pagePosition
                 else -> UiText.of("选择分P")
             }
 
@@ -3089,13 +3110,17 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             val nestEntry = findViewById<TextView>(R.id.page_selector_nest)
             val enterable = when {
                 returnPlaylist != null -> null
-                enterableCollection != null -> "进入合集 · ${enterableCollection!!.title ?: ""}" +
-                    "（${Collection.toPlaylist(enterableCollection!!).size} 集）"
-                enterableMultiPage != null -> "进入分P（${enterableMultiPage!!.cids.size} 个）"
+                enterableCollection != null -> getString(
+                    R.string.text_player_enter_collection,
+                    enterableCollection!!.title ?: "",
+                    Collection.toPlaylist(enterableCollection!!).size
+                )
+                enterableMultiPage != null ->
+                    getString(R.string.text_player_enter_multi_page, enterableMultiPage!!.cids.size)
                 else -> null
             }
             nestEntry.visibility = if (returnPlaylist != null || enterable != null) View.VISIBLE else View.GONE
-            nestEntry.text = if (returnPlaylist != null) "← 返回主合集" else enterable
+            nestEntry.text = if (returnPlaylist != null) getString(R.string.text_player_back_to_root) else enterable
             nestEntry.setOnClickListener {
                 layout_card_bg.visibility = View.GONE
                 card_page_selector.visibility = View.GONE
@@ -3237,7 +3262,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         isVirtualCollectionMode = true
         val target = items.indexOfFirst { it.aid == startAid }.coerceAtLeast(0)
         currentPageIndex = target
-        MsgUtil.showMsg("进入合集：${collection.title ?: ""}")
+        MsgUtil.showMsg(getString(R.string.msg_player_entered_collection, collection.title ?: ""))
         switchToOnlinePage(target, pagenames!![target])
     }
 
@@ -3293,7 +3318,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 从第 1 个分P 起。VideoInfo 没带"上次看到哪个分P"，续播到具体分P 需要另读 player/v2 的
         // last_play_cid，本轮不做（见台账 §3.24 的未覆盖项）
         currentPageIndex = 0
-        MsgUtil.showMsg("进入分P：${videoInfo.title ?: ""}")
+        MsgUtil.showMsg(getString(R.string.msg_player_entered_multi_page, videoInfo.title ?: ""))
         switchToOnlinePage(0, pagenames!![0])
     }
 
@@ -3401,7 +3426,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         interactionChoiceLayout?.visibility = View.GONE
         interactionChoiceLayout?.removeAllViews()
 
-        ijkPlayer = IjkMediaPlayer()
+        // 原生库不可用时 helper 自己提示并 finish，这里只需停下重建
+        ijkPlayer = createIjkPlayerOrBail() ?: return
         bindDanmakuView()
 
         setDisplay()
@@ -3522,7 +3548,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     isPrepared = false
                     isPlaying = false
 
-                    ijkPlayer = IjkMediaPlayer()
+                    ijkPlayer = createIjkPlayerOrBail() ?: return@runOnUiThread
                     progress_history = currentPosition
 
                     setDisplay()
@@ -3541,12 +3567,19 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             try {
                 Logu.d("视频分段", "开始加载分段数据 aid=" + aid + " cid=" + cid)
                 viewPoints = PlayerApi.getViewPoints(aid, cid)
-                // 片头/片尾只是 view_points 的子集（type=1/2），这里单独提炼一份给自动跳过用
-                val segments = ViewPointSkip.buildSegments(
-                    (viewPoints ?: emptyList()).map {
-                        ViewPointSkip.Segment(it.type, it.from.toDouble(), it.to.toDouble())
-                    }
-                )
+                // 片头/片尾只是 view_points 的子集（type=1/2），这里单独提炼一份给自动跳过用。
+                // 功能总开关关着（SkipOpEdPrefs.FEATURE_ENABLED=false，26.10.10 紧急撤回）时
+                // 直接留空，不白跑 buildSegments：唯一的消费点 maybeAutoSkipOpEd 已被
+                // SkipOpEdPrefs.isEnabled 拦死，算了也没人看。恢复时无需改这里。
+                val segments = if (SkipOpEdPrefs.FEATURE_ENABLED) {
+                    ViewPointSkip.buildSegments(
+                        (viewPoints ?: emptyList()).map {
+                            ViewPointSkip.Segment(it.type, it.from.toDouble(), it.to.toDouble())
+                        }
+                    )
+                } else {
+                    emptyList()
+                }
 
                 runOnUiThread {
                     if (destroyed) return@runOnUiThread
@@ -3922,7 +3955,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     interactionChoiceLayout?.visibility = View.GONE
                     interactionChoiceLayout?.removeAllViews()
 
-                    ijkPlayer = IjkMediaPlayer()
+                    ijkPlayer = createIjkPlayerOrBail() ?: return@runOnUiThread
                     bindDanmakuView()
 
                     setDisplay()

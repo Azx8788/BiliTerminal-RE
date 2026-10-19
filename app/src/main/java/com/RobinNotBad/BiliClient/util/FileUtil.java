@@ -14,6 +14,7 @@ import android.util.Log;
 import androidx.core.app.ActivityCompat;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
+import com.RobinNotBad.BiliClient.service.download.DownloadPathSpec;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -26,6 +27,10 @@ import java.util.Objects;
 //清除调用我放在了每次刷新推荐页
 
 public class FileUtil {
+
+    /** 成品备份后缀，与 DownloadService.safeReplaceTemp 里拼接的 ".bak" 必须一致 */
+    private static final String BAK_SUFFIX = ".bak";
+
     public static void clearCache(Context context) {
         File cacheDir = context.getCacheDir();
         if (cacheDir.exists() && Objects.requireNonNull(cacheDir.listFiles()).length != 0)
@@ -62,12 +67,18 @@ public class FileUtil {
      * 而单 P 任务的目录就是 &lt;下载根&gt;/&lt;标题&gt; 本身，会把上一次成功下载好的
      * video.mp4 / audio.m4a / 封面 / 弹幕一起删掉 —— 真实数据丢失。
      *
-     * 因此这里语义收紧为"只删本次下载自己产生的中间文件"：
-     * - video_new.mp4 / audio_new.m4a：safeReplaceTemp 的下载临时文件；
-     * - *.bak：safeReplaceTemp 替换正式文件前的备份（替换成功时已自行删除，残留说明替换被打断）；
+     * 因此这里语义收紧为"只收拾本次下载自己产生的中间文件"：
+     * - video_new.mp4 / audio_new.m4a：safeReplaceTemp 的下载临时文件，直接删；
+     * - *.bak：safeReplaceTemp 替换正式文件前的备份。**正式文件存在**时它只是替换成功后没删掉的
+     *   备份，可以删；**正式文件不存在而 .bak 存在**说明进程在"旧成品改名成 .bak"之后、
+     *   "临时文件改名成正式文件"之前被回收了，此时 .bak 就是当前唯一的成品，必须改名回正式文件名，
+     *   绝不能删（否则重新下载失败一次就永久丢掉旧视频）；
      * - .DOWNLOADING：本任务的"下载中"标记，任务已确认为非正常结束，必须摘掉，
      *   否则本地列表会把残留的旧成品误判为"正在下载"，用户也就看不到本地缓存的视频。
      * 一旦任务目录中的上述文件都不存在（下载尚未进入写临时文件阶段就失败/退出），本方法不会留任何痕迹。
+     *
+     * 只处理任务目录的直接子项、不递归：合集视频的每个分 P 是独立子目录、各有自己的任务记录，
+     * 递归会误伤其他任务正在写的文件。
      *
      * @param folder 任务目录（即 DownloadSection.getPath() 的返回值）
      */
@@ -76,13 +87,26 @@ public class FileUtil {
         File[] children = folder.listFiles();
         if (children == null) return;
         for (File file : children) {
+            if (!file.isFile()) continue;   // 只认文件，不递归，避免误伤同名子目录
             String name = file.getName();
-            // 临时文件与备份文件：只删文件，不递归，避免误伤同名子目录
-            if (file.isFile() && (name.endsWith("_new.mp4") || name.endsWith("_new.m4a") || name.endsWith(".bak"))) {
+            if (name.endsWith(BAK_SUFFIX)) {
+                String finalName = name.substring(0, name.length() - BAK_SUFFIX.length());
+                if (finalName.isEmpty()) continue;
+                File finalFile = new File(folder, finalName);
+                if (!finalFile.exists()) {
+                    // 替换在两次 rename 之间被打断：.bak 是唯一成品，改名回正式文件名（恢复）
+                    file.renameTo(finalFile);
+                } else {
+                    // 正式文件在，.bak 只是替换成功后没删掉的备份
+                    file.delete();
+                }
+                continue;
+            }
+            if (name.equals(DownloadPathSpec.FILE_VIDEO_TMP) || name.equals(DownloadPathSpec.FILE_AUDIO_TMP)) {
                 file.delete();
             }
         }
-        File downloadingMark = new File(folder, ".DOWNLOADING");
+        File downloadingMark = new File(folder, DownloadPathSpec.FILE_DOWNLOADING);
         if (downloadingMark.exists()) downloadingMark.delete();
     }
 

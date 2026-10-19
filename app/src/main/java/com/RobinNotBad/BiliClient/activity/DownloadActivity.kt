@@ -6,12 +6,12 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.content.FileProvider
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.api.AppInfoApi
+import com.RobinNotBad.BiliClient.service.download.DownloadPathSpec
 import com.RobinNotBad.BiliClient.util.ApkVerifier
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.FileUtil
@@ -47,6 +47,9 @@ class DownloadActivity : BaseActivity() {
 
     private var noBiliHeaders: Boolean = false
 
+    /** 本次下载真正写过的文件。非正常结束时只删这些，不再删整个任务目录（见 onDestroy） */
+    private val touchedFiles: MutableSet<File> = java.util.Collections.synchronizedSet(mutableSetOf<File>())
+
     private val timer = Timer()
     private val showText = object : TimerTask() {
         @SuppressLint("SetTextI18n")
@@ -81,7 +84,12 @@ class DownloadActivity : BaseActivity() {
         // 或用户把保存路径改到公共目录时才真的写到需要权限的地方（见 FileUtil.canWriteDirectory）
         val permissionTarget =
             if (type == 0) File(intent.getStringExtra("path") ?: "") else FileUtil.getVideoDownloadPath()
-        FileUtil.ensureDirectoryWritable(this, permissionTarget)
+        if (!FileUtil.ensureDirectoryWritable(this, permissionTarget)) {
+            // false 说明目标目录眼下写不进去：ensureDirectoryWritable 已经拉起授权页或弹过提示，
+            // 这里必须停下（以前丢弃返回值，会带着不可写的目录一路下到失败才报错，用户还可能以为在下）
+            finish()
+            return
+        }
 
         timer.schedule(showText, 100, 100)
         CenterThreadPool.run {
@@ -108,48 +116,97 @@ class DownloadActivity : BaseActivity() {
 
                 val danmaku = intent.getStringExtra("danmaku")
                 val cover = intent.getStringExtra("cover")
-                val dmFile = File(downPath, "danmaku.xml")
-                val coverFile = File(rootPath, "cover.png")
-                val videoFile = File(downPath, "video.mp4")
-                downdanmu(danmaku!!, dmFile)
-                if (!coverFile.exists()) download(cover!!, coverFile, getString(R.string.text_download_cover), false)
-                download(link!!, videoFile, getString(R.string.text_download_video), true)
+                val dmFile = File(downPath, DownloadPathSpec.FILE_DANMAKU)
+                val coverFile = File(rootPath, DownloadPathSpec.FILE_COVER)
+                val videoFile = File(downPath, DownloadPathSpec.FILE_VIDEO)
+                // 每步失败时 download()/downdanmu() 已经提示并结束页面并返回 false，
+                // 此时不要再接着下后面的文件：既白跑请求，又会在下不动的目录里留下空壳
+                if (downdanmu(danmaku!!, dmFile)) {
+                    val coverOk = coverFile.exists() ||
+                        download(cover!!, coverFile, getString(R.string.text_download_cover), false)
+                    if (coverOk) download(link!!, videoFile, getString(R.string.text_download_video), true)
+                }
             }
         }
 
     }
 
+    /**
+     * 下载单个文件。返回 false 表示这次下载失败、页面已被结束（调用方不要再继续后面的步骤）。
+     */
     @SuppressLint("SetTextI18n")
-    private fun download(url: String, file: File, desc: String, exitOnFinish: Boolean) {
+    private fun download(url: String, file: File, desc: String, exitOnFinish: Boolean): Boolean {
         dldText = desc
+        // 每个文件从头计进度：不重置的话，上一个文件（或无 content-length 的伪进度）残留的
+        // 高位百分比会让新文件一上来就显示 90%+，看着像"卡住"
+        dldPercent = 0f
+        // 记在外面：读流中途抛 IOException 时也要把连接关掉，否则 OkHttp 连接池会被半截响应占住
+        var response: Response? = null
         try {
             // 先建文件再发请求：createNewFile() 抛 IOException 时 response 还没拿到，
             // 否则会走 catch 直接 finish，连接不归还（详见 OkHttp body 读尽才归还的语义）
-            if (!file.exists()) file.createNewFile()
-            val response: Response = NetWorkUtil.get(url,
+            val existedBefore = file.exists()
+            if (!existedBefore) file.createNewFile()
+            touchedFiles.add(file)
+            val resp = NetWorkUtil.get(url,
                 if (noBiliHeaders) AppInfoApi.customHeaders else NetWorkUtil.webHeaders)
-            val inputStream: InputStream = response.body!!.byteStream()
+            response = resp
+            // 非 2xx（404 / 风控页 / 没跟成功的 3xx）时 body 是错误页或 JSON，以前会原样写进
+            // video.mp4 / cover.png，用户拿到一个"有内容"的坏文件；这里统一收尾并返回失败
+            if (abortOnHttpError(resp, file, !existedBefore, R.string.text_download_failed)) return false
+            val body = resp.body!!
+            val inputStream: InputStream = body.byteStream()
             val fileOutputStream = FileOutputStream(file)
             val bytes = ByteArray(1024 * 10)
-            val TotalFileSize = response.body!!.contentLength()
+            val TotalFileSize = body.contentLength()
             var len: Int
             while (inputStream.read(bytes).also { len = it } != -1) {
                 fileOutputStream.write(bytes, 0, len)
                 val CompleteFileSize = file.length()
-                dldPercent = 1.0f * CompleteFileSize / TotalFileSize
+                dldPercent = if (TotalFileSize > 0) {
+                    (1.0f * CompleteFileSize / TotalFileSize).coerceIn(0f, 1f)
+                } else {
+                    // 服务端没给 content-length：走伪进度，别拿 -1 做除数得出负数百分比
+                    (dldPercent + 0.02f).coerceAtMost(0.9f)
+                }
             }
             inputStream.close()
             fileOutputStream.close()
+            // 完整性：服务端声明了长度却少读（连接被中途掐断）不能当成下载成功，
+            // 否则半截视频会以"已完成"的样子留在本地列表里
+            if (TotalFileSize > 0 && file.length() != TotalFileSize) {
+                throw IOException("下载不完整：期望 " + TotalFileSize + " 字节，实际 " + file.length())
+            }
             if (exitOnFinish) {
                 handleDownloadComplete(file)
             }
-            response.body!!.close()
-            response.close()
+            body.close()
+            resp.close()
+            return true
         } catch (e: IOException) {
+            try { response?.close() } catch (_: Exception) {}
             runOnUiThread { MsgUtil.showMsg(getString(R.string.text_download_failed)) }
             e.printStackTrace()
             finish()
+            return false
         }
+    }
+
+    /**
+     * HTTP 非 2xx 的统一收尾：关连接、删掉本次新建的空壳文件、提示并结束页面。
+     *
+     * 注意两件事：① OkHttp 的连接只有把 body 读尽或关掉才会归还，所以这里必须 close；
+     * ② 只有"本次新建"的文件才删 —— 覆盖已有成品前就失败的话，旧文件没被动过，不能误删。
+     *
+     * @return true 表示已按失败处理（调用方直接 return）
+     */
+    private fun abortOnHttpError(response: Response, file: File, createdHere: Boolean, msgRes: Int): Boolean {
+        if (response.isSuccessful) return false
+        response.close()
+        if (createdHere) file.delete()
+        runOnUiThread { MsgUtil.showMsg(getString(msgRes)) }
+        finish()
+        return true
     }
 
     private fun handleDownloadComplete(downloadedFile: File) {
@@ -210,13 +267,23 @@ class DownloadActivity : BaseActivity() {
     }
 
 
-    private fun downdanmu(danmaku: String, danmakuFile: File) {
+    /**
+     * 下载并解压弹幕。返回 false 表示失败、页面已被结束（调用方不要再继续后面的步骤）。
+     */
+    private fun downdanmu(danmaku: String, danmakuFile: File): Boolean {
+        val existedBefore = danmakuFile.exists()
         try {
             val response: Response = NetWorkUtil.get(danmaku,
                 if (noBiliHeaders) AppInfoApi.customHeaders else NetWorkUtil.webHeaders)
+            // 非 2xx 时 body 是错误页/JSON，以前照样解压写进 danmaku.xml，播放器解析出来是空弹幕，
+            // 用户只会觉得"这个视频的弹幕丢了"
+            if (abortOnHttpError(response, danmakuFile, !existedBefore, R.string.text_danmaku_download_failed)) {
+                return false
+            }
             var bufferedSink: okio.BufferedSink? = null
             try {
-                if (!danmakuFile.exists()) danmakuFile.createNewFile()
+                if (!existedBefore) danmakuFile.createNewFile()
+                touchedFiles.add(danmakuFile)
                 val sink = danmakuFile.sink()
                 val decompressBytes = NetWorkUtil.decompress(response.body!!.bytes())
                 bufferedSink = sink.buffer()
@@ -224,24 +291,35 @@ class DownloadActivity : BaseActivity() {
                 bufferedSink.close()
             } catch (e: Exception) {
                 e.printStackTrace()
+                // 解压/写盘失败也要还连接，别让半截响应一直占着 OkHttp 连接池
+                try { response.close() } catch (_: Exception) {}
                 finish()
+                return false
             } finally {
                 bufferedSink?.close()
             }
             response.body?.close()
             response.close()
+            return true
         } catch (e: IOException) {
             runOnUiThread { MsgUtil.showMsg(getString(R.string.text_danmaku_download_failed)) }
             finish()
             e.printStackTrace()
+            return false
         }
     }
 
     override fun onDestroy() {
         timer.cancel()
         if (!finishFlag) {
-            if (type != 0 && downPath != null) FileUtil.deleteFolder(downPath!!)
-            else if (downFile != null) downFile!!.delete()
+            // 只删本次真正写过的文件（下载中/失败的空壳、被截断的半截文件）。
+            // 以前这里 deleteFolder(整个任务目录)：重下一次同一个视频时，只要中途取消或失败，
+            // 上一次已经下好的 video.mp4 / 封面 / 弹幕会被一起删掉 —— 真实数据丢失
+            // （DownloadService 侧同类问题已按「只清临时产物」修过，这里是同一口径）
+            val touched = synchronized(touchedFiles) { touchedFiles.toList() }
+            for (f in touched) {
+                if (f.isFile) f.delete()
+            }
         }
         super.onDestroy()
     }

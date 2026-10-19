@@ -26,14 +26,16 @@ class DownloadSqlHelper(context: Context?) : SQLiteOpenHelper(context, "download
             // 逐级迁移：任何旧版本升上来都先尝试 ALTER 补列，保住历史下载记录（续传进度、任务列表）；
             // 此前是 oldVersion == 3 && newVersion == 4 的精确相等判断，0/1/2 版本升上来会直接 drop table，
             // 用户升级 App 就丢光全部下载记录。
-            // 只有 ALTER 本身失败（列已存在/表结构损坏）才降级重建，此时已无法保住数据。
             if (oldVersion < 4) {
                 try {
                     db.execSQL("ALTER TABLE download ADD COLUMN download_type TEXT DEFAULT 'video'")
                     db.execSQL("ALTER TABLE download ADD COLUMN audio_url TEXT")
                 } catch (e: Throwable) {
-                    db.execSQL("drop table if exists download")
-                    onCreate(db)
+                    // ALTER 失败（列已存在、表结构损坏）时**不再 drop table 重建**。
+                    // 以前这里建一次新表，等于把用户的历史下载记录（任务列表、续传进度、元数据）全部删掉 ——
+                    // 这正是本次改动要避免的数据丢失。宁可让新字段暂时读不到（个别下载功能报错、可在日志里
+                    // 看到原因），也绝不主动删除用户数据。
+                    MsgUtil.err(e)
                 }
             }
         } catch (e: Throwable) {

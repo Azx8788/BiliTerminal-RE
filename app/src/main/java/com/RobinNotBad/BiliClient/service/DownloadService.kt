@@ -540,6 +540,8 @@ class DownloadService : Service() {
             // 只重置「本进程没有线程在下载」的遗留记录：downloadProgressMap 里有条目的，
             // 说明有活跃下载线程正在写这个 section，改回 "none" 会让调度器二次拾取、
             // 双线程写同一文件（审计 S6）。同时顺手清掉它的残留进度，避免列表显示假进度。
+            // 注意判据不是恒真：进程被杀重启后映射必然为空，此时所有 "downloading" 记录都会被重置，
+            // 这正是想要的（旧进程的线程已经没了）；同进程内重复进入则由 onStartCommand 的幂等守卫挡住。
             if (s.state == "downloading" && !DownloadProgressStore.hasProgress(s.id)) {
                 DownloadRepository.setState(s.id, "none")
                 removeDownloadProgress(s.id)
@@ -663,8 +665,10 @@ class DownloadService : Service() {
                             exitCode = result
                             return false
                         }
-                        if (!replaceTempOrFail(videoTmp, File(path_single, DownloadPathSpec.FILE_VIDEO))) return false
-                        if (!replaceTempOrFail(audioTmp, File(path_single, DownloadPathSpec.FILE_AUDIO))) return false
+                        if (!replaceDashPairOrFail(
+                                videoTmp, File(path_single, DownloadPathSpec.FILE_VIDEO),
+                                audioTmp, File(path_single, DownloadPathSpec.FILE_AUDIO)
+                            )) return false
                         setDownloadProgress(downloadSection.id, 1.0f, getString(R.string.text_update_download_complete))
                     } else {
                         // MP4格式或无音轨DASH：直接下载单个文件（音视频已合并/无音轨）
@@ -736,8 +740,10 @@ class DownloadService : Service() {
                             exitCode = result
                             return false
                         }
-                        if (!replaceTempOrFail(videoTmp, File(path_page, DownloadPathSpec.FILE_VIDEO))) return false
-                        if (!replaceTempOrFail(audioTmp, File(path_page, DownloadPathSpec.FILE_AUDIO))) return false
+                        if (!replaceDashPairOrFail(
+                                videoTmp, File(path_page, DownloadPathSpec.FILE_VIDEO),
+                                audioTmp, File(path_page, DownloadPathSpec.FILE_AUDIO)
+                            )) return false
                         setDownloadProgress(downloadSection.id, 1.0f, getString(R.string.text_update_download_complete))
                     } else {
                         // MP4格式或无音轨DASH：直接下载单个文件（音视频已合并/无音轨）
@@ -784,8 +790,12 @@ class DownloadService : Service() {
      *
      * 审计 M11-c：原来返回 void，替换失败只留一行日志，调用方照样
      * `notifyCompletion("下载成功")` 并删掉下载记录 —— 用户以为下好了，实际文件没换过去。
+     *
+     * @param keepBackup 替换成功后**保留** .bak（默认删掉）。DASH 的 video/audio 要成对替换，
+     *                   video 先换、audio 换成功后才允许删 video 的备份；否则 audio 失败时无法
+     *                   把 video 回滚到替换前 —— 见 [replaceDashPair]。
      */
-    private fun safeReplaceTemp(tmpFile: File, finalFile: File): Boolean {
+    private fun safeReplaceTemp(tmpFile: File, finalFile: File, keepBackup: Boolean = false): Boolean {
         if (!tmpFile.exists()) {
             Logu.e("DownloadService", "替换失败：临时文件不存在 ${tmpFile.name}")
             return false
@@ -796,7 +806,7 @@ class DownloadService : Service() {
             // 无旧文件，或旧文件成功备份到 .bak，才走正常替换
             if (!finalFile.exists() || finalFile.renameTo(bakFile)) {
                 if (tmpFile.renameTo(finalFile)) {
-                    if (bakFile.exists()) bakFile.delete()
+                    if (!keepBackup && bakFile.exists()) bakFile.delete()
                     ok = true
                 } else {
                     // 替换失败：恢复旧文件，保留临时文件供排查
@@ -826,6 +836,57 @@ class DownloadService : Service() {
      */
     private fun replaceTempOrFail(tmpFile: File, finalFile: File): Boolean {
         if (safeReplaceTemp(tmpFile, finalFile)) return true
+        exitCode = DownloadPathSpec.ERR_FILE
+        return false
+    }
+
+    /**
+     * DASH 的 video/audio 是一对配套文件，必须成对替换到**同一代**。
+     *
+     * 原来顺序调两次 safeReplaceTemp：video 换好、audio 失败时，磁盘上留下「新视频 + 旧音频」，
+     * 播放器按旧音频时间轴播新视频，画面与声音对不上；用户看到的是"下载失败"，实际却已被污染。
+     *
+     * 做法：video 替换时保留旧成品备份 → audio 替换成功才删备份；audio 失败则把 video 从备份
+     * 还原，整体判失败（两个临时文件都留着，下次重下不必从头来）。
+     * 返回 false 时调用方直接结束本次下载，状态由 runDownloadSection 统一收敛。
+     */
+    private fun replaceDashPair(videoTmp: File, videoFinal: File, audioTmp: File, audioFinal: File): Boolean {
+        if (!videoTmp.exists() || !audioTmp.exists()) {
+            Logu.e("DownloadService", "DASH 替换失败：临时文件缺失 video=${videoTmp.exists()} audio=${audioTmp.exists()}")
+            return false
+        }
+        val videoBak = File(videoFinal.parentFile, videoFinal.name + ".bak")
+        // 先记住有没有旧成品：没有的话"回滚"就是删掉刚换上的新视频，回到下载前的状态
+        val hadOldVideo = videoFinal.exists()
+        if (!safeReplaceTemp(videoTmp, videoFinal, keepBackup = true)) return false
+        if (safeReplaceTemp(audioTmp, audioFinal)) {
+            if (videoBak.exists()) videoBak.delete()
+            return true
+        }
+        // 音频替换失败：把视频回滚到替换前的旧成品，避免「新视频 + 旧音频」的混代
+        if (hadOldVideo && videoBak.exists()) {
+            // 先删掉刚换上的新视频再改名：renameTo 在目标已存在时并非所有实现都会覆盖，
+            // 先删一次才能保证这一步是真正的"回滚"而不是又留一对混代文件
+            videoFinal.delete()
+            if (videoBak.renameTo(videoFinal)) {
+                Logu.e("DownloadService", "DASH 音频替换失败，已把视频回滚到旧文件")
+            } else {
+                Logu.e("DownloadService", "DASH 音频替换失败，且视频回滚失败，旧视频保留在 ${videoBak.name}")
+            }
+        } else if (!hadOldVideo) {
+            // 下载前本来没有视频（例如从「仅音频」改成 DASH）：删掉刚换上的新视频，
+            // 回到下载前的状态，不留孤立的新视频配旧音频
+            videoFinal.delete()
+            Logu.e("DownloadService", "DASH 音频替换失败，已删除新视频回到下载前状态")
+        } else {
+            Logu.e("DownloadService", "DASH 音频替换失败，且视频回滚失败：${videoFinal.name}")
+        }
+        return false
+    }
+
+    /** [replaceDashPair] 的调用方包装，语义同 [replaceTempOrFail]。 */
+    private fun replaceDashPairOrFail(videoTmp: File, videoFinal: File, audioTmp: File, audioFinal: File): Boolean {
+        if (replaceDashPair(videoTmp, videoFinal, audioTmp, audioFinal)) return true
         exitCode = DownloadPathSpec.ERR_FILE
         return false
     }
@@ -1291,6 +1352,10 @@ class DownloadService : Service() {
                 totalDownloaded.addAndGet(written)
                 return
             }
+            // 本次尝试没拿到完整分片（EOF 早停 / 异常 / 被暂停）：把这段已计入全局计数器的字节扣回。
+            // 重试成功后会从分片起点整片重算，不扣就把同一段字节算成两次，sampleSpeed() 与批次统计虚高；
+            // 分片阶段最终失败时 downFileSpeedSeg 还会按 totalDownloaded 回滚成功分片，两者口径保持一致。
+            if (written > 0) addDownloadedBytes(-written)
             attempts++
             if (attempts < 3) {
                 try {

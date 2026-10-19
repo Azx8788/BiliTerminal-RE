@@ -23,6 +23,7 @@ import com.RobinNotBad.BiliClient.model.LocalVideo
 import com.RobinNotBad.BiliClient.model.PlayerData
 import com.RobinNotBad.BiliClient.model.VideoMeta
 import com.RobinNotBad.BiliClient.model.VideoFolder
+import com.RobinNotBad.BiliClient.service.download.DownloadPathSpec
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.FileUtil
 import com.RobinNotBad.BiliClient.util.FolderManager
@@ -98,8 +99,12 @@ class LocalListActivity : InstanceActivity() {
         }
 
         // 默认缓存目录是应用专属的 Android/media/<包名>/，Android 10+ 写这里无需权限，
-        // 所以先试写、写不进去才要权限（手表 ROM 没有该设置页，见 FileUtil.canWriteDirectory）
-        FileUtil.ensureDirectoryWritable(this, FileUtil.getVideoDownloadPath())
+        // 所以先试写、写不进去才要权限（手表 ROM 没有该设置页，见 FileUtil.canWriteDirectory）。
+        // 这里只是"顺手要一下权限"，不因失败中断列表加载：列表本身只读磁盘，真正写入的
+        // 代码路径（下载/更新弹幕/删除）各自会判返回值或自己报错。
+        if (!FileUtil.ensureDirectoryWritable(this, FileUtil.getVideoDownloadPath())) {
+            MsgUtil.showMsg(UiText.of("存储目录当前不可写，下载会失败"))
+        }
 
         CenterThreadPool.run {
             runOnUiThread { swipeRefreshLayout.setRefreshing(true) }
@@ -137,21 +142,21 @@ class LocalListActivity : InstanceActivity() {
             if (video.isDirectory) {
                 val localVideo = LocalVideo()
                 localVideo.title = video.name
-                localVideo.cover = File(video, "cover.png").toString()
+                localVideo.cover = File(video, DownloadPathSpec.FILE_COVER).toString()
                 localVideo.pageList = ArrayList()
                 localVideo.danmakuFileList = ArrayList()
                 localVideo.videoFileList = ArrayList()
                 localVideo.sizeList = ArrayList()
                 localVideo.qualityList = ArrayList()
 
-                val qualityFile = File(video, ".quality")
+                val qualityFile = File(video, DownloadPathSpec.FILE_QUALITY)
                 val qualityStr = if (qualityFile.exists()) {
                     try { qualityFile.readText().trim() } catch (e: Exception) { "" }
                 } else ""
 
-                val videoFile = File(video, "video.mp4")
-                val audioFile = File(video, "audio.m4a")
-                val danmakuFile = File(video, "danmaku.xml")
+                val videoFile = File(video, DownloadPathSpec.FILE_VIDEO)
+                val audioFile = File(video, DownloadPathSpec.FILE_AUDIO)
+                val danmakuFile = File(video, DownloadPathSpec.FILE_DANMAKU)
                 val tempMergeFile = File(video, "video_merged_temp.mp4")
 
                 // 优先使用合并后的视频文件，其次视频流，最后音频流
@@ -164,7 +169,7 @@ class LocalListActivity : InstanceActivity() {
                     else (if (audioFile.exists()) audioFile else null)
 
                 if (mediaFile != null) {
-                    val mark = File(video, ".DOWNLOADING")
+                    val mark = File(video, DownloadPathSpec.FILE_DOWNLOADING)
                     if (mark.exists()) continue
 
                     localVideo.sizeList.add(mediaFile.length())
@@ -176,7 +181,7 @@ class LocalListActivity : InstanceActivity() {
                         localVideo.videoFileList.add(audioFile.toString())
                     }
 
-                    if (qualityStr == "audio_only" || (audioFile.exists() && !videoFile.exists())) {
+                    if (qualityStr == DownloadPathSpec.TYPE_AUDIO_ONLY || (audioFile.exists() && !videoFile.exists())) {
                         localVideo.qualityList.add(UiText.of("仅音频"))
                     } else if (qualityStr.isNotEmpty()) {
                         val qn = try { qualityStr.toInt() } catch (e: Exception) { 0 }
@@ -192,12 +197,12 @@ class LocalListActivity : InstanceActivity() {
                     if (pages != null) {
                         for (page in pages) {
                             if (page.isDirectory) {
-                                val mark = File(page, ".DOWNLOADING")
+                                val mark = File(page, DownloadPathSpec.FILE_DOWNLOADING)
                                 if (mark.exists()) continue
 
-                                val pageVideoFile = File(page, "video.mp4")
-                                val pageAudioFile = File(page, "audio.m4a")
-                                val pageDanmakuFile = File(page, "danmaku.xml")
+                                val pageVideoFile = File(page, DownloadPathSpec.FILE_VIDEO)
+                                val pageAudioFile = File(page, DownloadPathSpec.FILE_AUDIO)
+                                val pageDanmakuFile = File(page, DownloadPathSpec.FILE_DANMAKU)
                                 val pageTempMergeFile = File(page, "video_merged_temp.mp4")
                                 val pageMediaFile = if (pageVideoFile.exists()) pageVideoFile
                                     else if (pageTempMergeFile.exists()) {
@@ -217,11 +222,11 @@ class LocalListActivity : InstanceActivity() {
                                         localVideo.videoFileList.add(pageAudioFile.toString())
                                     }
 
-                                    val pageQualityFile = File(page, ".quality")
+                                    val pageQualityFile = File(page, DownloadPathSpec.FILE_QUALITY)
                                     if (pageQualityFile.exists()) {
                                         try {
                                             val pqnStr = pageQualityFile.readText().trim()
-                                            if (pqnStr == "audio_only") {
+                                            if (pqnStr == DownloadPathSpec.TYPE_AUDIO_ONLY) {
                                                 localVideo.qualityList.add(UiText.of("仅音频"))
                                             } else {
                                                 val pqn = pqnStr.toInt()
@@ -387,7 +392,7 @@ class LocalListActivity : InstanceActivity() {
                 if (danmakuUrl.isNotEmpty()) {
                     // 下载弹幕到本地
                     val videoDir = File(FileUtil.getVideoDownloadPath(), video.title)
-                    val danmakuFile = File(videoDir, "danmaku.xml")
+                    val danmakuFile = File(videoDir, DownloadPathSpec.FILE_DANMAKU)
                     downloadDanmakuFile(danmakuUrl, danmakuFile)
 
                     // 更新合集内的每个分页
@@ -395,7 +400,7 @@ class LocalListActivity : InstanceActivity() {
                         for (i in 0 until video.pageList!!.size) {
                             val pageName = video.pageList!![i]
                             val pageDir = File(videoDir, pageName)
-                            val pageDanmakuFile = File(pageDir, "danmaku.xml")
+                            val pageDanmakuFile = File(pageDir, DownloadPathSpec.FILE_DANMAKU)
 
                             val pagePlayerData = PlayerData()
                             pagePlayerData.aid = meta.aid
