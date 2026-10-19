@@ -756,6 +756,42 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 
 **验证**：`:app:assembleDebug` 通过、`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 通过（构建手法见 §3.27 末尾的「构建坑」，同一台机器）。**未真机复现**（本机 adb 无在线设备）。待验：① 默认保存目录下点下载**不再弹任何设置页**、直接开始；② 把保存路径改到公共目录后再点下载，才弹授权提示；③ #42 那台设备上升级后悬浮窗设置页缺失只提示、不崩。
 
+### 3.29 线上崩溃两路清剿：`T0.A.run` 无消息 NPE（#43–#47/#49）与 `libijksdl.so` 加载失败（#48，26.10.19）
+
+**现场（崩溃后台 #43–#49，客户端版本全是 26.10.16）**：
+
+- **6 条同一个 NPE**（#43 10-18 21:46 起，到 #49 10-19 16:03）：`java.lang.NullPointerException`，**无 message**，主线程，唯一业务帧 `T0.A.run(SourceFile:1425)`。设备跨 OPPO OWW211/OWW231/OWW261/OWW263（SDK 30）、XIAOMI grasslte M2505W1（SDK 34）、HUAWEI MDS-AL00（SDK 31）——**不是某台设备的兼容问题**。
+- **#48**：`UnsatisfiedLinkError: dlopen failed: can't read file "…/lib/arm/libijksdl.so": Bad file descriptor`，XIAOMI baiji Mi Watch（SDK 28，共存版），栈是 `PlayerActivity.onCreate` → `IjkMediaPlayer.loadLibrariesOnce`。
+
+**retrace（A 路）**：用本机 26.10.16 的 release mapping（`app/build/outputs/mapping/standardRelease/mapping.txt`）。`T0.A` 的表头是 `VipActivity$$ExternalSyntheticLambda4`，实际是 **R8 合并类**；崩溃行 1425 落在 `1417:1426` 行段 → 内联帧 `activity/user/info/UserDynamicFragment.continueLoading$lambda$4$lambda$3:0:0`，左右相邻行段 `1427:1431` / `1432:1456` 分别对应同一 lambda 的 Kotlin 行 90 / 91。即崩在 `continueLoading()` 的 `runOnUiThread {}` 里。
+
+**根因（A 路，不是「页面销毁后 adapter 被置空」）**：`adapter` 全程只在 `onViewCreated` 的后台线程赋值，目录里既没有 `adapter = null` 也没有 `onDestroyView`。真正可达的 null 路径是**首屏加载失败**：`onViewCreated` 的请求走 `catch { loadFail(e) }`，`adapter` 从此永远不会被创建；而 `loadFail` 只把 `isRefreshing` 复位，`bottom` 仍是 false、下拉加载监听仍在 → 用户在**空列表**上拖动满足 `onScrollStateChanged` 的翻页条件 → `goOnLoad()` → `continueLoading()` 这一次网络成功 → `adapter!!.notifyItemRangeInserted(...)` 抛 `Intrinsics.checkNotNull` 的**无 message** NPE，与线上现象逐条吻合（`requireActivity()` 抛的是带 message 的 ISE、`lateinit` 也有 message，都不是）。同构代码还有 `UserVideoFragment` / `UserArticleFragment`。
+
+**修法（A 路，`activity/user/info/` 三文件）**：
+
+- 三处翻页回调统一守卫：`runOnUiThread { 列表.addAll(list); if (isAdded && view != null) adapter?.notifyItemRangeInserted(...) }`；`setRefreshing(false)` 从 `try` 末尾挪进 `finally`——否则异常路径不复位，翻页会永久卡死（硬约定）。
+- 其余 `adapter!!` 一并收口：`onViewCreated` 用局部变量再赋字段 + `setAdapter(newAdapter)`；`UserDynamicFragment.onDynamicRemove` 改 `adapter?.let { ... }`；`requireActivity().finish()` → `activity?.finish()`。
+- 顺带修 `UserVideoFragment` 的既有越界 bug：插入起点原为 `videoCardList.size - list.size`，漏了头部占位 `+1`（`UserVideoAdapter.getItemCount()` = `videoCardList.size + 1`，第 0 项是「视频系列」入口）。`UserArticleFragment` 用的 `ArticleCardAdapter` 无 header，**仍不加 1**。
+
+**根因（B 路）**：`IjkMediaPlayer.loadLibrariesOnce` 依次加载 `ijkffmpeg` / `ijksdl` / `ijkplayer`，**三个全成功才置静态 `mIsLibLoaded`**；而 `IjkMediaPlayer()` 构造内部会**再调一次** `loadLibrariesOnce` → 只包住前者不够。`UnsatisfiedLinkError` 继承 `Error`，仓库里既有的 `catch (e: Exception)` 全部兜不住。「Bad file descriptor」是设备侧 .so 打不开，客户端没有系统播放器可回落，只能兜住 + 提示 + 退出，并留下可诊断的现场。
+
+**修法（B 路）**：
+
+- 新增 `player/IjkNativeLibs.kt`（`object`，进程级唯一入口）：三态 `STATE_UNLOADED/LOADED/FAILED`（`@Volatile`，快路径只读一次），`ensureLoaded(context)` 在 `synchronized` 内用 `catch (t: Throwable)` 兜住加载；**失败即锁死本进程不再重试**，避免每开一个页面刷一遍同样的错误。失败时采集 ABI（`SDK_INT >= 21` 才读 `Build.SUPPORTED_ABIS`，否则回落 `CPU_ABI`/`CPU_ABI2`，minSdk 19 硬约束）、`nativeLibraryDir`、三个 .so 的存在/可读/大小、目录内容、原始栈写进 `Logu`（进内存环形缓冲，崩溃与反馈都会附带）；在用户开启崩溃自动上报时经 `TerminalApi.isCrashReportAutoEnabled()` 走 `CrashReporter.upload(...)`（每进程一次）。
+- 接线：`PlayerActivity.onCreate` 改 `ijkPlayer = createIjkPlayerOrBail() ?: return`（失败 `MsgUtil.toastLong` + `finish()`；早退点在 `setDisplay()` 被 `postDelayed` 排上之前，所以 `ijkPlayer!!` 不会被执行）；`retryAfterPlayerError` 的重建同样走 helper（原来在 `runOnUiThread` 里裸构造，外层 `catch (Exception)` 抓不到主线程的 `Error`）；`IjkPlayerBridge.createPlayer` / `VideoPlayerCore.createPlayer` 改为返回 `Boolean`；`ShortVideoPlayerActivity` 判 false → 复位 buffering 状态 + 提示 + `return`，不再对着空播放器做 `textureView` / `setDataSource`。
+- `res/values/strings.xml` 新增 `msg_ijk_native_load_failed`（"播放器组件加载失败，无法播放视频，请重装应用后再试"）。
+
+**验证**：`:app:assembleDebug` 通过（standard + coexist 两个 flavor 都出包）；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 各 **61 suites / 601 tests / 0 failures / 0 errors / 0 skipped**（读自 `app/build/test-results/`，`--offline --no-configuration-cache`）。本改动没有新增单测：A 路的守卫是生命周期谓词、B 路的加载是设备环境相关，工程无 Robolectric，JVM 单测覆盖不到（先例同 §3.19）。
+
+**未真机复现**（本机 adb 无在线设备）。待验：① 断网让「用户动态/投稿/专栏」首屏失败 → 恢复网络后在空列表拖动翻页，**不再崩**；② 原生库不可用设备上开播放页应提示并退回上一页，短视频滑到该条同理；③ #48 那台设备升级后，`IjkNativeLibs` 的诊断（`.so` 存在性/可读/大小）应出现在崩溃报告附带的 `ring_log` 里。
+
+**本轮遗留**：
+
+- 首屏失败后页面仍是空白、拖动仍会静默翻页（数据只进列表、不显示）——本轮只止损不恢复；治本需要「加载失败重试入口」或失败时置 `bottom = true`（都会改变用户可见行为，未擅自加）。
+- 未改：`UserFavoriteFragment.kt:50` 的 `setAdapter(adapter!!)`（该页 adapter 在 `onViewCreated` 同步创建，可证明安全）、三处 `arguments!!`。
+- B 路刻意未动 `PlayerActivity` 另外 4 处「加载成功之后」的 `IjkMediaPlayer()` 构造（听视频切换 / 直播换线路 / 切清晰度 / 换 P），此时 `mIsLibLoaded` 已为 true，不会再碰 .so。
+- #43–#49 是否绝迹要看下一版发布后的后台；若同一 `T0.A.run` 栈再现，需要**用新版 mapping 重新 retrace**（mapping 不进版本库，`clean` 后即失）。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
@@ -816,6 +852,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 | 四十七 | 26.10.11：控制台补「反馈 / 崩溃」已处理开关，并关掉已解决项 | `server/rebiliterminal_api.py`（`_db_set_handled` + `POST /admin/api/{feedback,crash}/handled`；两个列表接口加 `handled` 与 `pending=1`）、`server/console.html`（默认只看未处理 + 状态标签 + 标记/重开按钮 + 待处理计数）、`server/selftest.py` +17 例、`server/README.md` 与 `docs/architecture-map.md` 同步 | 已闭环（服务器实测：56 项 selftest 全通过、curl 覆盖 403/415/400/404；crash #2「PlaybackService 5 秒义务」与 feedback #2 测试内容已标记；crash #3/#4/#5 `TimeUtil$cache` 未修故保留待处理） |
 | 四十八 | 26.10.16：日志基建 + 崩溃 / 反馈附带日志 + 「我的反馈」页面 | `util/Logu.java` 内存环形缓冲（`RING_MAX_CHARS=65536`、只记 W/E/F、不落盘）、`util/LogSanitizer.kt`（键=值脱敏，复用 `NetWorkUtil` 两份键名清单）、`util/LogExporter.kt`（FileProvider 分享）、`util/CrashReporter.kt` 的 `mergeLog()`、`ErrorCatch.java` 的 `ring_log` Intent extra、`CatchActivity.kt` / `FeedbackActivity.kt` 勾选框、`TerminalApi` 的 `log` 参数与 `getMyFeedback()`、`activity/feedback/` 列表 + 详情、服务端 `feedback.log` 列（`SCHEMA_VERSION` 1→2）+ `/terminal/feedback/mine` + `/admin/api/{feedback,crash}/detail` + `log_len` | 部分遗留（服务端已上线；客户端已真机验证通过，仅日志本地导出、崩溃自动上报端到端、跨设备找回未覆盖，见 §3.20） |
 | 四十九 | 26.10.16：反馈对话——用户可追加说明 | 服务端 `feedback_comment` 表（`SCHEMA_VERSION` 2→3，**v3 刻意无 DDL**）+ `POST /terminal/feedback/reply` + 归属判据 `_MINE_SQL` 与 `/feedback/mine` **共用同一份** + 追加即把 `handled` 打回 0（reopen 语义）+ `_db_feedback_thread` 合并两侧消息 + 管理台 `user_reply_count` 与对话抽屉；客户端 `TerminalDialog.input()`（+`Sheet.addInput`）、`FeedbackReply.author`、`submitFeedbackReply`（走新增 `postWithHeaders`）、`FeedbackDetailActivity` 时间线与「追加说明」入口、`FeedbackListActivity` 结果码重拉 | 部分遗留（跨设备 `X-Mid` 追加、发送失败重开预填未真机覆盖，见 §3.21） |
+| 五十 | 26.10.19：线上崩溃两路清剿（#43–#49） | A 路：#43–#47/#49 无 message NPE = `UserDynamicFragment.continueLoading` 里 `adapter!!`（首屏加载失败 → adapter 从未创建 → 空列表拖动翻页）；三处 `runOnUiThread` 加 `isAdded && view != null` + `adapter?.`，`setRefreshing(false)` 进 `finally`，顺带修 `UserVideoFragment` 插入起点漏 `+1`。B 路：#48 `libijksdl.so` 加载失败 = `UnsatisfiedLinkError`（`Error`）冒到主线程 + `IjkMediaPlayer()` 构造会二次加载；新增 `player/IjkNativeLibs.kt`（失败锁死 + 诊断上传），`PlayerActivity` / `IjkPlayerBridge` / `VideoPlayerCore` / `ShortVideoPlayerActivity` 全部改判返回值并降级 | 部分遗留（构建与两 flavor 单测全绿，**未真机复现**；见 §3.29） |
 
 ## 5. 仍待回迁 / 仅见于归档的长期结论
 

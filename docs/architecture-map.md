@@ -1175,6 +1175,16 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 展平逻辑是纯函数 `model/Collection.toPlaylist`（有单测）：跨节按节顺序、节内按集顺序；`sections` 为空时退回 `cards`。
 - 台账与真机记录见 `docs/review/fix-progress.md` §3.18 / §3.24；接口侧结论见 `docs/bilibili-api-notes.md` §5。
 
+### 7.44 线程边界上必须兜住的两类东西：销毁后的 UI 回调 + `Error` 型失败（26.10.19 定稿，崩溃版本 26.10.16，#43–#49）
+
+两条线上崩溃（§3.19 账号切换页、§3.29 用户动态页 + 播放器原生库）根因不同，但**失败位置是同一个：跨线程 / 跨层的入口处没有重新判据**。
+
+1. **后台请求回主线程时必须重新判活**：`CenterThreadPool.run { 网络请求 → runOnUiThread { 用 Activity/View/adapter } }` 是仓库最常见的写法，而请求一起跑，用户随时可能返回、页面随时可能被系统回收。**判活必须写进 `runOnUiThread` 的 Runnable 内部**（判完到 Runnable 真正执行之间，主线程完全可能已经跑完 `onDestroy`），只判 post 之前是错的。`activity/base/BaseActivity.kt` 重写了 `isDestroyed()`（语义含「正在 finish」），所以 Glide 的 `assertNotDestroyed` 在这个窗口里更容易被踩到；`activity/base/BaseFragment.kt:8-10` 的 `runOnUiThread` 只做 `if (isAdded)`，**不保证 view 还在**——`isAdded && view != null` 要自己补。判活谓词的落点：Glide 走 `util/GlideUtil.canLoad(View)`，其它统一用 `isDestroyed` / `isAdded`。
+2. **`Error` 不是 `Exception`**：`UnsatisfiedLinkError`、`NoClassDefFoundError`、`NoSuchFieldError` 都继承 `Error`，工程里那些 `catch (e: Exception)` 一律兜不住——它们会直接冒到主线程把进程带走。原生库（ijk 的 `libijkffmpeg.so` / `libijksdl.so` / `libijkplayer.so`、`DanmakuFlameMaster` 的 `ndkbitmap`、`brotlij` 的 `brotli`）都可能在个别设备上 `dlopen` 失败（#48 的 `Bad file descriptor` 就是设备侧文件读不出来）。**新的原生能力入口必须用 `catch (Throwable)` 兜住并降级**，别在业务代码里裸调 `System.loadLibrary` / `loadLibrariesOnce`。
+3. **ijk 的专用约束**（`player/IjkNativeLibs.kt`，26.10.19 新增）：`IjkMediaPlayer.loadLibrariesOnce` 三个库全成功才置静态 `mIsLibLoaded`，而 `IjkMediaPlayer()` **构造内部会再调一次** → 只包 `loadLibrariesOnce` 不够，构造本身也要 try/catch；失败后 `IjkNativeLibs` 在本进程锁死（不再重试、不再刷日志），并采集 ABI / `nativeLibraryDir` / 每个 `.so` 的存在性·可读性·大小 / 原始栈进 `Logu`，在用户开启崩溃自动上报时上传一次。**改播放相关代码时一律 `IjkNativeLibs.ensureLoaded(context)` + 判返回值**，不要直接 `IjkMediaPlayer()`。`IjkPlayerBridge.createPlayer` / `VideoPlayerCore.createPlayer` 已改为返回 `Boolean`，失败由调用方提示并退出；`PlayerActivity.onCreate` 失败时 `return`，此时 `setDisplay()` 还没被 `postDelayed` 排上，`ijkPlayer!!` 不会被执行。
+
+全文见 `docs/review/fix-progress.md` §3.19 / §3.29。
+
 ## 8. UI 基建速查（新增页面临摹用）
 
 ### 8.1 完整继承体系
