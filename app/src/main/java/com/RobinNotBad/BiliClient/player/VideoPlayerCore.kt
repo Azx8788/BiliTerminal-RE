@@ -94,8 +94,9 @@ class VideoPlayerCore(
      *
      * @param reuse 为 true 时复用已有实例（只 `reset()`），省掉一次 native 播放器创建，
      *              用于切清晰度/切分页这类高频重建场景。
+     * @return 成功返回 true；原生库不可用返回 false（**不抛异常**），调用方必须自行降级。
      */
-    fun createPlayer(context: Context, options: List<IjkOption>? = null, reuse: Boolean = false) {
+    fun createPlayer(context: Context, options: List<IjkOption>? = null, reuse: Boolean = false): Boolean {
         val exist = mediaPlayer
         if (reuse && exist != null) {
             try {
@@ -112,14 +113,22 @@ class VideoPlayerCore(
         }
 
         if (mediaPlayer == null) {
-            IjkMediaPlayer.loadLibrariesOnce(null)
-            mediaPlayer = IjkMediaPlayer()
+            // 原生库失败抛的是 UnsatisfiedLinkError（Error 不是 Exception），
+            // 这里必须兜住并返回 false——否则它会直接冒到调用它的主线程。
+            if (!IjkNativeLibs.ensureLoaded(context)) return false
+            mediaPlayer = try {
+                IjkMediaPlayer()
+            } catch (t: Throwable) {
+                IjkNativeLibs.reportCreateFailure(context, t)
+                return false
+            }
         }
 
         val player = mediaPlayer!!
         applyOptions(player, options)
         bindListeners(player)
         _state.update { it.copy(isPrepared = false, isPlaying = false, errorCode = 0, errorMessage = null) }
+        return true
     }
 
     private fun applyOptions(player: IjkMediaPlayer, options: List<IjkOption>?) {

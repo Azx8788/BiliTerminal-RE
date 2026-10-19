@@ -58,12 +58,26 @@ class IjkPlayerBridge(
      *
      * @param options 为 null 时使用默认选项集；传入非空列表时使用调用方提供的完整选项集
      *                （用于短视频等需要专门缓冲优化参数的场景，保证行为与调用方一致）。
+     * @return 创建成功返回 true；原生库不可用时返回 false（**不抛异常**），调用方必须自行降级。
+     *
+     * 为什么要判返回值而不是像以前那样不管：`loadLibrariesOnce` / `IjkMediaPlayer()` 在
+     * 库加载失败时抛的是 `UnsatisfiedLinkError`（继承 Error），调用点（短视频）原来的
+     * `catch (e: Exception)` 兜不住，会直接崩在 `initPlayer` 里（线上崩溃 #48 的同类现场）。
+     * 现在失败被收敛成 false，由 [IjkNativeLibs] 记录诊断、调用方提示用户。
      */
-    fun createPlayer(context: Context, options: List<IjkOption>? = null) {
+    fun createPlayer(context: Context, options: List<IjkOption>? = null): Boolean {
         release()
-        IjkMediaPlayer.loadLibrariesOnce(null)
+        // 加载失败会在 IjkNativeLibs 内部锁死并记录 ABI/库路径诊断，本进程不再重试
+        if (!IjkNativeLibs.ensureLoaded(context)) return false
 
-        val player = IjkMediaPlayer().apply {
+        val player = try {
+            IjkMediaPlayer()
+        } catch (t: Throwable) {
+            // 库加载成功但构造内部（initNativeOnce）仍失败：同样按不可用处理
+            IjkNativeLibs.reportCreateFailure(context, t)
+            return false
+        }
+        player.apply {
             if (options == null) {
                 setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "mediacodec", 1L)
                 setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "opensles", 0L)
@@ -146,6 +160,7 @@ class IjkPlayerBridge(
         }
 
         mediaPlayer = player
+        return true
     }
 
     fun setOnPrepared(cb: () -> Unit) { onPreparedCallback = cb }
