@@ -663,7 +663,16 @@ class ShortVideoPagerAdapter(
             bufferingIndicator.visibility = View.VISIBLE
 
             try {
-                playerBridge.createPlayer(activity, shortVideoOptions)
+                // 原生库不可用时 createPlayer 返回 false 而不是抛异常（它抛的是
+                // UnsatisfiedLinkError，属于 Error，下面这个 catch (e: Exception) 兜不住）：
+                // 这里必须提前退出，否则后面 textureView / danmakuManager / setDataSource
+                // 全是对着空播放器操作。
+                if (!playerBridge.createPlayer(activity, shortVideoOptions)) {
+                    lastBufferingVisible = false
+                    bufferingIndicator.visibility = View.GONE
+                    MsgUtil.showMsgLong(activity.getString(R.string.msg_ijk_native_load_failed))
+                    return
+                }
 
                 textureView = TextureView(activity).apply {
                     layoutParams = FrameLayout.LayoutParams(
