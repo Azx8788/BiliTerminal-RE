@@ -103,5 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: debug-apks
-          path: app/build/outputs/apk/debug/*.apk
+          # flavor 化后产物在 outputs/apk/<flavor>/debug/ 下（standard/coexist 各一份），
+          # 旧的 outputs/apk/debug/ 路径已不存在，if-no-files-found: error 会让每次 CI 必红。
+          path: app/build/outputs/apk/*/debug/*.apk
           if-no-files-found: error

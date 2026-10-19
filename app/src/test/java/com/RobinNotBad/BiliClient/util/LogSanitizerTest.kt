@@ -13,10 +13,10 @@ import org.junit.Test
  *
  * 1. **凭证的值绝不能留在日志里**——`access_key` / `csrf` / `SESSDATA` 都是可直接冒用身份的
  *    凭证，而内存日志快照会随崩溃 / 反馈导出给用户，漏一个等于把会话明文送人。
- * 2. **脱敏要覆盖日志行的所有真实形态**——整行 URL、Cookie 串（`;` 分隔）、只有一小段带参数
- *    的片段。按 URL 解析会漏掉后两种，所以这里按 `键=值` 做文本替换。
- * 3. **快速路径必须真的快**——绝大多数日志行一个受管键名都没有，必须原样返回、不跑正则，
- *    否则每行日志都跑一遍正则在手表端不可接受。
+ * 2. **脱敏要覆盖日志行的所有真实形态**——`键=值`（查询串 / Cookie 串）、URL 编码的
+ *    `键%3D值`、JSON 的 `"键":"值"`，以及裸的 11 位手机号。只认一种形态，换个日志来源就漏。
+ * 3. **快速路径必须真的快**——绝大多数日志行一个受管键名都没有，必须不跑那三个
+ *    键值对正则，否则每行日志都跑一遍正则在手表端不可接受。
  *
  * 本类**不依赖任何 `android.*` 类**，可在纯 JVM 单测里跑。
  */
@@ -53,12 +53,14 @@ class LogSanitizerTest {
 
     @Test
     fun cookie串里的敏感值被打码() {
+        // buvid3 是设备指纹 Cookie（26.10.19 起纳入敏感清单），同样不能留
         val out = LogSanitizer.sanitize("Cookie: SESSDATA=abc123; bili_jct=def456; buvid3=keepme")
         assertFalse(out.contains("abc123"))
         assertFalse(out.contains("def456"))
+        assertFalse("设备指纹 Cookie 也不能留下", out.contains("keepme"))
         assertTrue(out.contains("SESSDATA=***"))
         assertTrue(out.contains("bili_jct=***"))
-        assertTrue("非敏感 Cookie 原样保留", out.contains("buvid3=keepme"))
+        assertTrue(out.contains("buvid3=***"))
     }
 
     @Test
@@ -80,6 +82,78 @@ class LogSanitizerTest {
         assertTrue(out.contains("sessdata=***"))
         assertTrue(out.contains("APPKEY=***"))
         assertTrue(out.contains("Refresh_Token=***"))
+    }
+
+    // ---------- 日志侧补充的敏感键 ----------
+
+    @Test
+    fun 补充的敏感键也被打码() {
+        val out = LogSanitizer.sanitize("access_token=AT&refresh_csrf=RC&buvid4=B4")
+        assertFalse("access_token 是凭证，不能留下", out.contains("AT"))
+        assertFalse(out.contains("RC"))
+        assertFalse(out.contains("B4"))
+        assertTrue(out.contains("access_token=***"))
+        assertTrue(out.contains("refresh_csrf=***"))
+        assertTrue(out.contains("buvid4=***"))
+    }
+
+    // ---------- JSON 形态 ----------
+
+    @Test
+    fun JSON里的敏感值被打码() {
+        val out = LogSanitizer.sanitize(
+            "{\"access_key\":\"SECRET\",\"SESSDATA\":\"abc123\",\"buvid3\":\"DEVICE\",\"n\":1}"
+        )
+        assertFalse("access_key 的 JSON 值不能留下", out.contains("SECRET"))
+        assertFalse(out.contains("abc123"))
+        assertFalse(out.contains("DEVICE"))
+        assertTrue(out.contains("\"access_key\":\"***\""))
+        assertTrue(out.contains("\"SESSDATA\":\"***\""))
+        assertTrue(out.contains("\"buvid3\":\"***\""))
+        assertTrue("非敏感字段原样保留", out.contains("\"n\":1"))
+    }
+
+    @Test
+    fun JSON冒号两侧带空白也能打码() {
+        val out = LogSanitizer.sanitize("{ \"SESSDATA\" : \"abc123\" }")
+        assertFalse(out.contains("abc123"))
+        assertTrue(out.contains("\"SESSDATA\":\"***\""))
+    }
+
+    @Test
+    fun JSON里的数字型敏感值也被替换() {
+        val out = LogSanitizer.sanitize("{\"refresh_csrf\":12345}")
+        assertFalse(out.contains("12345"))
+        assertTrue(out.contains("\"refresh_csrf\":\"***\""))
+    }
+
+    // ---------- URL 编码形态 ----------
+
+    @Test
+    fun URL编码后的键值对也被打码() {
+        // 整段查询串被当成参数值再编码时，等号会变成 %3D
+        val out = LogSanitizer.sanitize("data=access_key%3DSECRET%26csrf%3DJCT")
+        assertFalse("URL 编码形态的 access_key 不能漏", out.contains("SECRET"))
+        assertFalse("URL 编码形态的 csrf 不能漏", out.contains("JCT"))
+        assertTrue(out.contains("access_key%3D***"))
+    }
+
+    // ---------- 裸手机号 ----------
+
+    @Test
+    fun 裸手机号被打码() {
+        val out = LogSanitizer.sanitize("联系方式 13800138000 已记录")
+        assertFalse("手机号不能留在日志里", out.contains("13800138000"))
+        assertTrue(out.contains("***"))
+    }
+
+    @Test
+    fun 长数字里的手机号片段不误伤() {
+        // 13 位时间戳、以 12 开头的 11 位数字都不是手机号，不能从中间切一段打码
+        val timestamp = LogSanitizer.sanitize("ts=1700000000000")
+        assertTrue("13 位时间戳要原样保留", timestamp.contains("1700000000000"))
+        val orderId = LogSanitizer.sanitize("订单号 12345678901 已记录")
+        assertTrue("非手机号段的 11 位数字要原样保留", orderId.contains("12345678901"))
     }
 
     // ---------- 噪音键 ----------

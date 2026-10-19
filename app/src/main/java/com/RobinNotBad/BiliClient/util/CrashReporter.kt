@@ -105,7 +105,8 @@ object CrashReporter {
             /* abi = */ TerminalApi.firstAbi(),
             /* ramTotal = */ ramTotal,
             /* ramAvail = */ ramAvail,
-            /* uptimeSec = */ uptimeSec
+            /* uptimeSec = */ uptimeSec,
+            /* isCoexist = */ BuildConfig.COEXIST
         )
     }
 

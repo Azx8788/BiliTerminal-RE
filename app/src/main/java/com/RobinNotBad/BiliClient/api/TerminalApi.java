@@ -204,6 +204,10 @@ public class TerminalApi {
      * <p>比上游 {@code /terminal/upload/stack} 多带了这些字段（用户要求「发的多一点」）：
      * 匿名 install_id、异常类名与消息（与堆栈分开）、出错线程、崩溃前的页面轨迹、
      * 系统版本 / product / model / ABI / 内存 / 运行时长。堆栈本身仍是主体。
+     *
+     * <p>{@code is_coexist} 与启动上报同源：两个 flavor 在「崩溃」这个维度上也要能分开统计，
+     * 缺了它就只剩 ping 那一路能区分版本。做成参数而不是在方法里直接读 {@code BuildConfig}，
+     * 是为了让这枚纯函数能在 JVM 单测里钉住「true / false 都原样落进载荷」。
      */
     public static JSONObject buildCrashPayload(String installId, String deviceKey, long mid,
                                                String exception, String message, String thread,
@@ -212,7 +216,7 @@ public class TerminalApi {
                                                String release, String brand, String device,
                                                String product, String model, String abi,
                                                long ramTotal, long ramAvail,
-                                               long uptimeSec) throws JSONException {
+                                               long uptimeSec, boolean isCoexist) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
         data.put("device_key", safe(deviceKey));
@@ -235,7 +239,28 @@ public class TerminalApi {
         data.put("ram_total", ramTotal);
         data.put("ram_avail", ramAvail);
         data.put("uptime_sec", uptimeSec);
+        data.put("is_coexist", isCoexist);
         return data;
+    }
+
+    /**
+     * 兼容重载：{@code is_coexist} 取本包 flavor 的编译期常量（与 {@link #ping()} 里
+     * 传给 {@code buildPingPayload} 的 {@code BuildConfig.COEXIST} 同源）。
+     *
+     * <p>保留它是为了让既有调用点与 JVM 单测不必跟着改签名；**新代码应显式传
+     * {@code is_coexist}**，单测也才能覆盖两个分支。
+     */
+    public static JSONObject buildCrashPayload(String installId, String deviceKey, long mid,
+                                               String exception, String message, String thread,
+                                               String stack, String log, String extra,
+                                               int versionCode, String versionName, int sdk,
+                                               String release, String brand, String device,
+                                               String product, String model, String abi,
+                                               long ramTotal, long ramAvail,
+                                               long uptimeSec) throws JSONException {
+        return buildCrashPayload(installId, deviceKey, mid, exception, message, thread, stack, log,
+                extra, versionCode, versionName, sdk, release, brand, device, product, model,
+                abi, ramTotal, ramAvail, uptimeSec, BuildConfig.COEXIST);
     }
 
     /**
@@ -501,15 +526,23 @@ public class TerminalApi {
     // ==================== 网络 ====================
 
     /**
-     * 自建接口专用请求头：{@link AppInfoApi#customHeaders}（无 Cookie）的副本，额外带 install_id。
+     * 自建接口专用请求头：{@link AppInfoApi#customHeaders}（无 Cookie）的副本，
+     * 已同意当前版本隐私说明时额外带 {@code X-Install-Id}。
      *
      * <p>用副本而不是直接改 {@code customHeaders}，是因为那个列表同时被上游接口使用，
      * 往共享静态列表里加项会改变上游请求的内容。
      */
     public static ArrayList<String> headers() {
         ArrayList<String> list = new ArrayList<>(AppInfoApi.customHeaders);
-        list.add("X-Install-Id");
-        list.add(getInstallId());
+        // 安装标识**只在已同意当前版本隐私说明之后**才带：它是一枚可长期追踪的随机 ID，
+        // 而 `headers()` 还服务着「拉公告」这条**同意之前**就会跑的链路（闪屏一进来就调），
+        // 不该在用户还没表态时就把 ID 送给服务器。
+        // 判据 [hasPrivacyConsent] 只读 SharedPreferences，不取 Context、不发请求，故无递归风险。
+        // 反馈相关接口靠 [feedbackHeaders] 单独补回这个头（用户主动提交，归属认人必需）。
+        if (hasPrivacyConsent()) {
+            list.add("X-Install-Id");
+            list.add(getInstallId());
+        }
         return list;
     }
 
@@ -704,7 +737,7 @@ public class TerminalApi {
     /**
      * 「我的反馈」列表。
      *
-     * <p>身份靠 {@code X-Install-Id}（{@link #headers()} 已带）；登录用户的 UID 只在用户勾选
+     * <p>身份靠 {@code X-Install-Id}（{@link #feedbackHeaders()} 必带）；登录用户的 UID 只在用户勾选
      * 「附带账号 ID」时才通过 {@code X-Mid} 头附带，与提交反馈同一口径——没勾选就只认本机。
      *
      * <p><b>必须显式传 {@link #feedbackHeaders()}</b>，绝不可改用
@@ -718,13 +751,25 @@ public class TerminalApi {
     }
 
     /**
-     * 「我的反馈」专用请求头：{@link #headers()} 的副本，按需追加 {@code X-Mid}。
+     * 「我的反馈」专用请求头：{@link #headers()} 的副本，保证带 {@code X-Install-Id}，
+     * 按需追加 {@code X-Mid}。
+     *
+     * <p>{@link #headers()} 只在用户同意隐私说明后才带安装标识（那是统计口径），但反馈的
+     * 归属必须靠它认人，所以这里无条件补上——见方法体注释。
      *
      * <p>mid 走请求头而不是查询串——uvicorn 的 access log 会记完整 URL，放查询串等于把 UID
      * 写进服务器日志文件。是否附带由 {@link #shouldAttachMid()} 决定。
      */
     public static ArrayList<String> feedbackHeaders() {
         ArrayList<String> list = headers();
+        // 反馈是用户**主动发起**的交互，不是后台统计：反馈的归属、「我的反馈」列表和追加回复
+        // 都靠这个头认人（服务端不认 Cookie）。因此未同意隐私说明时也补上——它和提交反馈的
+        // body 里的 install_id 是同一个值，去掉头并不能让这次提交变得匿名，只会让用户
+        // 看不到自己刚发的反馈。
+        if (!hasPrivacyConsent()) {
+            list.add("X-Install-Id");
+            list.add(getInstallId());
+        }
         if (shouldAttachMid()) {
             list.add("X-Mid");
             list.add(String.valueOf(SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0L)));

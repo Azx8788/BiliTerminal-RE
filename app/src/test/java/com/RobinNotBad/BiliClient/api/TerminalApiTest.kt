@@ -4,6 +4,7 @@ import com.RobinNotBad.BiliClient.model.Announcement
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -206,6 +207,10 @@ class TerminalApiTest {
         assertEquals("内容一", list[1].content)
         assertFalse("ctime 秒应被换算成可读日期", list[0].ctime.isEmpty())
         assertTrue("应格式化为 yyyy-MM-dd", list[0].ctime.matches(Regex("\\d{4}-\\d{2}-\\d{2}")))
+        // 秒当毫秒用会得到 1970 年，只断形状抓不到这个错，必须断年份区间：
+        // 1700000000 秒 = 2023-11，若漏掉 *1000 则变成 1970-01。
+        val ctimeYear = list[0].ctime.substring(0, 4).toInt()
+        assertTrue("ctime 应落在合理年份（漏乘 1000 会变成 1970），实际 ${list[0].ctime}", ctimeYear in 2000..2100)
     }
 
     @Test
@@ -258,6 +263,15 @@ class TerminalApiTest {
     @Test
     fun dayKey_isIsoDate() {
         assertTrue(TerminalApi.dayKey(1700000000000L).matches(Regex("\\d{4}-\\d{2}-\\d{2}")))
+    }
+
+    @Test
+    fun dayKey_changesAcrossLocalDays() {
+        // 同一本地日的两个时刻（相差 17 分钟）必须相同；跨一天必须不同。
+        // 只断 yyyy-MM-dd 形状的话，实现返回常量也能通过。
+        val base = 1700000000000L
+        assertEquals(TerminalApi.dayKey(base), TerminalApi.dayKey(base + 17 * 60 * 1000L))
+        assertNotEquals(TerminalApi.dayKey(base), TerminalApi.dayKey(base + 24 * 60 * 60 * 1000L))
     }
 
     // ---------- 安全：载荷里不得出现账号凭据 ----------

@@ -173,7 +173,7 @@ class DebugBridge : BroadcastReceiver() {
         |  --es cmd activities               列出所有可启动的 Activity 全名
         |  --es cmd notutorials              把全部教程标记为已读（否则教程页会盖住你拉起的页面）
         |  --es cmd http --es url <URL> [--es method GET|POST] [--es data <体>]
-        |            [--es headers '<JSON>'] [--ez appheaders false]
+        |            [--es headers '<JSON>'] [--ez appheaders true]  (默认不带 Cookie)
         |  --es cmd log [--es file rebili.log|http.log] [--es bytes 65536]
         |  --es cmd logs                     列出日志文件及大小
         |  --es cmd logclear [--es file <名>]   清空日志（默认清业务日志）
@@ -227,6 +227,9 @@ class DebugBridge : BroadcastReceiver() {
         val type = intent.getStringExtra("type") ?: inferType(key)
         val sp = SharedPreferencesUtil.sharedPreferences
         if (sp == null || !sp.contains(key)) return "$key=<不存在>"
+        // 敏感项与 dump 同一条判据：只报长度。原因见 isSensitiveKey 的注释——
+        // get 的结果同样会落进 bridge-last.txt。
+        if (isSensitiveKey(key)) return "$key=${maskedLength(sp.all[key])}"
         val value = when (type) {
             "int" -> sp.getInt(key, 0).toString()
             "long" -> sp.getLong(key, 0L).toString()
@@ -259,6 +262,20 @@ class DebugBridge : BroadcastReceiver() {
         return "OK: removed $key"
     }
 
+    /**
+     * 键名是否命中敏感清单。
+     *
+     * <p>`dump` 与 `get` 必须用**同一条判据**：只给 `dump` 打码而 `get` 直出，等于
+     * 「`get --es key cookies` 一行就把登录 Cookie 拿走」；更糟的是 `get` 的结果与
+     * `dump` 一样会写进 `$RESULT_FILE`（见 [persist]），落盘之后就不再是「只在
+     * adb 会话里看到」了。
+     */
+    private fun isSensitiveKey(key: String): Boolean =
+        SENSITIVE_KEY_HINTS.any { key.lowercase().contains(it) }
+
+    /** 敏感项只报长度：值既不回显、也不进 `$RESULT_FILE`。 */
+    private fun maskedLength(raw: Any?): String = "<已打码 len=${raw?.toString()?.length ?: 0}>"
+
     private fun dump(): String {
         val sp = SharedPreferencesUtil.sharedPreferences ?: return "ERR: SharedPreferences 未就绪"
         val keys = sp.all.keys.sorted()
@@ -266,9 +283,8 @@ class DebugBridge : BroadcastReceiver() {
             appendLine("OK: 共 ${keys.size} 项（敏感值打码）")
             for (key in keys) {
                 val raw = sp.all[key]
-                val sensitive = SENSITIVE_KEY_HINTS.any { key.lowercase().contains(it) }
                 val value = when {
-                    sensitive -> "<已打码 len=${raw?.toString()?.length ?: 0}>"
+                    isSensitiveKey(key) -> maskedLength(raw)
                     raw is String && raw.length > 200 -> raw.substring(0, 200) + "…"
                     else -> raw.toString()
                 }
@@ -499,7 +515,10 @@ class DebugBridge : BroadcastReceiver() {
         val method = (intent.getStringExtra("method") ?: "GET").uppercase()
         val data = intent.getStringExtra("data")
         val headersJson = intent.getStringExtra("headers")
-        val useAppHeaders = boolExtra(intent, "appheaders", true)
+        // 默认**不带**应用自己的 Cookie：这条命令的核心用途是「探一个任意 URL 能不能通」，
+        // 而目标 URL 由调用方随便填，默认带登录态等于「谁都能借它把 SESSDATA 发去自己的服务器」。
+        // 确实要测带登录态的接口时显式传 --ez appheaders true。
+        val useAppHeaders = boolExtra(intent, "appheaders", false)
 
         val builder = Request.Builder().url(url)
         if (useAppHeaders) {

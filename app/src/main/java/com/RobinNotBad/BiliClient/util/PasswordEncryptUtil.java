@@ -12,7 +12,10 @@ import javax.crypto.Cipher;
 public class PasswordEncryptUtil {
 
     public static String getKeyPem(String rawKey) {
-        String content = rawKey.strip();
+        // String#strip 是 API 33 才有的方法，本工程 minSdk 19 且未开 core library desugaring，
+        // 在低版本设备上会抛 NoSuchMethodError（被线程池兜住后表现为「密码登录静默失败」）。
+        // 这里只需要去首尾空白，直接用 trim() 行为一致且全版本可用。
+        String content = rawKey.trim();
         content = content.replace("-----BEGIN PUBLIC KEY-----", "");
         content = content.replace("-----END PUBLIC KEY-----", "");
         content = content.replace("\n", "").replace("\r", "").trim();

@@ -359,7 +359,11 @@ public class Logu {
      * 没有独立的「调用者」字段——调用方把需要定位的信息自己写进 [text]。
      */
     public static void appendToFile(String fileName, String level, String text) {
-        enqueue(fileName, TIME_FORMAT.format(new Date()) + " " + level + " " + shorten(text));
+        // HTTP 追踪入口同样先脱敏：请求/响应 body 里可能带 csrf（bili_jct）、refresh_token 等凭据，
+        // 不脱敏就直接落盘等于把它们写进 http.log。顺序与 [toFile] 一致——先脱敏、再 shorten()：
+        // 若先截断再脱敏，超长行被截断后敏感值可能只剩前半截，脱敏就匹配不全、凭证反而漏出去。
+        String sanitized = text == null ? null : LogSanitizer.sanitize(text);
+        enqueue(fileName, TIME_FORMAT.format(new Date()) + " " + level + " " + shorten(sanitized));
     }
 
     private static void enqueue(String fileName, String line) {

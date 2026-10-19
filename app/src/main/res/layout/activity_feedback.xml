@@ -118,6 +118,7 @@
                 android:background="@drawable/background_edittext"
                 android:hint="@string/feedback_contact_hint"
                 android:inputType="text"
+                android:maxLength="4000"
                 android:maxLines="1"
                 android:padding="8dp"
                 android:textSize="13sp" />
