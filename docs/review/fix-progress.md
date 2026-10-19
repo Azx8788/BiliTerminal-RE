@@ -806,6 +806,15 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **台账更正**：§3.18 里「`PlayerData` 加 `collectionId`/`collectionTitle`/`returnPlaylist`（Parcelable）」是**当时的描述**；现状是这三个字段为 `PlayerActivity` 私有字段（`PlayerData` 只有 `virtualCollection` / `enterableInfo`），系统重建时会丢返回栈，见本次 Spec 报告。
 - **验证（26.10.19 全绿）**：`:app:clean`（42s）→ `:app:assembleDebug`（2m10s，standard + coexist 各 4 个 ABI 包，`BUILD SUCCESSFUL`）→ `:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest`（18s，`BUILD SUCCESSFUL`）。单测读自 `app/build/test-results/`：两个 flavor 各自 **62 suites / 629 tests / 0 failures / 0 errors / 0 skipped**（较上轮 61/601 增加 1 套 27 例：`SearchApiTest`、`DynamicApiTest` 新增用例、`LogSanitizerTest` 扩充等）。命令均带 `--offline --no-configuration-cache`；`clean` 与 `assemble` 分两次调用。未跑真机（本机无在线设备），UI 时序类修复仍需真机复测。
 
+### 3.31 动态正文 `#话题#` 点不动：真实 jump_url 是站内搜索链接（26.10.19）
+
+- **现象**：动态正文里 `#星塔旅人#` 这类话题显示为主题主色（说明命中了话题分支），但点不动。
+- **根因（实测，不是推测）**：带登录态抓 `x/polymer/web-dynamic/v1/feed/all`（20 条）与 `v1/detail`（id `1260873720887509041`）的真实响应，`RICH_TEXT_NODE_TYPE_TOPIC` 的 `jump_url` **只有一种形态** `//search.bilibili.com/all?keyword=<URL 编码的话题名>`，既没有 `topic_id` 也没有 `rid`。于是 `util/LinkUrlUtil.java` 的 `parseTopicId` 返回 0、`util/StringUtil.java` 的 `setSingleTopic` 走 `topicId <= 0` 分支只上色——26.10.05 §三十四 那个"解析不出 id 时宁可有色不可点"的退化分支，在真实数据下等于**所有话题都点不动**。
+- **反查 topic_id 不可行（三种端点实测）**：`x/topic/pub/search?keywords=` 只有模糊搜索（`绝区零` / `星塔旅人` / `转发抽奖` 都搜不到精确同名，只有 `星塔旅人一周年` 恰好有同名）；`x/topic/web/details/top?topic_name=` 报 `-400 Key: 'TopicInfoReq.TopicId' … failed on the 'gt' tag`（必须给 id）；`x/topic/pub/detail?topic_name=` 直接 404。
+- **修法**（与 B 站网页行为一致：话题链接本来就指向搜索）：`LinkUrlUtil` 新增纯函数 `parseTopicSearchKeyword(jumpUrl)`（要求含 `search.bilibili.com`，从 `keyword=` 取值后 `URLDecoder` 解成中文，取不到返回空串）；`StringUtil.setSingleTopic` 改三段——有 `topic_id` 仍进 `DynamicTopicActivity`；只有搜索链接则用新内部类 `TopicSearchClickableSpan` 进 `SearchActivity`（`putExtra("keyword", …)` + `putExtra("auto_search", true)`）；两者都没有才只上色。`model/TopicNode` 补 `getSearchKeyword()`，`isClickable()` 改为「有 topic_id 或有搜索关键词」。`SearchActivity` 只在 `auto_search=true` 时**进入即搜**，其余只传 `keyword` 的调用方行为不变（原来只预填输入框、用户还得再点一次放大镜）。
+- **单测**：`LinkUrlUtilTest` 补 4 例（协议相对的真实跳转能解码、https + 额外参数、非搜索链接 / 无 keyword / 空值返回空、topic-detail 链接不误判为搜索）；`DynamicApiTest` 补 1 例（搜索链接话题 `topicId=0` 但 `isClickable=true`）。
+- **验证**：`:app:assembleDebug --offline` + 两个 flavor 的单测全 `BUILD SUCCESSFUL`；真机 `emulator-5554`（coexist debug 包）点正文话题 → 进站内搜索页。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

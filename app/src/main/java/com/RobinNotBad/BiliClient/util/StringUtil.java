@@ -40,6 +40,7 @@ import com.RobinNotBad.BiliClient.BiliTerminal;
 import com.RobinNotBad.BiliClient.R;
 import com.RobinNotBad.BiliClient.activity.CopyTextActivity;
 import com.RobinNotBad.BiliClient.activity.dynamic.DynamicTopicActivity;
+import com.RobinNotBad.BiliClient.activity.search.SearchActivity;
 import com.RobinNotBad.BiliClient.api.ReplyApi;
 import com.RobinNotBad.BiliClient.model.At;
 import com.RobinNotBad.BiliClient.model.UserInfo;
@@ -317,24 +318,36 @@ public class StringUtil {
      *
      * 颜色走 [ColorScheme.PRIMARY]（主题主色），**不硬编码色值**，与 {@link #setTopSpan} 同一约定。
      * 注意：[LinkClickableSpan.updateDrawState] 会把颜色写死成青色并覆盖 ForegroundColorSpan，
-     * 所以这里不用它，改用 [TopicClickableSpan]（继承主色、点击进站内话题页）。
+     * 所以这里不用它，改用 [TopicClickableSpan]（有 topic_id，进站内话题页）或
+     * [TopicSearchClickableSpan]（只有搜索链接，进站内搜索页），两者都继承主色、无下划线。
      *
      * @param stringBuilder 目标富文本
      * @param start         话题文本起始下标
      * @param end           话题文本结束下标（不含）
-     * @param jumpUrl       话题跳转链接，形如 {@code .../topic-detail?topic_id=1305890}；
-     *                      为空或解析不出 topic_id 时不给点击 span（只上色，至少不会点不动又没反应）
+     * @param jumpUrl       话题跳转链接。26.10.19 实测真实数据里**主要是**
+     *                      {@code //search.bilibili.com/all?keyword=xx}（没有 topic_id），
+     *                      也可能是 {@code .../topic-detail?topic_id=1305890}。
+     *                      有 topic_id 进站内话题页；只有搜索链接就进站内搜索页；
+     *                      两者都没有才只上色（服务端连 jump_url 都没下发时）
      */
     public static void setSingleTopic(SpannableStringBuilder stringBuilder, int start, int end, String jumpUrl) {
         if (stringBuilder == null || start < 0 || end > stringBuilder.length() || start >= end) return;
         long topicId = LinkUrlUtil.parseTopicId(jumpUrl);
-        if (topicId <= 0) {
-            // 拿不到 topic_id 就只上色：宁可"有色不可点"，也不要把 "#话题#" 当网址去请求
-            stringBuilder.setSpan(new ForegroundColorSpan(ColorScheme.INSTANCE.getPRIMARY()),
+        if (topicId > 0) {
+            stringBuilder.setSpan(new TopicClickableSpan(topicId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            return;
+        }
+        String searchKeyword = LinkUrlUtil.parseTopicSearchKeyword(jumpUrl);
+        if (!searchKeyword.isEmpty()) {
+            // 服务端给的就是站内搜索链接（见 LinkUrlUtil.parseTopicSearchKeyword 的实测说明），
+            // 按它的语义进搜索页；否则真实动态里的话题会"染成主色却点不动"
+            stringBuilder.setSpan(new TopicSearchClickableSpan(searchKeyword),
                     start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             return;
         }
-        stringBuilder.setSpan(new TopicClickableSpan(topicId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        // 连搜索链接都没有：只上色，宁可有色不可点，也不要把 "#话题#" 当网址去请求
+        stringBuilder.setSpan(new ForegroundColorSpan(ColorScheme.INSTANCE.getPRIMARY()),
+                start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
     /**
@@ -363,6 +376,38 @@ public class StringUtil {
             super.updateDrawState(ds);
             ds.setUnderlineText(false);
             // 主题主色，不硬编码（用户要求"解析应该是蓝色的"，而蓝色正是默认主题的主色）
+            ds.setColor(ColorScheme.INSTANCE.getPRIMARY());
+        }
+    }
+
+    /**
+     * 话题通用点击 span：话题没有 topic_id、但服务端给了站内搜索链接时用。
+     *
+     * 实测话题的 jump_url 就是 {@code //search.bilibili.com/all?keyword=xx}（见
+     * {@link LinkUrlUtil#parseTopicSearchKeyword}），所以这里按关键词进站内搜索页，
+     * 而不是把 {@code #话题#} 拼成站外网址（那会搜出一堆无关结果）。
+     * 颜色与 {@link TopicClickableSpan} 一致：无下划线 + 主题主色。
+     */
+    public static class TopicSearchClickableSpan extends ClickableSpan {
+        private final String keyword;
+
+        public TopicSearchClickableSpan(String keyword) {
+            this.keyword = keyword;
+        }
+
+        @Override
+        public void onClick(@NonNull View widget) {
+            Context context = widget.getContext();
+            context.startActivity(new Intent(context, SearchActivity.class)
+                    .putExtra("keyword", keyword)
+                    // 落地即有结果，见 SearchActivity 里对 auto_search 的处理
+                    .putExtra("auto_search", true));
+        }
+
+        @Override
+        public void updateDrawState(@NonNull TextPaint ds) {
+            super.updateDrawState(ds);
+            ds.setUnderlineText(false);
             ds.setColor(ColorScheme.INSTANCE.getPRIMARY());
         }
     }

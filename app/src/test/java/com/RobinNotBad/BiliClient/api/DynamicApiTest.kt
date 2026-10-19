@@ -212,6 +212,24 @@ class DynamicApiTest {
     }
 
     /**
+     * 26.10.19 线上数据回归：真实接口下发的话题 jump_url 是站内搜索链接（**没有 topic_id**），
+     * 这种话题从前只上色不可点，用户看到的就是"粉色但点不动"。
+     * 现在应能点（进搜索页），关键词从 keyword 参数解出来。
+     */
+    @Test
+    fun parseTopicNodes_topicWithSearchJumpUrlIsClickable() {
+        val nodes = JSONArray(
+            """[{"type":"RICH_TEXT_NODE_TYPE_TOPIC","text":"#星塔旅人#","jump_url":"//search.bilibili.com/all?keyword=%E6%98%9F%E5%A1%94%E6%97%85%E4%BA%BA"}]"""
+        )
+
+        val topic = DynamicApi.parseTopicNodes(nodes).single()
+
+        assertEquals(0L, topic.topicId)
+        assertEquals("星塔旅人", topic.searchKeyword)
+        assertTrue("只有搜索链接的话题必须可点，否则又是线上的'粉色点不动'", topic.isClickable)
+    }
+
+    /**
      * 回归守卫：**不要**把 `parseTopicNodes` 的返回类型改回 `android.util.Pair`。
      *
      * **失败时的根因速查**：`android.util.Pair` 在 JVM 单测下是**没有实现的 Android 桩**，

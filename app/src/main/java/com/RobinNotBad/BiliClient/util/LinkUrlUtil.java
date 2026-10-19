@@ -40,6 +40,10 @@ public class LinkUrlUtil {
     public static final Pattern OPUS_PATTERN = Pattern.compile("^/opus/(\\d+)/?$");
     /** 从话题跳转链接里抠出 topic_id，形如 {@code .../topic-detail?topic_id=1305890&topic_name=xx}。 */
     public static final Pattern TOPIC_ID_PATTERN = Pattern.compile("[?&]topic_id=(\\d+)");
+    /** 动态正文话题节点的跳转域名：26.10.19 实测全站动态列表/动态详情下发的都是这个站内搜索链接。 */
+    public static final String TOPIC_SEARCH_DOMAIN = "search.bilibili.com";
+    /** 从站内搜索链接里抠出 keyword 参数（未解码，形如 {@code keyword=%E7%BB%9D%E5%8C%BA%E9%9B%B6}）。 */
+    public static final Pattern SEARCH_KEYWORD_PATTERN = Pattern.compile("[?&]keyword=([^&]*)");
 
     /**
      * 从话题跳转链接里解析 topic_id。
@@ -57,6 +61,33 @@ public class LinkUrlUtil {
             return Long.parseLong(matcher.group(1));
         } catch (NumberFormatException e) {
             return 0L;
+        }
+    }
+
+    /**
+     * 从话题节点的 jump_url 里解析「去搜索」用的关键词。
+     *
+     * <p><b>为什么需要它</b>：26.10.19 用真实登录态把 {@code feed/all} 与 {@code detail} 两条接口
+     * 的富文本节点全扫了一遍，{@code RICH_TEXT_NODE_TYPE_TOPIC} 的 jump_url **只有一种形态**
+     * {@code //search.bilibili.com/all?keyword=%E7%BB%9D%E5%8C%BA%E9%9B%B6}——既没有 topic_id
+     * 也没有 rid。所以 {@link #parseTopicId} 必然返回 0，光靠它话题永远点不动。
+     * 取不出 topic_id 时按服务端给的语义去站内搜索，是唯一与网页行为一致的落点
+     * （"话题名反查 topic_id"实测不可行：{@code x/topic/pub/search} 只有模糊搜索，绝区零/星塔旅人
+     * 这类主话题都搜不到精确同名；{@code x/topic/web/details/top} 必须传 id）。
+     *
+     * <p>解析不出（空串、不是 search.bilibili.com 的链接、没有 keyword、解码失败）统一返回空串，
+     * 调用方据此退化成「只上色不可点」。
+     */
+    public static String parseTopicSearchKeyword(String jumpUrl) {
+        if (jumpUrl == null || jumpUrl.isEmpty()) return "";
+        if (!jumpUrl.contains(TOPIC_SEARCH_DOMAIN)) return "";
+        Matcher matcher = SEARCH_KEYWORD_PATTERN.matcher(jumpUrl);
+        if (!matcher.find()) return "";
+        try {
+            String keyword = URLDecoder.decode(matcher.group(1), "UTF-8").trim();
+            return keyword;
+        } catch (Exception e) {
+            return "";
         }
     }
 

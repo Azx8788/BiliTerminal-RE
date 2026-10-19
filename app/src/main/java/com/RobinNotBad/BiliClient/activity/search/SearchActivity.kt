@@ -300,10 +300,21 @@ class SearchActivity : InstanceActivity() {
                 })
             }
 
-            if (intent.getStringExtra("keyword") != null) {
+            val intentKeyword = intent.getStringExtra("keyword")
+            if (intentKeyword != null) {
                 findViewById<View>(R.id.top).setOnClickListener { finish() }
-                keywordInput.setText(intent.getStringExtra("keyword"))
+                keywordInput.setText(intentKeyword)
                 MsgUtil.showMsg(UiText.of("可点击标题栏返回详情页"))
+                // 从话题等「点一下就期待有结果」的入口进来时直接搜（26.10.19 话题点击落地），
+                // 别让用户带着关键词停在空列表上再点一次放大镜。别处只传 keyword 的调用方行为不变。
+                if (intent.getBooleanExtra("auto_search", false)) {
+                    // 不能在这里直接调：onCreate 阶段 ViewPager 的 fragment 还没创建，
+                    // searchKeyword 里的 findFragmentByTag 全是 null，关键词送不到任何一页，
+                    // 用户看到的就是「有关键词但没结果」。等页面第一帧布局完成后再搜。
+                    viewPager.post {
+                        if (!isFinishing && !isDestroyed) searchKeyword(intentKeyword)
+                    }
+                }
             }
         }
     }

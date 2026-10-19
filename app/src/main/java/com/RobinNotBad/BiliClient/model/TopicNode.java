@@ -14,7 +14,8 @@ package com.RobinNotBad.BiliClient.model;
 public class TopicNode {
     /** 话题显示文本，形如 {@code #话题名#} */
     public String text = "";
-    /** 话题跳转链接，形如 {@code https://m.bilibili.com/topic-detail?topic_id=1305890}；服务端可能不下发，此时为空串 */
+    /** 话题跳转链接。服务端可能不下发（此时为空串）；真实数据里常见两种：
+     * {@code //search.bilibili.com/all?keyword=xx}（没有 topic_id）与 {@code .../topic-detail?topic_id=1305890} */
     public String jumpUrl = "";
 
     public TopicNode() {
@@ -30,8 +31,18 @@ public class TopicNode {
         return com.RobinNotBad.BiliClient.util.LinkUrlUtil.parseTopicId(jumpUrl);
     }
 
-    /** 无 jump_url 的话题仍是话题（染主色展示），只是不可点击。 */
+    /**
+     * 从 jumpUrl 解析出的站内搜索关键词；不是搜索链接时返回空串。
+     *
+     * 26.10.19 实测：动态接口下发的话题 jump_url **基本全是** {@code //search.bilibili.com/all?keyword=xx}，
+     * 没有 topic_id，所以"能点"要靠它（见 LinkUrlUtil.parseTopicSearchKeyword）。
+     */
+    public String getSearchKeyword() {
+        return com.RobinNotBad.BiliClient.util.LinkUrlUtil.parseTopicSearchKeyword(jumpUrl);
+    }
+
+    /** 能进话题页（有 topic_id）或能按话题名搜索（有搜索链接）就可点；两者都没有时只染主色、不可点。 */
     public boolean isClickable() {
-        return getTopicId() > 0;
+        return getTopicId() > 0 || !getSearchKeyword().isEmpty();
     }
 }
