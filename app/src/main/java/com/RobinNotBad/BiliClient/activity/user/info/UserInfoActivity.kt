@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user.info
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -27,7 +29,7 @@ class UserInfoActivity : BaseActivity() {
         val intent = intent
         val mid = intent.getLongExtra("mid", 114514)
 
-        setPageName("用户信息")
+        setPageName(UiText.of("用户信息"))
 
         // 教程改由 BaseActivity 按 Tutorials 注册表集中触发
 
@@ -68,13 +70,13 @@ class UserInfoActivity : BaseActivity() {
 
     private fun updatePageName(position: Int) {
         val sub = when (position) {
-            0 -> "动态"
-            1 -> "视频"
-            2 -> "专栏"
-            3 -> "收藏夹"
+            0 -> UiText.of("动态")
+            1 -> UiText.of("视频")
+            2 -> UiText.of("专栏")
+            3 -> UiText.of("收藏夹")
             else -> ""
         }
-        setPageName(if (sub.isEmpty()) "用户信息" else "用户信息-$sub")
+        setPageName(if (sub.isEmpty()) UiText.of("用户信息") else "用户信息-$sub")
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, @Nullable data: Intent?) {

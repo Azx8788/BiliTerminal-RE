@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -54,7 +56,7 @@ class FavoriteFolderEditActivity : BaseActivity() {
             btnSave.isClickable = false
             btnSave.alpha = 0.5f
             btnDelete.visibility = android.view.View.GONE
-            MsgUtil.showMsg("默认收藏夹不能编辑或删除")
+            MsgUtil.showMsg(UiText.of("默认收藏夹不能编辑或删除"))
         } else {
             btnSave.setOnClickListener { saveFolder() }
             btnDelete.setOnClickListener { handleDeleteClick() }
@@ -64,7 +66,7 @@ class FavoriteFolderEditActivity : BaseActivity() {
     private fun saveFolder() {
         val title = editTitle.text.toString().trim()
         if (title.isEmpty()) {
-            MsgUtil.showMsg("请输入收藏夹名称")
+            MsgUtil.showMsg(UiText.of("请输入收藏夹名称"))
             return
         }
 
@@ -77,7 +79,7 @@ class FavoriteFolderEditActivity : BaseActivity() {
                 runOnUiThread {
                     btnSave.isClickable = true
                     if (result == 0) {
-                        MsgUtil.showMsg("保存成功")
+                        MsgUtil.showMsg(UiText.of("保存成功"))
                         setResult(RESULT_OK)
                         finish()
                     } else {
@@ -96,7 +98,7 @@ class FavoriteFolderEditActivity : BaseActivity() {
     private fun handleDeleteClick() {
         deleteClickCount++
         if (deleteClickCount == 1) {
-            MsgUtil.showMsg("再次点击删除按钮确认删除")
+            MsgUtil.showMsg(UiText.of("再次点击删除按钮确认删除"))
             val handler = Handler()
             handler.postDelayed({ deleteClickCount = 0 }, 3000)
         } else if (deleteClickCount >= 2) {
@@ -114,7 +116,7 @@ class FavoriteFolderEditActivity : BaseActivity() {
                 runOnUiThread {
                     btnDelete.isClickable = true
                     if (result == 0) {
-                        MsgUtil.showMsg("删除成功")
+                        MsgUtil.showMsg(UiText.of("删除成功"))
                         setResult(RESULT_OK)
                         finish()
                     } else {

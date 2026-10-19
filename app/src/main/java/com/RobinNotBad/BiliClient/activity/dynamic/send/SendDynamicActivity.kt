@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.dynamic.send
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
@@ -108,7 +110,7 @@ class SendDynamicActivity : BaseActivity() {
             if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
                 setResult(RESULT_CANCELED)
                 finish()
-                MsgUtil.showMsg("还没有登录喵~")
+                MsgUtil.showMsg(UiText.of("还没有登录喵~"))
             }
 
             editText = findViewById(R.id.editText)
@@ -188,7 +190,7 @@ class SendDynamicActivity : BaseActivity() {
                 if (optionEditTexts.size < 10) {
                     addOptionEdit()
                 } else {
-                    MsgUtil.showMsg("最多10个选项")
+                    MsgUtil.showMsg(UiText.of("最多10个选项"))
                 }
             }
 
@@ -202,11 +204,11 @@ class SendDynamicActivity : BaseActivity() {
 
             send.setOnClickListener {
                 if (!SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.cookie_refresh, true)) {
-                    MsgUtil.showDialog("无法发送", "上一次的Cookie刷新失败了，\n您可能需要重新登录以进行敏感操作", -1)
+                    MsgUtil.showDialog(getString(R.string.text_cannot_send), getString(R.string.msg_cookie_refresh_failed), -1)
                     return@setOnClickListener
                 }
                 if (sending) {
-                    MsgUtil.showMsg("正在发送中")
+                    MsgUtil.showMsg(UiText.of("正在发送中"))
                     return@setOnClickListener
                 }
                 val text = editText.text.toString()
@@ -224,7 +226,7 @@ class SendDynamicActivity : BaseActivity() {
 
                 // 带图与投票不能同时发：本项目的投票走 attach_card，与 pics 叠加未经验证，宁可不发
                 if (imageUris.isNotEmpty() && draft != null) {
-                    MsgUtil.showMsg("带图动态暂不支持同时发投票")
+                    MsgUtil.showMsg(UiText.of("带图动态暂不支持同时发投票"))
                     return@setOnClickListener
                 }
 
@@ -244,7 +246,7 @@ class SendDynamicActivity : BaseActivity() {
 
                 // 带图：图片必须先上传图床换成 URL，再回传给 DynamicActivity 组装 pics
                 sending = true
-                MsgUtil.showMsg("正在上传图片...")
+                MsgUtil.showMsg(UiText.of("正在上传图片..."))
                 val toUpload = ArrayList(imageUris)   // 快照，避免上传期间用户又删图导致并发修改
                 CenterThreadPool.run {
                     try {
@@ -289,10 +291,10 @@ class SendDynamicActivity : BaseActivity() {
      */
     private fun showTimerPicker() {
         val now = System.currentTimeMillis() / 1000
-        val items = arrayOf("10 分钟后", "30 分钟后", "1 小时后", "2 小时后", "明天 12:00", "不定时")
+        val items = arrayOf(UiText.of("10 分钟后"), "30 分钟后", "1 小时后", "2 小时后", "明天 12:00", "不定时")
         TerminalDialog.menu(
             context = this,
-            title = "定时发布",
+            title = UiText.of("定时发布"),
             items = items.toList()
         ) { which ->
             when (which) {
@@ -320,15 +322,15 @@ class SendDynamicActivity : BaseActivity() {
     private fun applyTimer(seconds: Long) {
         timerPubTime = seconds
         updateTimerText()
-        if (seconds > 0) MsgUtil.showMsg("已设为定时发布")
+        if (seconds > 0) MsgUtil.showMsg(UiText.of("已设为定时发布"))
     }
 
     @SuppressLint("SetTextI18n")
     private fun updateTimerText() {
         addTimerText.text = if (timerPubTime > 0) {
-            "定时：" + TimeUtil.format(timerPubTime * 1000, "MM-dd HH:mm")
+            UiText.of("定时：") + TimeUtil.format(timerPubTime * 1000, "MM-dd HH:mm")
         } else {
-            "定时发布"
+            UiText.of("定时发布")
         }
     }
 
@@ -343,12 +345,12 @@ class SendDynamicActivity : BaseActivity() {
      */
     private fun submitEdit(text: String) {
         if (text.isBlank()) {
-            MsgUtil.showMsg("正文不能为空")
+            MsgUtil.showMsg(UiText.of("正文不能为空"))
             return
         }
         val dynId = editDynId
         sending = true
-        MsgUtil.showMsg("正在保存…")
+        MsgUtil.showMsg(UiText.of("正在保存…"))
         CenterThreadPool.run {
             try {
                 val atUids = HashMap<String, Long>()
@@ -369,7 +371,7 @@ class SendDynamicActivity : BaseActivity() {
                         result.putExtra("edit_dyn_id", dynId)
                         result.putExtra("text", text)
                         setResult(RESULT_OK, result)
-                        MsgUtil.showMsg("修改成功~")
+                        MsgUtil.showMsg(UiText.of("修改成功~"))
                         finish()
                     } else {
                         sending = false
@@ -413,7 +415,7 @@ class SendDynamicActivity : BaseActivity() {
                 picsPreview.addView(imageView)
             }
         }
-        addPicText.text = if (imageUris.isEmpty()) "添加图片" else "添加图片(${imageUris.size})"
+        addPicText.text = if (imageUris.isEmpty()) UiText.of("添加图片") else "添加图片(${imageUris.size})"
     }
 
     /**
@@ -446,11 +448,11 @@ class SendDynamicActivity : BaseActivity() {
         val title = voteTitleEdit.text.toString().trim()
         val options = optionEditTexts.map { it.text.toString().trim() }.filter { it.isNotEmpty() }
         if (title.isEmpty()) {
-            MsgUtil.showMsg("请填写投票标题")
+            MsgUtil.showMsg(UiText.of("请填写投票标题"))
             return null
         }
         if (options.size < 2) {
-            MsgUtil.showMsg("至少需要2个选项")
+            MsgUtil.showMsg(UiText.of("至少需要2个选项"))
             return null
         }
         val draft = VoteDraft()

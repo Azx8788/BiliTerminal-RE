@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.dynamic
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -35,7 +37,7 @@ class DynamicInfoActivity : BaseActivity() {
         val id = intent.getLongExtra("id", 0)
 
         val pageName = findViewById<TextView>(R.id.pageName)
-        pageName.text = "动态详情"
+        pageName.text = UiText.of("动态详情")
 
         // 教程改由 BaseActivity 按 Tutorials 注册表集中触发
         TerminalContext.getInstance().getDynamicById(id)

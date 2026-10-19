@@ -90,7 +90,7 @@ class UpdateActivity : BaseActivity() {
     private fun showLoading(show: Boolean) {
         loadingOverlay.visibility = if (show) View.VISIBLE else View.GONE
         if (show) {
-            loadingText.text = "正在检查更新..."
+            loadingText.text = getString(R.string.text_update_checking)
         }
     }
 
@@ -102,14 +102,14 @@ class UpdateActivity : BaseActivity() {
                     updateConfig = config
                     showUpdateInfo()
                 } else {
-                    MsgUtil.showMsg("当前已是最新版")
+                    MsgUtil.showMsg(getString(R.string.text_update_latest))
                     finish()
                 }
                 kotlin.Unit
             },
             { error ->
                 showLoading(false)
-                MsgUtil.showMsg("检查更新失败：$error")
+                MsgUtil.showMsg(getString(R.string.text_update_check_failed, error))
                 finish()
                 kotlin.Unit
             }
@@ -118,8 +118,8 @@ class UpdateActivity : BaseActivity() {
 
     @SuppressLint("SetTextI18n")
     private fun showUpdateInfo() {
-        tipTitle.text = "发现新版本"
-        versionNameText.text = "版本 " + updateConfig!!.versionName + " (" + updateConfig!!.versionCode + ")"
+        tipTitle.text = getString(R.string.text_new_version_released)
+        versionNameText.text = getString(R.string.text_update_version, updateConfig!!.versionName, updateConfig!!.versionCode)
         contentText.text = updateConfig!!.description
 
         SharedPreferencesUtil.putInt("update_last_new_version", updateConfig!!.versionCode)
@@ -129,10 +129,10 @@ class UpdateActivity : BaseActivity() {
         progressContainer.visibility = View.GONE
 
         if (updateConfig!!.isForceUpdate) {
-            (cancelBtn as TextView).text = "退出应用"
+            (cancelBtn as TextView).text = getString(R.string.btn_exit_app)
             cancelBtn.setOnClickListener { exitApp() }
         } else {
-            (cancelBtn as TextView).text = "取消"
+            (cancelBtn as TextView).text = getString(R.string.btn_cancel)
             cancelBtn.setOnClickListener { finish() }
         }
     }
@@ -147,7 +147,7 @@ class UpdateActivity : BaseActivity() {
         retryBtn.visibility = View.GONE
         cancelDownloadBtn.visibility = View.VISIBLE
         downloadProgress.progress = 0
-        progressText.text = "准备下载..."
+        progressText.text = getString(R.string.text_update_download_preparing)
 
         UpdateManager.downloadApk(
             updateConfig!!.downloadUrl!!,
@@ -158,16 +158,16 @@ class UpdateActivity : BaseActivity() {
                 val downloadedMB = progress.bytesDownloaded / (1024 * 1024)
                 val totalMB = progress.totalBytes / (1024 * 1024)
                 if (totalMB > 0) {
-                    progressText.text = String.format("%d%%  %dMB / %dMB", percent, downloadedMB, totalMB)
+                    progressText.text = getString(R.string.text_update_progress, percent, downloadedMB, totalMB)
                 } else {
-                    progressText.text = String.format("已下载 %dMB", downloadedMB)
+                    progressText.text = getString(R.string.text_update_downloaded_mb, downloadedMB)
                 }
                 kotlin.Unit
             },
             { file ->
                 downloadFinished = true
                 downloadedFile = file
-                progressText.text = "下载完成"
+                progressText.text = getString(R.string.text_update_download_complete)
                 downloadProgress.progress = 100
                 cancelDownloadBtn.visibility = View.GONE
                 retryBtn.visibility = View.GONE
@@ -177,7 +177,7 @@ class UpdateActivity : BaseActivity() {
             },
             { error ->
                 isDownloading = false
-                progressText.text = "下载失败：$error"
+                progressText.text = getString(R.string.text_update_download_failed, error)
                 retryBtn.visibility = View.VISIBLE
                 cancelDownloadBtn.visibility = View.VISIBLE
                 kotlin.Unit

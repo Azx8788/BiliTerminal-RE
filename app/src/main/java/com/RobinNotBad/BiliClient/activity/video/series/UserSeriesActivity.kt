@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.series
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
 import com.RobinNotBad.BiliClient.adapter.video.SeriesCardAdapter
@@ -19,7 +21,7 @@ class UserSeriesActivity : RefreshListActivity() {
 
         mid = intent.getLongExtra("mid", 0)
 
-        setPageName("投稿的系列")
+        setPageName(UiText.of("投稿的系列"))
 
         loadData(1)
         setOnRefreshListener { loadData(1) }

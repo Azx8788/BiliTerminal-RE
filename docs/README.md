@@ -18,6 +18,7 @@
 | 改播放器 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并 S1–S3 已完成，**S4/S5/S6 未做** |
 | 优化播放器弱网 / 直播 / 长视频 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 同类产品与官方做法调研（ijkplayer 选项语义、FLV vs HLS、Media3 参数）+ P0–P2 建议清单，**尚未实施** |
 | 改教程系统 | [`tutorial-system-redesign.md`](tutorial-system-redesign.md) | 重做进行中，旧链路未删完——**动之前先读它** |
+| 改用户看到的任何文案 | 直接改 `app/src/main/res/values/strings.xml` | **用户可见文案已集中到这一处**（26.10.19 完成，见 [`copy-inventory/STRINGS-MIGRATION.md`](copy-inventory/STRINGS-MIGRATION.md) 第九节）；想知道某句话原本出现在哪个页面/干什么用，查 [`copy-inventory/`](copy-inventory/README.md) 的 7 份清单（1012 条）；改之前先读 [`copy-inventory/GUIDE.md`](copy-inventory/GUIDE.md) 的红线 |
 | 看用户能用到什么 | [`FEATURES.md`](FEATURES.md) | 用户视角功能总表（对应用户文档，不含实现细节） |
 | 查 B 站接口字段 | [`../bilibili-API/`](../bilibili-API/) | 上游接口文档快照（**注意上游已关停，见 `bilibili-api-notes.md` §1 的合规风险**） |
 | 部署 / 维护自建服务端 | [`../server/README.md`](../server/README.md) | 反馈 / 公告 / 匿名统计 / 崩溃上报的后端（FastAPI + SQLite + nginx） |
@@ -37,6 +38,10 @@
 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并设计与 S4/S5/S6 待做项 | 动播放器时 |
 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 播放器弱网 / 直播 / 长视频：同类产品与官方做法调研 + P0–P2 建议清单（§2.4 是本仓库 `.so` 的选项存在性实测） | 动播放器网络 / 缓冲参数时 |
 | [`tutorial-system-redesign.md`](tutorial-system-redesign.md) | 教程系统重做（含 §五 待办 4 项） | 动教程时 |
+| [`copy-inventory/README.md`](copy-inventory/README.md) | 全仓文案清单总索引（7 份、1012 条：`A` 应用身份 / `L` 更新日志 / `T` 教程 / `S` 设置项 / `U` 页面静态文案 / `M` 运行时提示 / `E` 彩蛋） | 改文案时按需打开对应那一份，改完在「改写」栏回填 |
+| [`copy-inventory/GUIDE.md`](copy-inventory/GUIDE.md) | 文案改写指南：同一句话的多出处、四种改法、十条红线、手表字数常识、自查清单、FAQ、**怎么把新文案交给 agent** | **动手改文案前先读这一份**，比总索引更先看 |
+| [`copy-inventory/DUPLICATES.md`](copy-inventory/DUPLICATES.md) | 重复文案报告：16 组同一句话的多处位置（逐字相同的 8 组 + 措辞不一致的 8 组 + 刻意保留的 4 类） | 改任何一句之前查它，避免改一处漏一处 |
+| [`copy-inventory/STRINGS-MIGRATION.md`](copy-inventory/STRINGS-MIGRATION.md) | 文案集中化台账：**已全部完成**（B1~B14，`strings.xml` 1719 条 / `UiText` 映射 757 条 / 1028 处调用），含命名规范、占位符规范、不迁移清单、27 条已知坑 | 改文案只想看「现在该改哪里」→ 看第九节；想知道为什么要这么设计 → 看 5.8~5.10 与第 7 节 |
 | [`archive/README.md`](archive/README.md) | 归档索引：每份归档文档的内容与「为什么归档」 | 归档新文档时 |
 
 ## 维护纪律（避免又长出一堆旧文档）

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.content.Intent
 import com.RobinNotBad.BiliClient.R
@@ -17,17 +19,17 @@ object MySpaceMenu {
 
     /** key 集合需与 `MySpaceConfig.ALL_ITEMS` 一致（`MySpaceConfigTest` 有守卫用例）。 */
     val ITEMS: List<Item> = listOf(
-        Item("follow", R.drawable.icon_followings, "关注"),
-        Item("watch_later", R.drawable.icon_play_12, "稍后再看"),
-        Item("favorite", R.drawable.icon_star, "收藏"),
-        Item("bangumi", R.drawable.icon_bangumi, "追番列表"),
-        Item("history", R.drawable.icon_history, "历史记录"),
-        Item("creative", R.drawable.icon_creative_center, "创作中心"),
-        Item("vip", R.drawable.icon_info, "大会员"),
-        Item("login_record", R.drawable.icon_time, "登录记录"),
-        Item("coin_log", R.drawable.icon_info, "硬币变化记录"),
-        Item("exp_log", R.drawable.icon_info, "经验变化记录"),
-        Item("edit_profile", R.drawable.icon_info, "编辑个人资料")
+        Item("follow", R.drawable.icon_followings, UiText.of("关注")),
+        Item("watch_later", R.drawable.icon_play_12, UiText.of("稍后再看")),
+        Item("favorite", R.drawable.icon_star, UiText.of("收藏")),
+        Item("bangumi", R.drawable.icon_bangumi, UiText.of("追番列表")),
+        Item("history", R.drawable.icon_history, UiText.of("历史记录")),
+        Item("creative", R.drawable.icon_creative_center, UiText.of("创作中心")),
+        Item("vip", R.drawable.icon_info, UiText.of("大会员")),
+        Item("login_record", R.drawable.icon_time, UiText.of("登录记录")),
+        Item("coin_log", R.drawable.icon_info, UiText.of("硬币变化记录")),
+        Item("exp_log", R.drawable.icon_info, UiText.of("经验变化记录")),
+        Item("edit_profile", R.drawable.icon_info, UiText.of("编辑个人资料"))
     )
 
     private val BY_KEY: Map<String, Item> = ITEMS.associateBy { it.key }

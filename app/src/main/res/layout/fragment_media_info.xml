@@ -51,7 +51,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="加载中"
+            android:text="@string/a11y_activityloading_01"
             android:textSize="16sp"
             android:textStyle="bold"
             app:layout_constraintStart_toStartOf="parent"
@@ -140,7 +140,7 @@
                 android:id="@+id/text_evaluate_title"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="简介"
+                android:text="@string/text_fragmentmediainfo_03"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 app:layout_constraintStart_toStartOf="parent"
@@ -191,7 +191,7 @@
                 android:id="@+id/text_staff_title"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="制作人员"
+                android:text="@string/text_fragmentmediainfo_02"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 app:layout_constraintStart_toStartOf="parent"
@@ -270,7 +270,7 @@
                     android:layout_marginTop="4dp"
                     android:drawableEnd="@drawable/arrow_forward"
                     android:paddingHorizontal="3dp"
-                    android:text="快速选择"
+                    android:text="@string/text_fragmentmediainfo_01"
                     android:textSize="14sp"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
@@ -309,7 +309,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="播放" />
+                android:text="@string/uitext_playbackservice_006" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_follow"
@@ -317,7 +317,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
                 android:layout_weight="1"
-                android:text="追番" />
+                android:text="@string/uitext_dynamicactivity_007" />
         </LinearLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.RobinNotBad.BiliClient.ui.widget.RotaryNestedScrollView>

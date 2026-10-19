@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.util;
 
+import com.RobinNotBad.BiliClient.util.UiText;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
@@ -177,7 +178,7 @@ public class FileUtil {
             if (startSettings(activity, new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))) {
                 return;
             }
-            MsgUtil.showMsgLong("此设备打不开系统的「所有文件访问」设置页，请手动到 设置 → 应用 → 权限 里授予本应用存储权限");
+            MsgUtil.showMsgLong(UiText.of("此设备打不开系统的「所有文件访问」设置页，请手动到 设置 → 应用 → 权限 里授予本应用存储权限"));
         } else {
             // Android 10 及以下：请求旧存储权限
             ActivityCompat.requestPermissions(activity, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, 100);

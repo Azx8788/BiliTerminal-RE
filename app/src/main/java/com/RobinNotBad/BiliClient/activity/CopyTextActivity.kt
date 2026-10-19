@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Intent
 import android.os.Bundle
 import android.text.Editable
@@ -63,7 +65,7 @@ class CopyTextActivity : BaseActivity() {
 
         findViewById<android.view.View>(R.id.copy_all).setOnClickListener {
             StringUtil.copyText(this, content)
-            MsgUtil.showMsg("已复制")
+            MsgUtil.showMsg(UiText.of("已复制"))
         }
         findViewById<android.view.View>(R.id.copy).setOnClickListener {
             try {
@@ -73,9 +75,9 @@ class CopyTextActivity : BaseActivity() {
                         endEdit.text.toString().toInt()
                     )
                 )
-                MsgUtil.showMsg("已复制")
+                MsgUtil.showMsg(UiText.of("已复制"))
             } catch (e: Exception) {
-                MsgUtil.showMsg("复制失败，请检查选择的范围")
+                MsgUtil.showMsg(UiText.of("复制失败，请检查选择的范围"))
             }
         }
 

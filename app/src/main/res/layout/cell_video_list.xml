@@ -41,7 +41,7 @@
                 android:layout_marginStart="8dp"
                 android:ellipsize="end"
                 android:maxLines="2"
-                android:text="标题"
+                android:text="@string/text_cellsettingtitle_01"
                 android:textSize="@dimen/text_body"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
@@ -63,7 +63,7 @@
                 android:layout_height="wrap_content"
                 android:drawableStart="@drawable/icon_play_12"
                 android:singleLine="true"
-                android:text="11.4万"
+                android:text="@string/text_cellvideolist_01"
                 android:textSize="@dimen/text_caption" />
 
             <com.RobinNotBad.BiliClient.ui.widget.MarqueeTextView
@@ -73,7 +73,7 @@
                 android:layout_marginStart="4dp"
                 android:drawableStart="@drawable/icon_person"
                 android:singleLine="true"
-                android:text="UP主"
+                android:text="@string/text_celluplist_01"
                 android:textSize="@dimen/text_caption" />
 
         </LinearLayout>

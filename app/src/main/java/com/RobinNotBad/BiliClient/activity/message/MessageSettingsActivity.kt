@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.message
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
@@ -32,7 +34,7 @@ class MessageSettingsActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_simple_refresh)
 
-        setPageName("消息设置")
+        setPageName(UiText.of("消息设置"))
 
         emptyView = findViewById(R.id.emptyTip)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
@@ -59,9 +61,9 @@ class MessageSettingsActivity : BaseActivity() {
                     }
                 } else {
                     runOnUiThread {
-                        MsgUtil.showMsg("获取设置失败: " + response.optString("message", "未知错误"))
+                        MsgUtil.showMsg("获取设置失败: " + response.optString("message", getString(R.string.msg_unknown_error)))
                         swipeRefreshLayout.isRefreshing = false
-                        emptyView.text = "加载失败，请重试"
+                        emptyView.text = UiText.of("加载失败，请重试")
                         emptyView.visibility = View.VISIBLE
                     }
                 }
@@ -69,7 +71,7 @@ class MessageSettingsActivity : BaseActivity() {
                 runOnUiThread {
                     report(e)
                     swipeRefreshLayout.isRefreshing = false
-                    emptyView.text = "加载失败，请重试"
+                    emptyView.text = UiText.of("加载失败，请重试")
                     emptyView.visibility = View.VISIBLE
                 }
             }
@@ -83,19 +85,19 @@ class MessageSettingsActivity : BaseActivity() {
             val value = currentSettings!!.optInt("msg_notify", 1)
             settingsList.add(MessageSettingItem(
                 "msg_notify",
-                "消息提醒",
-                "是否接收消息提醒",
+                UiText.of("消息提醒"),
+                UiText.of("是否接收消息提醒"),
                 MessageSettingItem.TYPE_CHOOSE,
                 value == 1,
-                arrayOf("接收", "不接收")))
+                arrayOf(UiText.of("接收"), "不接收")))
         }
 
         if (currentSettings!!.has("show_unfollowed_msg")) {
             val value = currentSettings!!.optInt("show_unfollowed_msg", 0)
             settingsList.add(MessageSettingItem(
                 "show_unfollowed_msg",
-                "收起未关注人消息",
-                "收起来自未关注用户的消息",
+                UiText.of("收起未关注人消息"),
+                UiText.of("收起来自未关注用户的消息"),
                 MessageSettingItem.TYPE_SWITCH,
                 value == 1,
                 null))
@@ -105,8 +107,8 @@ class MessageSettingsActivity : BaseActivity() {
             val value = currentSettings!!.optInt("is_group_fold", 0)
             settingsList.add(MessageSettingItem(
                 "is_group_fold",
-                "收起应援团消息",
-                "折叠应援团相关消息",
+                UiText.of("收起应援团消息"),
+                UiText.of("折叠应援团相关消息"),
                 MessageSettingItem.TYPE_SWITCH,
                 value == 1,
                 null))
@@ -116,8 +118,8 @@ class MessageSettingsActivity : BaseActivity() {
             val value = currentSettings!!.optInt("should_receive_group", 1)
             settingsList.add(MessageSettingItem(
                 "should_receive_group",
-                "接收应援团消息",
-                "是否接收应援团消息",
+                UiText.of("接收应援团消息"),
+                UiText.of("是否接收应援团消息"),
                 MessageSettingItem.TYPE_SWITCH,
                 value == 1,
                 null))
@@ -127,8 +129,8 @@ class MessageSettingsActivity : BaseActivity() {
             val value = currentSettings!!.optInt("receive_unfollow_msg", 1)
             settingsList.add(MessageSettingItem(
                 "receive_unfollow_msg",
-                "接收未关注人消息",
-                "是否接收未关注用户的消息",
+                UiText.of("接收未关注人消息"),
+                UiText.of("是否接收未关注用户的消息"),
                 MessageSettingItem.TYPE_SWITCH,
                 value == 1,
                 null))
@@ -138,8 +140,8 @@ class MessageSettingsActivity : BaseActivity() {
             val value = currentSettings!!.optInt("ai_intercept", 0)
             settingsList.add(MessageSettingItem(
                 "ai_intercept",
-                "私信智能拦截",
-                "使用AI智能过滤骚扰私信",
+                UiText.of("私信智能拦截"),
+                UiText.of("使用AI智能过滤骚扰私信"),
                 MessageSettingItem.TYPE_SWITCH,
                 value == 1,
                 null))
@@ -159,17 +161,17 @@ class MessageSettingsActivity : BaseActivity() {
 
                 val response = MessageApi.setMsgSettings(settings)
                 if (response.getInt("code") == 0) {
-                    runOnUiThread { MsgUtil.showMsg("设置已保存") }
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("设置已保存")) }
                 } else {
                     runOnUiThread {
-                        val message = response.optString("message", "未知错误")
+                        val message = response.optString("message", getString(R.string.msg_unknown_error))
                         MsgUtil.showMsg("保存失败: $message")
                         loadSettings()
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    MsgUtil.showMsg("保存失败")
+                    MsgUtil.showMsg(UiText.of("保存失败"))
                     loadSettings()
                 }
             }

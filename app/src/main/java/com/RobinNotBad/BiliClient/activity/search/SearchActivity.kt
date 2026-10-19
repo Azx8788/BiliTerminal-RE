@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.search
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.content.Context
@@ -75,8 +77,8 @@ class SearchActivity : InstanceActivity() {
     // 默认搜索类别顺序（番剧紧跟视频，与上游一致）
     private val defaultCategoryOrder = arrayOf("video", "bangumi", "article", "user", "live")
 
-    var specialList = arrayOf("心理疾病", "自杀", "自尽", "自残", "抑郁", "双相", "安眠药")
-    var specialNamesList = arrayOf("严炜", "陈学峰", "徐波", "易德元", "舒微函", "张自东", "杨国明", "张俊胜")
+    var specialList = arrayOf(UiText.of("心理疾病"), "自杀", "自尽", "自残", "抑郁", "双相", "安眠药")
+    var specialNamesList = arrayOf(UiText.of("严炜"), "陈学峰", "徐波", "易德元", "舒微函", "张自东", "杨国明", "张俊胜")
 
     @SuppressLint("MissingInflatedId", "NotifyDataSetChanged", "InflateParams")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -210,7 +212,7 @@ class SearchActivity : InstanceActivity() {
             searchHistoryAdapter = SearchHistoryAdapter(this, searchHistory)
             searchHistoryAdapter.setOnClickListener { position -> keywordInput.setText(searchHistory[position]) }
             searchHistoryAdapter.setOnLongClickListener { position ->
-                MsgUtil.showMsg("删除成功")
+                MsgUtil.showMsg(UiText.of("删除成功"))
                 searchHistory.removeAt(position)
                 searchHistoryAdapter.notifyItemRemoved(position)
                 searchHistoryAdapter.notifyItemRangeChanged(position, searchHistory.size - position)
@@ -298,7 +300,7 @@ class SearchActivity : InstanceActivity() {
             if (intent.getStringExtra("keyword") != null) {
                 findViewById<View>(R.id.top).setOnClickListener { finish() }
                 keywordInput.setText(intent.getStringExtra("keyword"))
-                MsgUtil.showMsg("可点击标题栏返回详情页")
+                MsgUtil.showMsg(UiText.of("可点击标题栏返回详情页"))
             }
         }
     }
@@ -316,11 +318,11 @@ class SearchActivity : InstanceActivity() {
     private fun updatePageName(position: Int) {
         if (!::categoryList.isInitialized || position < 0 || position >= categoryList.size) return
         val sub = when (categoryList[position]) {
-            "video" -> "视频"
-            "bangumi" -> "番剧"
-            "article" -> "专栏"
-            "user" -> "用户"
-            "live" -> "直播"
+            "video" -> UiText.of("视频")
+            "bangumi" -> UiText.of("番剧")
+            "article" -> UiText.of("专栏")
+            "user" -> UiText.of("用户")
+            "live" -> UiText.of("直播")
             else -> categoryList[position]
         }
         setPageName("搜索-$sub")
@@ -419,24 +421,24 @@ class SearchActivity : InstanceActivity() {
     fun searchKeyword(str: String) {
         var keyword = str
         if (keyword.contains("Robin") || keyword.contains("robin")) {
-            if (keyword.contains("撅")) {
-                MsgUtil.showText("特殊彩蛋", getString(R.string.egg_special))
+            if (keyword.contains(UiText.of("撅"))) {
+                MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_special))
                 return
             }
-            if (keyword.contains("纳西妲")) {
-                MsgUtil.showText("特殊彩蛋", getString(R.string.egg_robin_nahida))
+            if (keyword.contains(UiText.of("纳西妲"))) {
+                MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_robin_nahida))
                 return
             }
         }
         for (s in specialList) {
             if (keyword.contains(s)) {
-                MsgUtil.showText("特殊彩蛋", getString(R.string.egg_warmwords_warmworld))
+                MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_warmwords_warmworld))
                 return
             }
         }
         for (name in specialNamesList) {
             if (keyword.contains(name)) {
-                MsgUtil.showText("特殊彩蛋", getString(R.string.egg_special_names))
+                MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_special_names))
                 return
             }
         }
@@ -458,7 +460,7 @@ class SearchActivity : InstanceActivity() {
                 if (defaultSearchContentEnabled && defaultSearchContent != null && defaultSearchContent!!.isNotEmpty()) {
                     keyword = defaultSearchContent!!
                 } else {
-                    runOnUiThread { MsgUtil.showMsg("还没输入内容喵~") }
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("还没输入内容喵~")) }
                     return
                 }
             }

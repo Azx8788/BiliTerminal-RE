@@ -30,7 +30,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="加载中..."
+            android:text="@string/text_activitymyspace_01"
             android:textColor="?android:attr/textColorPrimary"
             android:textSize="14sp" />
     </LinearLayout>
@@ -47,7 +47,7 @@
             android:id="@+id/errorText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="加载失败"
+            android:text="@string/text_load_failed"
             android:textColor="?android:attr/textColorPrimary"
             android:textSize="16sp" />
 
@@ -58,7 +58,7 @@
             android:layout_marginTop="16dp"
             android:paddingHorizontal="24dp"
             android:paddingVertical="8dp"
-            android:text="重试"
+            android:text="@string/text_activityshortvideoplayer_01"
             android:textColor="?android:attr/textColorPrimary"
             android:textSize="14sp" />
     </LinearLayout>

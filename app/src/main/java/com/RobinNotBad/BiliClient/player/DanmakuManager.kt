@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.player
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.graphics.Color
 import com.RobinNotBad.BiliClient.model.DmSegMobileReply
@@ -161,7 +163,7 @@ class DanmakuManager(
                 // 一旦异常逸出会打断该线程，表现就是"弹幕一条都不显示"且没有任何上层报错。
                 try {
                     _state.update { it.copy(isPrepared = true) }
-                    addDanmaku("弹幕准备完毕", Color.WHITE)
+                    addDanmaku(UiText.of("弹幕准备完毕"), Color.WHITE)
                 } catch (e: Exception) {
                     Logu.e("弹幕", "prepared 回调异常: ${e.message}")
                     e.printStackTrace()

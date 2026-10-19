@@ -1,5 +1,9 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.util.UiText
+
+import com.RobinNotBad.BiliClient.activity.settings.SettingText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -162,8 +166,8 @@ class SettingsAdapter(
         fun bind(settingSection: SettingSection) {
             val extra = settingSection.extra as? NavExtra ?: return
             icon.setImageResource(extra.iconRes)
-            title.text = settingSection.name
-            desc.text = settingSection.desc
+            title.text = SettingText.resolve(itemView.context, settingSection.name)
+            desc.text = SettingText.resolve(itemView.context, settingSection.desc)
             itemView.setOnClickListener { extra.onClick(it) }
             itemView.setOnLongClickListener { extra.onLongClick?.invoke(it) ?: false }
         }
@@ -173,7 +177,7 @@ class SettingsAdapter(
         val button: MaterialButton = itemView as MaterialButton
 
         fun bind(settingSection: SettingSection) {
-            button.text = settingSection.name
+            button.text = SettingText.resolve(itemView.context, settingSection.name)
             button.setOnClickListener { (settingSection.extra as? ButtonExtra)?.onClick?.invoke(it) }
         }
     }
@@ -186,13 +190,13 @@ class SettingsAdapter(
 
         fun bind(settingSection: SettingSection) {
             this.settingSection = settingSection
-            if (settingSection.desc.isNullOrEmpty())
+            if (SettingText.resolve(itemView.context, settingSection.desc).isNullOrEmpty())
                 desc.visibility = View.GONE
             else {
-                desc.text = settingSection.desc
+                desc.text = SettingText.resolve(itemView.context, settingSection.desc)
                 desc.visibility = View.VISIBLE
             }
-            switchMaterial.text = settingSection.name
+            switchMaterial.text = SettingText.resolve(itemView.context, settingSection.name)
             switchMaterial.setOnCheckedChangeListener(null)
             switchMaterial.isChecked = SharedPreferencesUtil.getBoolean(
                 settingSection.id,
@@ -216,16 +220,16 @@ class SettingsAdapter(
         val desc: TextView = itemView.findViewById(R.id.setting_choose_desc)
 
         fun bind(settingSection: SettingSection) {
-            if (settingSection.desc.isNullOrEmpty())
+            if (SettingText.resolve(itemView.context, settingSection.desc).isNullOrEmpty())
                 desc.visibility = View.GONE
             else {
-                desc.text = settingSection.desc
+                desc.text = SettingText.resolve(itemView.context, settingSection.desc)
                 desc.visibility = View.VISIBLE
             }
-            name.text = settingSection.name
+            name.text = SettingText.resolve(itemView.context, settingSection.name)
             val strings = settingSection.extra as Array<String>
-            chocola.text = strings[0]
-            vanilla.text = strings[1]
+            chocola.text = SettingText.resolve(itemView.context, strings[0])
+            vanilla.text = SettingText.resolve(itemView.context, strings[1])
 
             val value = SharedPreferencesUtil.getBoolean(
                 settingSection.id,
@@ -285,13 +289,13 @@ class SettingsAdapter(
         }
 
         fun bind(settingSection: SettingSection) {
-            if (settingSection.desc.isNullOrEmpty())
+            if (SettingText.resolve(itemView.context, settingSection.desc).isNullOrEmpty())
                 desc.visibility = View.GONE
             else {
-                desc.text = settingSection.desc
+                desc.text = SettingText.resolve(itemView.context, settingSection.desc)
                 desc.visibility = View.VISIBLE
             }
-            name.text = settingSection.name
+            name.text = SettingText.resolve(itemView.context, settingSection.name)
 
             // 灌值与切 inputType 之前先摘掉绑定：否则 watcher 会把「显示出来的值」当用户输入落盘，
             // 首次进入就悄悄写满默认值（原本「不改就不写」的语义会被打破）。
@@ -328,7 +332,7 @@ class SettingsAdapter(
         val titleText: TextView = itemView.findViewById(R.id.setting_title_text)
 
         fun bind(settingSection: SettingSection) {
-            titleText.text = settingSection.name
+            titleText.text = SettingText.resolve(itemView.context, settingSection.name)
         }
     }
 
@@ -349,29 +353,29 @@ class SettingsAdapter(
 
         @SuppressLint("SetTextI18n")
         fun bind(settingSection: SettingSection, position: Int) {
-            if (settingSection.desc.isNullOrEmpty())
+            if (SettingText.resolve(itemView.context, settingSection.desc).isNullOrEmpty())
                 desc.visibility = View.GONE
             else {
-                desc.text = settingSection.desc
+                desc.text = SettingText.resolve(itemView.context, settingSection.desc)
                 desc.visibility = View.VISIBLE
             }
-            name.text = settingSection.name
+            name.text = SettingText.resolve(itemView.context, settingSection.name)
 
             val extra = settingSection.extra as ListChooseExtra
             if (extra.displayNames != null && extra.actualValues != null) {
                 val currentValue = SharedPreferencesUtil.getString(settingSection.id, settingSection.defaultValue)
                 val currentIndex = extra.actualValues.indexOf(currentValue)
                 if (currentIndex >= 0 && currentIndex < extra.displayNames.size) {
-                    value.text = extra.displayNames[currentIndex]
+                    value.text = SettingText.resolve(itemView.context, extra.displayNames[currentIndex])
                 } else {
-                    value.text = "点击选择"
+                    value.text = UiText.of("点击选择")
                 }
 
                 itemView.setOnClickListener {
                     if (it.context is ComponentActivity) {
                         val activity = it.context as ComponentActivity
                         val intent = Intent(activity, ListChooseActivity::class.java)
-                        intent.putExtra("title", settingSection.name)
+                        intent.putExtra("title", SettingText.resolve(itemView.context, settingSection.name))
                         intent.putExtra("items", ArrayList(extra.displayNames))
                         intent.putExtra("values", ArrayList(extra.actualValues))
                         intent.putExtra("position", position)

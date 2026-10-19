@@ -54,7 +54,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:drawableStart="@drawable/arrow_back"
-            android:text="短视频"
+            android:text="@string/uitext_menuactivity_001"
             android:textColor="?android:attr/textColorPrimary"
             android:textSize="12sp" />
     </RelativeLayout>
@@ -196,7 +196,7 @@
         android:shadowDx="2.0"
         android:shadowDy="0.0"
         android:shadowRadius="3.0"
-        android:text="音量：100%"
+        android:text="@string/text_activityplayer_06"
         android:textColor="?android:attr/textColorPrimary"
         android:textSize="13sp"
         android:visibility="gone" />

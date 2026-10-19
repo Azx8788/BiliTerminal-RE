@@ -33,7 +33,7 @@ class SettingQualityActivity : BaseActivity() {
                 finish()
             }
 
-            setPageName("请选择清晰度")
+            setPageName(getString(R.string.pagename_settingqualityactivity_001))
 
             adapter = QualityChooseAdapter(this)
             adapter.nameList = ArrayList(qnMap.keys)

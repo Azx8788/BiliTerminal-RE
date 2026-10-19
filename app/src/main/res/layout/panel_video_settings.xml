@@ -13,7 +13,7 @@
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:gravity="center"
-        android:text="更新弹幕"
+        android:text="@string/text_panelvideosettings_04"
         android:textSize="13sp"
         android:textColor="?attr/colorPrimary"
         android:clickable="true"
@@ -40,7 +40,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="切换分辨率"
+            android:text="@string/text_panelvideosettings_03"
             android:textSize="13sp"
             android:textColor="?attr/colorPrimary" />
 
@@ -48,7 +48,7 @@
             android:id="@+id/textCurrentQuality"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="当前"
+            android:text="@string/text_panelvideosettings_02"
             android:textSize="11sp"
             android:alpha="0.7" />
     </LinearLayout>
@@ -65,7 +65,7 @@
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:gravity="center"
-        android:text="移动"
+        android:text="@string/uitext_followusersactivity_011"
         android:textSize="13sp"
         android:textColor="?attr/colorPrimary"
         android:clickable="true"
@@ -84,7 +84,7 @@
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:gravity="center"
-        android:text="查看详情"
+        android:text="@string/text_panelvideosettings_01"
         android:textSize="13sp"
         android:textColor="?attr/colorPrimary"
         android:clickable="true"
@@ -103,7 +103,7 @@
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:gravity="center"
-        android:text="取消"
+        android:text="@string/btn_cancel"
         android:textSize="13sp"
         android:alpha="0.65"
         android:clickable="true"

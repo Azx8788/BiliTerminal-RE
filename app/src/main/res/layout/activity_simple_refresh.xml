@@ -69,7 +69,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="全部"
+                android:text="@string/uitext_dynamicadapter_001"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -82,7 +82,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="未看完"
+                android:text="@string/text_activitysimplerefresh_05"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -97,7 +97,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="清除已看完"
+                android:text="@string/text_activitysimplerefresh_04"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary"
                 android:visibility="gone"
@@ -126,7 +126,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="收藏时间"
+                android:text="@string/text_activitysimplerefresh_03"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -139,7 +139,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="播放量"
+                android:text="@string/text_activitycreativecenter_08"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -152,7 +152,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="投稿时间"
+                android:text="@string/text_activitysimplerefresh_02"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -179,7 +179,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="多选"
+                android:text="@string/uitext_favoritevideolistactivity_009"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -192,7 +192,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="删除"
+                android:text="@string/settingtext_accountswitchactivity_003"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -218,7 +218,7 @@
                 android:minHeight="@dimen/touch_min"
                 android:paddingVertical="4dp"
                 android:background="?attr/selectableItemBackground"
-                android:text="+ 新建分组"
+                android:text="@string/text_activitysimplerefresh_01"
                 android:textSize="13sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -258,7 +258,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"
-        android:text="啥都木有~"
+        android:text="@string/text_list_empty"
         android:textAlignment="center"
         android:textSize="14sp"
         android:textColor="?android:attr/textColorSecondary"

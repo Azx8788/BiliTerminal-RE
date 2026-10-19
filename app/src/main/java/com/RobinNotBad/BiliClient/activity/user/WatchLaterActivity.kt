@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
@@ -34,7 +36,7 @@ class WatchLaterActivity : RefreshListActivity() {
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("稍后再看")
+        setPageName(UiText.of("稍后再看"))
         recyclerView.setHasFixedSize(true)
 
         // 筛选条：默认隐藏的分组，只有本页把它亮出来
@@ -114,9 +116,9 @@ class WatchLaterActivity : RefreshListActivity() {
     private fun confirmClearWatched() {
         TerminalDialog.confirm(
             context = this,
-            title = "清除所有已看完",
-            message = "将把所有看完了的稿件从稍后再看里移除，此操作不可撤销。确定继续吗？",
-            confirmText = "清除"
+            title = UiText.of("清除所有已看完"),
+            message = UiText.of("将把所有看完了的稿件从稍后再看里移除，此操作不可撤销。确定继续吗？"),
+            confirmText = UiText.of("清除")
         ) {
             clearWatched()
         }.show()
@@ -128,7 +130,7 @@ class WatchLaterActivity : RefreshListActivity() {
                 val code = WatchLaterApi.clearWatched()
                 runOnUiThread {
                     if (code == 0) {
-                        MsgUtil.showMsg("已清除所有已看完")
+                        MsgUtil.showMsg(UiText.of("已清除所有已看完"))
                         loadWatchLater()
                     } else {
                         MsgUtil.showMsg("清除失败，错误码：$code")
@@ -177,7 +179,7 @@ class WatchLaterActivity : RefreshListActivity() {
         TerminalDialog.menu(
             context = this,
             title = card.title,
-            items = listOf("视频详情", "移除稍后再看"),
+            items = listOf(UiText.of("视频详情"), "移除稍后再看"),
             danger = setOf(1)
         ) { which ->
             when (which) {
@@ -192,9 +194,9 @@ class WatchLaterActivity : RefreshListActivity() {
     private fun confirmRemove(card: VideoCard, position: Int) {
         TerminalDialog.confirm(
             context = this,
-            title = "移除稍后再看",
+            title = UiText.of("移除稍后再看"),
             message = "确定把《${card.title}》从稍后再看里移除吗？",
-            confirmText = "移除",
+            confirmText = UiText.of("移除"),
             confirmIsDanger = true
         ) {
             CenterThreadPool.run {
@@ -202,7 +204,7 @@ class WatchLaterActivity : RefreshListActivity() {
                     val result = WatchLaterApi.delete(card.aid)
                     runOnUiThread {
                         if (result == 0) {
-                            MsgUtil.showMsg("已移除")
+                            MsgUtil.showMsg(UiText.of("已移除"))
                             // shownList 是筛选后的视图、allList 是接口全集，两边都要同步删
                             if (position in shownList.indices) shownList.removeAt(position)
                             allList.remove(card)

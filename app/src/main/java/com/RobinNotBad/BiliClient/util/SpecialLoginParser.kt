@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.util
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -35,22 +37,22 @@ object SpecialLoginParser {
 
     fun parse(raw: String?): Result {
         val text = raw?.trim().orEmpty()
-        if (text.isEmpty()) return Result.Failure("没有读取到登录信息，剪贴板是空的")
+        if (text.isEmpty()) return Result.Failure(UiText.of("没有读取到登录信息，剪贴板是空的"))
 
         val json = try {
             JSONObject(text)
         } catch (e: JSONException) {
-            return Result.Failure("登录信息不是合法的 JSON，请检查剪贴板内容")
+            return Result.Failure(UiText.of("登录信息不是合法的 JSON，请检查剪贴板内容"))
         }
 
-        if (!json.has("cookies")) return Result.Failure("登录信息缺少 cookies 字段")
+        if (!json.has("cookies")) return Result.Failure(UiText.of("登录信息缺少 cookies 字段"))
         val cookies = json.optString("cookies").trim()
-        if (cookies.isEmpty()) return Result.Failure("登录信息里的 cookies 是空的")
+        if (cookies.isEmpty()) return Result.Failure(UiText.of("登录信息里的 cookies 是空的"))
 
-        if (!json.has("refresh_token")) return Result.Failure("登录信息缺少 refresh_token 字段")
+        if (!json.has("refresh_token")) return Result.Failure(UiText.of("登录信息缺少 refresh_token 字段"))
 
         val mid = NetWorkUtil.getInfoFromCookie("DedeUserID", cookies).toLongOrNull()
-            ?: return Result.Failure("Cookie 中缺少用户 ID（DedeUserID），请检查复制的内容是否完整")
+            ?: return Result.Failure(UiText.of("Cookie 中缺少用户 ID（DedeUserID），请检查复制的内容是否完整"))
 
         return Result.Success(
             cookies = cookies,

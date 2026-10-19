@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -27,8 +29,8 @@ class LoginRecordAdapter(
         val record = recordList[position] ?: return
 
         holder.deviceName.text = record.deviceName
-        holder.loginType.text = "登录方式：" + record.loginType
-        holder.loginTime.text = "登录时间：" + record.loginTime
+        holder.loginType.text = UiText.fmt(UiText.of("登录方式：%1\$s"), record.loginType)
+        holder.loginTime.text = UiText.fmt(UiText.of("登录时间：%1\$s"), record.loginTime)
         holder.location.text = record.location
         holder.ip.text = record.ip
     }

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.player
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 /**
  * 「自动跳过片头片尾」两个设置位的**默认值与判据**（纯逻辑，无 Android 依赖，可直接 JVM 单测）。
  *
@@ -72,8 +74,8 @@ object SkipOpEdPrefs {
      * 文案错位（开着还说"可以开启"）不会报错，只能靠测试发现。
      */
     fun guideText(enabled: Boolean): String =
-        if (enabled) "已自动跳过片头/片尾，可在下方撤回" else "这个视频有片头片尾，可以自动跳过"
+        if (enabled) UiText.of("已自动跳过片头/片尾，可在下方撤回") else UiText.of("这个视频有片头片尾，可以自动跳过")
 
     /** 引导上的按钮文案：已经开着就没有「开启」可点，只留一个「知道了」。 */
-    fun guideActionText(enabled: Boolean): String = if (enabled) "知道了" else "开启"
+    fun guideActionText(enabled: Boolean): String = if (enabled) UiText.of("知道了") else UiText.of("开启")
 }

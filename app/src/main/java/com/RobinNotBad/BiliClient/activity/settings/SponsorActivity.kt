@@ -17,7 +17,7 @@ class SponsorActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("捐赠列表")
+        setPageName(getString(R.string.pagename_sponsoractivity_001))
 
         userList = ArrayList()
         userList.add(UserInfo(-1, getString(R.string.donate_title), "",
@@ -35,7 +35,7 @@ class SponsorActivity : RefreshListActivity() {
                 if (result == 1) bottom = true
             } catch (e: Exception) {
                 report(e)
-                runOnUiThread { MsgUtil.showMsg("连接到哔哩终端接口时发生错误") }
+                runOnUiThread { MsgUtil.showMsg(getString(R.string.msg_sponsoractivity_001)) }
                 setRefreshing(false)
             }
         }
@@ -51,7 +51,7 @@ class SponsorActivity : RefreshListActivity() {
 
                 if (result == 1) bottom = true
             } catch (e: Exception) {
-                runOnUiThread { MsgUtil.showMsg("连接到哔哩终端接口时发生错误") }
+                runOnUiThread { MsgUtil.showMsg(getString(R.string.msg_sponsoractivity_001)) }
                 loadFail(e)
             }
         }

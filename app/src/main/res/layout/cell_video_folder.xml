@@ -32,7 +32,7 @@
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
                     android:maxLines="2"
-                    android:text="文件夹名称"
+                    android:text="@string/text_cellvideofolder_04"
                     android:textSize="14sp"
                     android:textStyle="bold" />
 
@@ -41,7 +41,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:alpha="0.65"
-                    android:text="0个视频"
+                    android:text="@string/text_cellvideofolder_03"
                     android:textSize="12sp"
                     android:layout_marginTop="4dp" />
             </LinearLayout>
@@ -74,7 +74,7 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="重命名"
+                android:text="@string/text_cellvideofolder_02"
                 android:textSize="13sp"
                 android:textColor="?attr/colorPrimary"
                 android:clickable="true"
@@ -93,7 +93,7 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="拆散"
+                android:text="@string/text_cellvideofolder_01"
                 android:textSize="13sp"
                 android:textColor="@color/status_error"
                 android:clickable="true"
@@ -112,7 +112,7 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="取消"
+                android:text="@string/btn_cancel"
                 android:textSize="13sp"
                 android:alpha="0.65"
                 android:clickable="true"

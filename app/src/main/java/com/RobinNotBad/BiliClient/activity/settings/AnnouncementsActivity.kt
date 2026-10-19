@@ -7,13 +7,14 @@ import com.RobinNotBad.BiliClient.api.TerminalApi
 import com.RobinNotBad.BiliClient.model.Announcement
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.RobinNotBad.BiliClient.R
 
 class AnnouncementsActivity : RefreshListActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("公告列表")
+        setPageName(getString(R.string.pagename_announcementsactivity_001))
 
         // 本页此前有两个问题：
         // 1. 没有接下拉刷新——RefreshListActivity 在 onCreate 里默认把 swipeRefreshLayout 置为
@@ -37,7 +38,7 @@ class AnnouncementsActivity : RefreshListActivity() {
                 if (announcements.isEmpty()) showEmptyView() else hideEmptyView()
                 setAdapter(AnnouncementAdapter(this@AnnouncementsActivity, announcements))
                 setRefreshing(false)
-                if (!allOk && announcements.isNotEmpty()) MsgUtil.showMsg("部分公告源连不上，已显示能取到的内容")
+                if (!allOk && announcements.isNotEmpty()) MsgUtil.showMsg(getString(R.string.msg_announcementsactivity_001))
             }
         }
     }

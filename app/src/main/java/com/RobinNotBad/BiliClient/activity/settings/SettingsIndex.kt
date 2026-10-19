@@ -196,7 +196,7 @@ object SettingsIndex {
     private fun openGroup(activity: Activity, type: String, title: String, highlight: String? = null) {
         val intent = Intent(activity, SettingGroupActivity::class.java)
         intent.putExtra("group_type", type)
-        intent.putExtra("group_title", title)
+        intent.putExtra("group_title", SettingText.resolve(activity, title))
         if (highlight != null) intent.putExtra("highlight", highlight)
         activity.startActivity(intent)
     }

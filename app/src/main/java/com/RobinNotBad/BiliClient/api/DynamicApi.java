@@ -1,5 +1,9 @@
 package com.RobinNotBad.BiliClient.api;
 
+import com.RobinNotBad.BiliClient.util.UiText;
+
+import com.RobinNotBad.BiliClient.R;
+
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.util.Pair;
@@ -130,7 +134,7 @@ public class DynamicApi {
             if (result.getString("code").equals("0") && result.has("data"))
                 return result.getJSONObject("data").getLong("dyn_id");
         } catch (JSONException e) {
-            MsgUtil.err("发送动态", e);
+            MsgUtil.err(UiText.of("发送动态"), e);
             return -1;
         }
         return -1;
@@ -258,7 +262,7 @@ public class DynamicApi {
             case -404:
                 return "动态不存在，可能已经被删除了";
             default:
-                return "操作失败（错误码 " + code + "）";
+                return ApiErrorText.opFailed(code);
         }
     }
 

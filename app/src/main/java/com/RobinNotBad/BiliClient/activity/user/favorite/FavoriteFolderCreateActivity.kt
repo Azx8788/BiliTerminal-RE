@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.widget.EditText
@@ -29,7 +31,7 @@ class FavoriteFolderCreateActivity : BaseActivity() {
         val btnDelete = findViewById<MaterialCardView>(R.id.btnDelete)
 
         btnDelete.visibility = android.view.View.GONE
-        setPageName("创建收藏夹")
+        setPageName(UiText.of("创建收藏夹"))
 
         btnSave.setOnClickListener { createFolder() }
     }
@@ -37,7 +39,7 @@ class FavoriteFolderCreateActivity : BaseActivity() {
     private fun createFolder() {
         val title = editTitle.text.toString().trim()
         if (title.isEmpty()) {
-            MsgUtil.showMsg("请输入收藏夹名称")
+            MsgUtil.showMsg(UiText.of("请输入收藏夹名称"))
             return
         }
 
@@ -50,7 +52,7 @@ class FavoriteFolderCreateActivity : BaseActivity() {
                 runOnUiThread {
                     btnSave.isClickable = true
                     if (result == 0) {
-                        MsgUtil.showMsg("创建成功")
+                        MsgUtil.showMsg(UiText.of("创建成功"))
                         setResult(RESULT_OK)
                         finish()
                     } else {

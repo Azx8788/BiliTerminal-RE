@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.util
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -46,7 +48,7 @@ object MsgNotifier {
         val parts = ArrayList<String>(2)
         if (privateMsgUnread > 0) parts.add("$privateMsgUnread 条新私信")
         if (otherUnread > 0) parts.add("$otherUnread 条新消息")
-        return if (parts.isEmpty()) "有新消息" else parts.joinToString("、")
+        return if (parts.isEmpty()) UiText.of("有新消息") else parts.joinToString("、")
     }
 
     /**
@@ -59,8 +61,8 @@ object MsgNotifier {
             if (!manager.areNotificationsEnabled()) return
 
             ensureChannel(
-                context, CHANNEL_ID, "新消息",
-                "收到新私信 / 新消息时的提醒"
+                context, CHANNEL_ID, UiText.of("新消息"),
+                UiText.of("收到新私信 / 新消息时的提醒")
             )
 
             val intent = Intent(context, MessageActivity::class.java)
@@ -72,7 +74,7 @@ object MsgNotifier {
 
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.icon)
-                .setContentTitle("有新消息喵~")
+                .setContentTitle(UiText.of("有新消息喵~"))
                 .setContentText(summaryText(privateMsgUnread, otherUnread))
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
@@ -107,7 +109,7 @@ object MsgNotifier {
      * 追番更新通知正文：一部就报名字，多部报第一部 + 总数，避免手表上一屏塞不下。
      */
     fun bangumiSummaryText(titles: List<String>): String = when {
-        titles.isEmpty() -> "有追番更新了"
+        titles.isEmpty() -> UiText.of("有追番更新了")
         titles.size == 1 -> "《${titles[0]}》更新了"
         else -> "《${titles[0]}》等 ${titles.size} 部追番更新了"
     }
@@ -125,8 +127,8 @@ object MsgNotifier {
             if (!manager.areNotificationsEnabled()) return
 
             ensureChannel(
-                context, BANGUMI_CHANNEL_ID, "追番更新",
-                "追的番剧有更新时提醒（只在打开应用时检查）"
+                context, BANGUMI_CHANNEL_ID, UiText.of("追番更新"),
+                UiText.of("追的番剧有更新时提醒（只在打开应用时检查）")
             )
 
             val intent = Intent(context, FollowingBangumisActivity::class.java)
@@ -138,7 +140,7 @@ object MsgNotifier {
 
             val notification = NotificationCompat.Builder(context, BANGUMI_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.icon)
-                .setContentTitle("追番更新啦~")
+                .setContentTitle(UiText.of("追番更新啦~"))
                 .setContentText(bangumiSummaryText(titles))
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)

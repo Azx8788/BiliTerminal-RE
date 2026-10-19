@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.article
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
@@ -15,6 +17,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
+import com.RobinNotBad.BiliClient.api.ApiErrorText
 import com.RobinNotBad.BiliClient.api.ArticleApi
 import com.RobinNotBad.BiliClient.activity.vote.VoteInfoActivity
 import com.RobinNotBad.BiliClient.api.OpusApi
@@ -109,7 +112,7 @@ class OpusContentAdapter(
                         }
 
                         if (length > 1)
-                            imageCount.text = String.format(Locale.CHINA, "共%d张图片", length)
+                            imageCount.text = String.format(Locale.CHINA, UiText.of("共%d张图片"), length)
                     }
                 }
             }
@@ -163,7 +166,7 @@ class OpusContentAdapter(
                         context.startActivity(intent)
                     }
                     if (article.topImages!!.size > 1) {
-                        topCount.text = String.format(Locale.CHINA, "共%d张图片", article.topImages!!.size)
+                        topCount.text = String.format(Locale.CHINA, UiText.of("共%d张图片"), article.topImages!!.size)
                         topCount.visibility = View.VISIBLE
                     } else
                         topCount.visibility = View.GONE
@@ -199,9 +202,9 @@ class OpusContentAdapter(
                 val cvidIcon = holder.itemView.findViewById<ImageView>(R.id.cvidIcon)
 
                 // cv号、字数、阅读数、日期：默认按文章展示（动态内容末尾再统一隐藏）
-                cvidText.text = "cv" + article.id + (if (article.wordCount > 0) " | " + article.wordCount + "字" else "")
+                cvidText.text = "cv" + article.id + (if (article.wordCount > 0) " | " + article.wordCount + UiText.of("字") else "")
                 StringUtil.setCopy(cvidText, "cv" + article.id)
-                viewCount.text = StringUtil.toWan(article.stats.view.toLong()) + "阅读"
+                viewCount.text = StringUtil.toWan(article.stats.view.toLong()) + UiText.of("阅读")
                 timeText.text = article.pubTime
 
                 val like = holder.itemView.findViewById<ImageButton>(R.id.btn_like)
@@ -230,7 +233,7 @@ class OpusContentAdapter(
                     CenterThreadPool.run {
                         try {
                             if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                                context.runOnUiThread { MsgUtil.showMsg("还没有登录喵~") }
+                                context.runOnUiThread { MsgUtil.showMsg(UiText.of("还没有登录喵~")) }
                                 return@run
                             }
                             // 文章（评论类型 12）用专栏点赞接口，动态用 Opus 点赞接口
@@ -242,7 +245,7 @@ class OpusContentAdapter(
                             if (result == 0) {
                                 article.stats.liked = !article.stats.liked
                                 context.runOnUiThread {
-                                    MsgUtil.showMsg((if (article.stats.liked) "点赞成功" else "取消成功"))
+                                    MsgUtil.showMsg((if (article.stats.liked) UiText.of("点赞成功") else UiText.of("取消成功")))
 
                                     if (article.stats.liked)
                                         likeLabel.text = StringUtil.toWan((++article.stats.like).toLong())
@@ -253,7 +256,7 @@ class OpusContentAdapter(
                                     )
                                 }
                             } else {
-                                context.runOnUiThread { MsgUtil.showMsg("操作失败：" + result) }
+                                context.runOnUiThread { MsgUtil.showMsg(ApiErrorText.opFailedWithDetail(result)) }
                             }
                         } catch (e: Exception) {
                             context.runOnUiThread { MsgUtil.err(e) }
@@ -267,7 +270,7 @@ class OpusContentAdapter(
                         if (article.stats.coined < article.stats.coin_limit) {
                             try {
                                 if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                                    context.runOnUiThread { MsgUtil.showMsg("还没有登录喵~") }
+                                    context.runOnUiThread { MsgUtil.showMsg(UiText.of("还没有登录喵~")) }
                                     return@run
                                 }
                                 val result = ArticleApi.addCoin(article.id, article.upInfo.mid, 1)
@@ -276,14 +279,14 @@ class OpusContentAdapter(
                                     if (++coinAdd <= 2)
                                         article.stats.coined++
                                     context.runOnUiThread {
-                                        MsgUtil.showMsg("投币成功！")
+                                        MsgUtil.showMsg(UiText.of("投币成功！"))
                                         coinLabel.text = StringUtil.toWan((++article.stats.coin).toLong())
                                         coin.setImageResource(R.drawable.icon_coin_1)
                                     }
                                 } else {
-                                    var msg = "投币失败：" + result
+                                    var msg = UiText.of("投币失败：") + result
                                     if (result == 34002) {
-                                        msg = "不能给自己投币哦！"
+                                        msg = UiText.of("不能给自己投币哦！")
                                     }
                                     val finalMsg = msg
                                     context.runOnUiThread { MsgUtil.showMsg(finalMsg) }
@@ -292,7 +295,7 @@ class OpusContentAdapter(
                                 context.runOnUiThread { MsgUtil.err(e) }
                             }
                         } else {
-                            context.runOnUiThread { MsgUtil.showMsg("投币数量到达上限") }
+                            context.runOnUiThread { MsgUtil.showMsg(UiText.of("投币数量到达上限")) }
                         }
                     }
                 }
@@ -302,7 +305,7 @@ class OpusContentAdapter(
                     CenterThreadPool.run {
                         try {
                             if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                                context.runOnUiThread { MsgUtil.showMsg("还没有登录喵~") }
+                                context.runOnUiThread { MsgUtil.showMsg(UiText.of("还没有登录喵~")) }
                                 return@run
                             }
                             if (article.stats.favoured) {
@@ -312,10 +315,10 @@ class OpusContentAdapter(
                                     context.runOnUiThread {
                                         fav.setImageResource(R.drawable.icon_fav_0)
                                         favLabel.text = StringUtil.toWan(article.stats.favorite.toLong())
-                                        MsgUtil.showMsg("已取消收藏~")
+                                        MsgUtil.showMsg(UiText.of("已取消收藏~"))
                                     }
                                 } else {
-                                    context.runOnUiThread { MsgUtil.showMsg("取消收藏失败") }
+                                    context.runOnUiThread { MsgUtil.showMsg(UiText.of("取消收藏失败")) }
                                 }
                             } else {
                                 if (ArticleApi.favorite(article.id) == 0) {
@@ -324,10 +327,10 @@ class OpusContentAdapter(
                                     context.runOnUiThread {
                                         fav.setImageResource(R.drawable.icon_fav_1)
                                         favLabel.text = StringUtil.toWan(article.stats.favorite.toLong())
-                                        MsgUtil.showMsg("收藏成功~")
+                                        MsgUtil.showMsg(UiText.of("收藏成功~"))
                                     }
                                 } else {
-                                    context.runOnUiThread { MsgUtil.showMsg("收藏失败") }
+                                    context.runOnUiThread { MsgUtil.showMsg(UiText.of("收藏失败")) }
                                 }
                             }
                         } catch (e: Exception) {
@@ -358,18 +361,18 @@ class OpusContentAdapter(
                         val titleView = holder.itemView.findViewById<TextView>(R.id.vote_title)
                         val joinView = holder.itemView.findViewById<TextView>(R.id.vote_join_num)
                         val statusView = holder.itemView.findViewById<TextView>(R.id.vote_status)
-                        titleView?.text = "投票"
+                        titleView?.text = UiText.of("投票")
                         joinView?.text = ""
-                        statusView?.text = "点击参与"
+                        statusView?.text = UiText.of("点击参与")
                         // 异步拉取投票标题
                         CenterThreadPool.run {
                             try {
                                 val info = VoteApi.getVoteInfo(voteId)
                                 if (info != null) {
                                     context.runOnUiThread {
-                                        titleView?.text = if (info.title.isNotEmpty()) info.title else "投票"
+                                        titleView?.text = if (info.title.isNotEmpty()) info.title else UiText.of("投票")
                                         joinView?.text = "${info.join_num}人参与"
-                                        statusView?.text = if (info.isExpired()) "已结束" else "投票"
+                                        statusView?.text = if (info.isExpired()) UiText.of("已结束") else UiText.of("投票")
                                     }
                                 }
                             } catch (e: Exception) {

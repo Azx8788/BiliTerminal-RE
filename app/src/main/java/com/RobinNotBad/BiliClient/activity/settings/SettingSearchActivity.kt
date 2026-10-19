@@ -71,7 +71,7 @@ class SettingSearchActivity : BaseActivity() {
         // 重置排序为默认顺序
         SharedPreferencesUtil.putString(SharedPreferencesUtil.SEARCH_CATEGORY_SORT, "")
 
-        MsgUtil.showMsg("已重置为默认设置")
+        MsgUtil.showMsg(getString(R.string.msg_settingsearchactivity_001))
     }
 
     /**

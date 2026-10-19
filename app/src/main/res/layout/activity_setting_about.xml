@@ -93,7 +93,7 @@
                         android:layout_width="wrap_content"
                         android:textSize="11sp"
                         android:alpha="0.9"
-                        android:text="版本名"
+                        android:text="@string/text_activitysettingabout_07"
                         android:padding="3dp"
                         android:id="@+id/app_version"
                         android:layout_gravity="center"
@@ -114,7 +114,7 @@
                         android:textSize="11sp"
                         android:alpha="0.9"
                         android:padding="3dp"
-                        android:text="版本号"
+                        android:text="@string/text_activitysettingabout_06"
                         android:id="@+id/app_version_code"
                         android:layout_gravity="center"
                         android:gravity="center" />
@@ -136,7 +136,7 @@
                     android:textSize="11sp"
                     android:padding="3dp"
                     android:alpha="0.85"
-                    android:text="当前版本为测试版\n不代表最终正式版"
+                    android:text="@string/text_about_test_version"
                     android:layout_gravity="center"
                     android:gravity="center" />
 
@@ -176,7 +176,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
-                        android:text="作者的话"
+                        android:text="@string/settingtext_aboutactivity_012"
                         android:textSize="14sp" />
 
                     <TextView
@@ -208,7 +208,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
-                        android:text="温馨提醒"
+                        android:text="@string/donate_title"
                         android:textSize="14sp" />
 
                     <TextView
@@ -253,7 +253,7 @@
                     android:layout_height="35dp"
                     android:layout_marginHorizontal="8dp"
                     android:gravity="center_vertical"
-                    android:text="捐赠列表"
+                    android:text="@string/pagename_sponsoractivity_001"
                     android:textAlignment="textStart"
                     android:textSize="13sp"
                     app:drawableEndCompat="@drawable/arrow_forward" />
@@ -274,7 +274,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
-                        android:text="主要开发者"
+                        android:text="@string/text_activitysettingabout_05"
                         android:textSize="14sp" />
 
                     <LinearLayout
@@ -288,7 +288,7 @@
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
                         android:layout_marginTop="6dp"
-                        android:text="联合开发者"
+                        android:text="@string/text_activitysettingabout_04"
                         android:textSize="14sp" />
 
                     <LinearLayout
@@ -319,7 +319,7 @@
                         android:layout_height="wrap_content"
                         android:layout_width="wrap_content"
                         android:textSize="14sp"
-                        android:text="版本相关"
+                        android:text="@string/text_activitysettingabout_03"
                         android:layout_gravity="center" />
 
                     <TextView
@@ -328,7 +328,7 @@
                         android:layout_width="wrap_content"
                         android:textSize="13sp"
                         android:textStyle="bold"
-                        android:text="本次更新"
+                        android:text="@string/text_activitysettingabout_02"
                         android:layout_marginTop="6dp"
                         android:layout_gravity="center" />
 
@@ -354,7 +354,7 @@
                     android:layout_height="35dp"
                     android:layout_marginHorizontal="8dp"
                     android:gravity="center_vertical"
-                    android:text="历史更新日志"
+                    android:text="@string/pagename_updatehistoryactivity_001"
                     android:textAlignment="textStart"
                     android:textSize="13sp"
                     app:drawableEndCompat="@drawable/arrow_forward" />
@@ -371,7 +371,7 @@
                     android:layout_height="35dp"
                     android:layout_marginHorizontal="8dp"
                     android:gravity="center_vertical"
-                    android:text="开源信息"
+                    android:text="@string/pagename_opensource"
                     android:textAlignment="textStart"
                     android:textSize="13sp"
                     app:drawableEndCompat="@drawable/arrow_forward" />
@@ -394,7 +394,7 @@
                         android:layout_height="wrap_content"
                         android:layout_width="wrap_content"
                         android:textSize="14sp"
-                        android:text="免责声明"
+                        android:text="@string/text_activitysettingabout_01"
                         android:layout_gravity="center" />
 
                     <TextView

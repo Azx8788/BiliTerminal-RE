@@ -57,7 +57,7 @@
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
                     android:maxLines="2"
-                    android:text="标题"
+                    android:text="@string/text_cellsettingtitle_01"
                     android:textSize="@dimen/text_body" />
 
                 <TextView

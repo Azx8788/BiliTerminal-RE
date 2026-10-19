@@ -102,7 +102,7 @@
                                 android:layout_marginStart="8dp"
                                 android:ellipsize="end"
                                 android:lines="1"
-                                android:text="回复我的"
+                                android:text="@string/uitext_messageactivity_003"
                                 android:textColor="?android:attr/textColorPrimary"
                                 android:textSize="12sp"
                                 app:layout_constraintBottom_toBottomOf="@id/reply_icon"
@@ -155,7 +155,7 @@
                                 android:layout_marginStart="8dp"
                                 android:ellipsize="end"
                                 android:lines="1"
-                                android:text="\@我"
+                                android:text="@string/text_message_mention"
                                 android:textColor="?android:attr/textColorPrimary"
                                 android:textSize="12sp"
                                 app:layout_constraintBottom_toBottomOf="@id/at_icon"
@@ -208,7 +208,7 @@
                                 android:layout_marginStart="8dp"
                                 android:ellipsize="end"
                                 android:lines="1"
-                                android:text="收到的赞"
+                                android:text="@string/uitext_messageactivity_002"
                                 android:textColor="?android:attr/textColorPrimary"
                                 android:textSize="12sp"
                                 app:layout_constraintBottom_toBottomOf="@id/like_icon"
@@ -262,7 +262,7 @@
                                 android:layout_marginStart="8dp"
                                 android:ellipsize="end"
                                 android:lines="1"
-                                android:text="系统通知"
+                                android:text="@string/text_activitymessage_02"
                                 android:textColor="?android:attr/textColorPrimary"
                                 android:textSize="12sp"
                                 app:layout_constraintBottom_toBottomOf="@id/system_icon"
@@ -315,7 +315,7 @@
                                 android:layout_marginStart="8dp"
                                 android:ellipsize="end"
                                 android:lines="1"
-                                android:text="消息设置"
+                                android:text="@string/uitext_messagesettingsactivity_005"
                                 android:textColor="?android:attr/textColorPrimary"
                                 android:textSize="12sp"
                                 app:layout_constraintBottom_toBottomOf="@id/setting_icon"
@@ -330,7 +330,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="私信列表" />
+                        android:text="@string/text_activitymessage_01" />
                 </LinearLayout>
 
                 <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView

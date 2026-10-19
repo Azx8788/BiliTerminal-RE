@@ -140,7 +140,7 @@ class AccountSwitchActivity : BaseActivity() {
         )
         text.gravity = Gravity.CENTER
         text.setPadding(32, 48, 32, 48)
-        text.text = "暂无已保存的账号\n登录后会自动保存账号凭证"
+        text.text = getString(R.string.text_account_empty)
         text.textSize = 13f
         card.addView(text)
 
@@ -195,11 +195,11 @@ class AccountSwitchActivity : BaseActivity() {
         val card = view as MaterialCardView
         card.setOnClickListener {
             if (isCurrent) {
-                MsgUtil.showMsg("这是当前登录的账号")
+                MsgUtil.showMsg(getString(R.string.msg_accountswitchactivity_001))
             } else {
                 AccountManager.switchToAccount(account)
                 val displayName = if (savedName != null && savedName.isNotEmpty()) savedName else "UID:" + account.mid
-                MsgUtil.showMsg("已切换至 $displayName")
+                MsgUtil.showMsg(getString(R.string.msg_account_switched, displayName))
                 val intent = Intent(this@AccountSwitchActivity, SplashActivity::class.java)
                 intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK
                 startActivity(intent)
@@ -217,7 +217,7 @@ class AccountSwitchActivity : BaseActivity() {
                     confirmText = "删除"
                 ) {
                     AccountManager.removeAccount(account.mid)
-                    MsgUtil.showMsg("已删除账号")
+                    MsgUtil.showMsg(getString(R.string.msg_accountswitchactivity_002))
                     refreshAccountList()
                 }.show()
             }
@@ -260,7 +260,7 @@ class AccountSwitchActivity : BaseActivity() {
         )
         text.setPadding(16, 0, 16, 0)
         text.gravity = Gravity.CENTER_VERTICAL
-        text.text = "添加新账号"
+        text.text = getString(R.string.text_account_add_new)
         text.textAlignment = View.TEXT_ALIGNMENT_TEXT_START
         text.textSize = 13f
         text.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.arrow_forward, 0)

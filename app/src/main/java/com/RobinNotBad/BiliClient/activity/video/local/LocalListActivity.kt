@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.local
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -85,7 +87,7 @@ class LocalListActivity : InstanceActivity() {
         emptyTip = findViewById(R.id.emptyTip)
 
         val pageName = findViewById<TextView>(R.id.pageName)
-        pageName.text = "缓存"
+        pageName.text = UiText.of("缓存")
 
         findViewById<View>(R.id.top).setOnClickListener {
             if (adapter?.currentFolderName?.isNotEmpty() == true) {
@@ -175,7 +177,7 @@ class LocalListActivity : InstanceActivity() {
                     }
 
                     if (qualityStr == "audio_only" || (audioFile.exists() && !videoFile.exists())) {
-                        localVideo.qualityList.add("仅音频")
+                        localVideo.qualityList.add(UiText.of("仅音频"))
                     } else if (qualityStr.isNotEmpty()) {
                         val qn = try { qualityStr.toInt() } catch (e: Exception) { 0 }
                         val label = LocalVideo.getQualityLabel(qn)
@@ -220,7 +222,7 @@ class LocalListActivity : InstanceActivity() {
                                         try {
                                             val pqnStr = pageQualityFile.readText().trim()
                                             if (pqnStr == "audio_only") {
-                                                localVideo.qualityList.add("仅音频")
+                                                localVideo.qualityList.add(UiText.of("仅音频"))
                                             } else {
                                                 val pqn = pqnStr.toInt()
                                                 val label = LocalVideo.getQualityLabel(pqn)
@@ -296,21 +298,21 @@ class LocalListActivity : InstanceActivity() {
     private fun exitFolder() {
         adapter?.setData(folderList, videoList, "")
         val pageName = findViewById<TextView>(R.id.pageName)
-        pageName?.text = "缓存"
+        pageName?.text = UiText.of("缓存")
     }
 
     private fun showNewFolderDialog() {
         val intent = Intent(this, InputDialogActivity::class.java)
-            .putExtra("title", "新建文件夹")
-            .putExtra("hint", "请输入文件夹名称")
+            .putExtra("title", UiText.of("新建文件夹"))
+            .putExtra("hint", UiText.of("请输入文件夹名称"))
         pendingInputCallback = { name ->
             if (!FolderManager.isValidFolderName(name)) {
-                MsgUtil.showMsg("名称无效（不能为空、超过30字符或包含特殊字符）")
+                MsgUtil.showMsg(UiText.of("名称无效（不能为空、超过30字符或包含特殊字符）"))
             } else if (FolderManager.createFolder(name)) {
-                MsgUtil.showMsg("文件夹创建成功")
+                MsgUtil.showMsg(UiText.of("文件夹创建成功"))
                 refresh()
             } else {
-                MsgUtil.showMsg("文件夹名称已存在或创建失败")
+                MsgUtil.showMsg(UiText.of("文件夹名称已存在或创建失败"))
             }
         }
         inputLauncher.launch(intent)
@@ -320,16 +322,16 @@ class LocalListActivity : InstanceActivity() {
         if (folderIndex < 0 || folderIndex >= folderList.size) return
         val folder = folderList[folderIndex]
         val intent = Intent(this, InputDialogActivity::class.java)
-            .putExtra("title", "重命名文件夹")
+            .putExtra("title", UiText.of("重命名文件夹"))
             .putExtra("initial_text", folder.name)
         pendingInputCallback = { newName ->
             if (!FolderManager.isValidFolderName(newName)) {
-                MsgUtil.showMsg("名称无效")
+                MsgUtil.showMsg(UiText.of("名称无效"))
             } else if (FolderManager.renameFolder(folder.name, newName)) {
-                MsgUtil.showMsg("重命名成功")
+                MsgUtil.showMsg(UiText.of("重命名成功"))
                 refresh()
             } else {
-                MsgUtil.showMsg("重命名失败（名称可能已存在）")
+                MsgUtil.showMsg(UiText.of("重命名失败（名称可能已存在）"))
             }
         }
         inputLauncher.launch(intent)
@@ -338,7 +340,7 @@ class LocalListActivity : InstanceActivity() {
     private fun showDisbandConfirmDialog(folderIndex: Int) {
         if (folderIndex < 0 || folderIndex >= folderList.size) return
         val folder = folderList[folderIndex]
-        showConfirmDialog("拆散文件夹", "确定要拆散「${folder.name}」吗？\n文件夹内的视频将移回未分类区域。") {
+        showConfirmDialog(UiText.of("拆散文件夹"), "确定要拆散「${folder.name}」吗？\n文件夹内的视频将移回未分类区域。") {
             disbandFolder(folderIndex)
         }
     }
@@ -353,7 +355,7 @@ class LocalListActivity : InstanceActivity() {
                     runOnUiThread { exitFolder() }
                 }
                 runOnUiThread {
-                    MsgUtil.showMsg("文件夹已拆散")
+                    MsgUtil.showMsg(UiText.of("文件夹已拆散"))
                     refresh()
                 }
             }
@@ -368,11 +370,11 @@ class LocalListActivity : InstanceActivity() {
 
         val meta = readVideoMeta(video)
         if (meta.aid <= 0 || meta.cid <= 0) {
-            MsgUtil.showMsg("缺少视频信息，无法更新弹幕")
+            MsgUtil.showMsg(UiText.of("缺少视频信息，无法更新弹幕"))
             return
         }
 
-        MsgUtil.showMsg("正在更新弹幕...")
+        MsgUtil.showMsg(UiText.of("正在更新弹幕..."))
         CenterThreadPool.run {
             try {
                 val playerData = PlayerData()
@@ -407,9 +409,9 @@ class LocalListActivity : InstanceActivity() {
                             }
                         }
                     }
-                    runOnUiThread { MsgUtil.showMsg("弹幕更新成功") }
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("弹幕更新成功")) }
                 } else {
-                    runOnUiThread { MsgUtil.showMsg("弹幕地址获取失败") }
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("弹幕地址获取失败")) }
                 }
             } catch (e: Exception) {
                 runOnUiThread { MsgUtil.showMsg("弹幕更新失败: ${e.message}") }
@@ -440,7 +442,7 @@ class LocalListActivity : InstanceActivity() {
         val meta = readVideoMeta(video)
 
         if (meta.aid <= 0) {
-            MsgUtil.showMsg("缺少视频信息，无法切换分辨率")
+            MsgUtil.showMsg(UiText.of("缺少视频信息，无法切换分辨率"))
             return
         }
 
@@ -458,7 +460,7 @@ class LocalListActivity : InstanceActivity() {
         val meta = readVideoMeta(video)
 
         if (meta.aid <= 0) {
-            MsgUtil.showMsg("缺少视频信息，无法跳转详情页")
+            MsgUtil.showMsg(UiText.of("缺少视频信息，无法跳转详情页"))
             return
         }
 
@@ -476,7 +478,7 @@ class LocalListActivity : InstanceActivity() {
         // 收集该文件夹内的所有视频
         val folderVideos = videoList.filter { it.folderName == folderName }
         if (folderVideos.isEmpty()) {
-            MsgUtil.showMsg("该文件夹内没有视频")
+            MsgUtil.showMsg(UiText.of("该文件夹内没有视频"))
             return
         }
 
@@ -537,7 +539,7 @@ class LocalListActivity : InstanceActivity() {
     }
 
     private fun showDeleteHint() {
-        MsgUtil.showMsg("再长按一次删除")
+        MsgUtil.showMsg(UiText.of("再长按一次删除"))
     }
 
     private fun deleteVideo(videoIndex: Int, showConfirm: Boolean = true) {
@@ -545,7 +547,7 @@ class LocalListActivity : InstanceActivity() {
         val video = videoList[videoIndex]
 
         if (showConfirm) {
-            showConfirmDialog("删除视频", "确定要删除「${video.title}」吗？\n此操作不可恢复。") {
+            showConfirmDialog(UiText.of("删除视频"), "确定要删除「${video.title}」吗？\n此操作不可恢复。") {
                 performDelete(video)
             }
         } else {
@@ -563,7 +565,7 @@ class LocalListActivity : InstanceActivity() {
             FolderManager.removeVideoFromFolder(video.title)
 
             runOnUiThread {
-                MsgUtil.showMsg("删除成功")
+                MsgUtil.showMsg(UiText.of("删除成功"))
                 refresh()
             }
         }
@@ -575,7 +577,7 @@ class LocalListActivity : InstanceActivity() {
 
         val folders = FolderManager.getAllFolders()
         if (folders.isEmpty()) {
-            MsgUtil.showMsg("请先创建文件夹")
+            MsgUtil.showMsg(UiText.of("请先创建文件夹"))
             return
         }
 
@@ -600,7 +602,7 @@ class LocalListActivity : InstanceActivity() {
         CenterThreadPool.run {
             if (FolderManager.removeVideoFromFolder(video.title)) {
                 runOnUiThread {
-                    MsgUtil.showMsg("已移出文件夹")
+                    MsgUtil.showMsg(UiText.of("已移出文件夹"))
                     refresh()
                 }
             }

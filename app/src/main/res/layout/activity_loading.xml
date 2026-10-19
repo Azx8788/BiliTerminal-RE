@@ -43,6 +43,6 @@
         android:visibility="visible"
         android:src="@mipmap/loading_2233"
         android:layout_below="@+id/top"
-        android:contentDescription="加载中" />
+        android:contentDescription="@string/a11y_activityloading_01" />
 
 </RelativeLayout>

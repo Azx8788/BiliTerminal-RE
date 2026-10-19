@@ -122,12 +122,12 @@ class SettingPlayerChooseActivity : BaseActivity() {
                         startActivity(Intent(this, SettingTerminalPlayerActivity::class.java))
                 }
                 "mtvPlayer" -> {
-                    MsgUtil.showDialog("提醒", "不再推荐使用小电视播放器，许多功能已不再支持，推荐使用内置播放器", -1)
+                    MsgUtil.showDialog(SettingText.resolve(this, "提醒"), SettingText.resolve(this, "不再推荐使用小电视播放器，许多功能已不再支持，推荐使用内置播放器"), -1)
                 }
 
                 "aliangPlayer" -> {
                     if (Build.VERSION.SDK_INT <= 19)
-                        MsgUtil.showDialog("提醒", "您的安卓版本过低，可能无法使用凉腕播放器，可以使用内置播放器", -1)
+                        MsgUtil.showDialog(SettingText.resolve(this, "提醒"), SettingText.resolve(this, "您的安卓版本过低，可能无法使用凉腕播放器，可以使用内置播放器"), -1)
                 }
             }
             playerCurr = playerList[checkPosition + 1]

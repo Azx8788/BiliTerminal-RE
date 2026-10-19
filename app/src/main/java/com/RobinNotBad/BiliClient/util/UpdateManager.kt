@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.util
 
+import com.RobinNotBad.BiliClient.R
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -212,7 +214,7 @@ object UpdateManager {
                     if (!response.isSuccessful) {
                         // 重试仍失败：body 不会有人读，必须显式关闭，否则连接不归还
                         response.close()
-                        CenterThreadPool.runOnUiThread { onError("下载失败: ${response.code}") }
+                        CenterThreadPool.runOnUiThread { onError(context.getString(R.string.text_update_download_failed, response.code.toString())) }
                         return@run
                     }
                 } else if (downloadedBytes > 0 && response.code != 206) {
@@ -229,16 +231,16 @@ object UpdateManager {
                 val verifyResult = ApkVerifier.verify(context, result)
                 if (!verifyResult.ok) {
                     result.delete()
-                    CenterThreadPool.runOnUiThread { onError("安装包校验失败：${verifyResult.message}") }
+                    CenterThreadPool.runOnUiThread { onError(context.getString(R.string.text_update_verify_failed, verifyResult.message)) }
                     return@run
                 }
 
                 CenterThreadPool.runOnUiThread { onComplete(result) }
             } catch (e: CancellationException) {
             } catch (e: IOException) {
-                CenterThreadPool.runOnUiThread { onError("下载失败：${e.message}") }
+                CenterThreadPool.runOnUiThread { onError(context.getString(R.string.text_update_download_failed, e.message)) }
             } catch (e: Exception) {
-                CenterThreadPool.runOnUiThread { onError("下载出错：${e.message}") }
+                CenterThreadPool.runOnUiThread { onError(context.getString(R.string.text_update_download_error, e.message)) }
             }
         }
     }

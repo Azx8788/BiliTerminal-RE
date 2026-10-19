@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -88,13 +90,13 @@ class MySpaceActivity : InstanceActivity() {
         when (key) {
             MySpaceConfig.KEY_MORE_BUTTON -> {
                 icon.setImageResource(R.drawable.icon_menu)
-                label.text = "更多"
+                label.text = UiText.of("更多")
                 cell.setOnClickListener { startActivity(Intent(this, MySpaceMoreActivity::class.java)) }
             }
 
             MySpaceConfig.KEY_LOGOUT -> {
                 icon.setImageResource(R.drawable.icon_logout)
-                label.text = "退出登录"
+                label.text = UiText.of("退出登录")
                 label.setTextColor(0xFFF44336.toInt())
                 cell.setOnClickListener { handleLogout() }
             }
@@ -129,7 +131,7 @@ class MySpaceActivity : InstanceActivity() {
             // 旧实现是「丢进线程池请求服务端注销」后立刻清本地 Cookie，两者构成竞态：
             // exitLogin 在后台线程读 csrf 时本地可能已经清空 → csrf 读成空串 → 服务端会话（含 refresh_token）压根没被注销。
             // 所以这里把「请求服务端注销 → 清本地登录态」放进同一个后台任务，保证先后顺序。
-            MsgUtil.showMsg("正在退出登录…")
+            MsgUtil.showMsg(UiText.of("正在退出登录…"))
             CenterThreadPool.run {
                 val serverLogoutOk = try {
                     UserInfoApi.exitLogin()
@@ -146,13 +148,13 @@ class MySpaceActivity : InstanceActivity() {
                 SharedPreferencesUtil.removeValue(SharedPreferencesUtil.cookie_refresh)
                 runOnUiThread {
                     // 服务端注销失败时明确提示：用户/排查者才知道服务端会话可能仍然有效
-                    MsgUtil.showMsg(if (serverLogoutOk) "账号已退出" else "服务端注销失败，已清除本地登录状态")
+                    MsgUtil.showMsg(if (serverLogoutOk) UiText.of("账号已退出") else UiText.of("服务端注销失败，已清除本地登录状态"))
                     jumpToLogin()
                     finish()
                 }
             }
         } else {
-            MsgUtil.showMsg("再点一次退出登录！")
+            MsgUtil.showMsg(UiText.of("再点一次退出登录！"))
             confirmLogout = !confirmLogout
         }
     }
@@ -163,7 +165,7 @@ class MySpaceActivity : InstanceActivity() {
         val mid = SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0)
         if (mid == 0L) {
             // 未登录引导
-            userName.text = "点击登录"
+            userName.text = UiText.of("点击登录")
             userFans.text = ""
             userExp.text = ""
             myInfo.setOnClickListener { jumpToLogin() }
@@ -182,7 +184,7 @@ class MySpaceActivity : InstanceActivity() {
                         .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                         .into(userAvatar)
                     userName.text = userInfo.name
-                    userFans.text = StringUtil.toWan(userInfo.fans.toLong()) + "粉丝 " + userCoin + "硬币"
+                    userFans.text = StringUtil.toWan(userInfo.fans.toLong()) + UiText.of("粉丝 ") + userCoin + UiText.of("硬币")
                     userExp.text = "EXP:" + userInfo.current_exp + (if (userInfo.level >= 6) "" else "/" + userInfo.next_exp)
                     myInfo.setOnClickListener { openMyInfo() }
                 }

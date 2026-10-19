@@ -121,7 +121,7 @@
                     android:id="@+id/like_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="点赞"
+                    android:text="@string/text_cellarticleend_02"
                     android:textSize="12sp" />
             </LinearLayout>
 
@@ -145,7 +145,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center"
-                    android:text="投币"
+                    android:text="@string/text_cellarticleend_01"
                     android:textSize="12sp" />
             </LinearLayout>
 
@@ -169,7 +169,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="center"
-                    android:text="收藏"
+                    android:text="@string/uitext_favoritefolderlistactivity_002"
                     android:textSize="12sp" />
             </LinearLayout>
         </LinearLayout>

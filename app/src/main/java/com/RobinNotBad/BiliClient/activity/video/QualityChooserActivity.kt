@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,9 +30,9 @@ class QualityChooserActivity : BaseActivity() {
 
     // 强制高分辨率选项：qn值 -> 显示名称
     private val forcedQualityMap = linkedMapOf(
-        120 to "4K 超清",
-        112 to "1080P 高码率",
-        80 to "1080P 高清"
+        120 to UiText.of("4K 超清"),
+        112 to UiText.of("1080P 高码率"),
+        80 to UiText.of("1080P 高清")
     )
 
     // 每个强制选项对应的 fnval（4048: DASH|HDR|4K|杜比全景声|杜比视界|8K|AV1）
@@ -53,7 +55,7 @@ class QualityChooserActivity : BaseActivity() {
             finish()
         }
 
-        (findViewById<TextView>(R.id.pageName)).text = "请选择清晰度"
+        (findViewById<TextView>(R.id.pageName)).text = UiText.of("请选择清晰度")
 
         val aid = intent.getLongExtra("aid", 0)
         val bvid = intent.getStringExtra("bvid")
@@ -87,12 +89,12 @@ class QualityChooserActivity : BaseActivity() {
                             }
                         }
 
-                        qualityList.add("仅音频")
+                        qualityList.add(UiText.of("仅音频"))
                         isAudioOnlyOption = true
 
                         runOnUiThread { adapter.nameList = qualityList }
                     } catch (e: Exception) {
-                        runOnUiThread { MsgUtil.showMsg("清晰度列表获取失败！") }
+                        runOnUiThread { MsgUtil.showMsg(UiText.of("清晰度列表获取失败！")) }
                         e.printStackTrace()
                     }
                 }
@@ -108,7 +110,7 @@ class QualityChooserActivity : BaseActivity() {
                                 PlayerApi.getVideoDash(playerData)
 
                                 if (playerData.audioUrl == null || playerData.audioUrl!!.isEmpty()) {
-                                    runOnUiThread { MsgUtil.showMsg("该视频没有可用的音频流") }
+                                    runOnUiThread { MsgUtil.showMsg(UiText.of("该视频没有可用的音频流")) }
                                     return@run
                                 }
 
@@ -116,7 +118,7 @@ class QualityChooserActivity : BaseActivity() {
                                 mainHandler.postDelayed({ finish() }, 200)
                             } catch (e: Exception) {
                                 runOnUiThread {
-                                    MsgUtil.showMsg("获取音频信息失败：" + e.message)
+                                    MsgUtil.showMsg(UiText.fmt("获取音频信息失败：%1\$s", e.message))
                                     e.printStackTrace()
                                 }
                             }

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.info
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.Manifest
 import android.app.Activity
@@ -40,6 +42,7 @@ import com.RobinNotBad.BiliClient.activity.video.MultiPageActivity
 import com.RobinNotBad.BiliClient.activity.video.QualityChooserActivity
 import com.RobinNotBad.BiliClient.activity.video.collection.CollectionInfoActivity
 import com.RobinNotBad.BiliClient.adapter.user.UpListAdapter
+import com.RobinNotBad.BiliClient.api.ApiErrorText
 import com.RobinNotBad.BiliClient.api.BangumiApi
 import com.RobinNotBad.BiliClient.api.DynamicApi
 import com.RobinNotBad.BiliClient.api.EmoteApi
@@ -108,7 +111,7 @@ class VideoInfoFragment : BaseFragment() {
                     // 转发界面本该隐藏"添加图片"（normalPublish=false），pics 正常不会回来。
                     // 万一回来了也不能静默丢掉——relayVideo 没有 pics 位，直接提示用户。
                     if (!picsJson.isNullOrEmpty()) {
-                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg("视频转发不支持带图，请去掉图片后重试") }
+                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("视频转发不支持带图，请去掉图片后重试")) }
                         return@run
                     }
 
@@ -124,8 +127,8 @@ class VideoInfoFragment : BaseFragment() {
                         emoteTexts
                     )
 
-                    if (dynId != -1L) MsgUtil.showMsg("转发成功~")
-                    else MsgUtil.showMsg("转发失败")
+                    if (dynId != -1L) MsgUtil.showMsg(UiText.of("转发成功~"))
+                    else MsgUtil.showMsg(UiText.of("转发失败"))
                 } catch (e: Exception) {
                     MsgUtil.err(e)
                 }
@@ -139,7 +142,7 @@ class VideoInfoFragment : BaseFragment() {
         if (isGranted) {
             startDownloadFlow()
         } else {
-            MsgUtil.showMsg("需要通知权限才能进行下载，请前往设置授予权限")
+            MsgUtil.showMsg(UiText.of("需要通知权限才能进行下载，请前往设置授予权限"))
         }
     }
 
@@ -220,7 +223,7 @@ class VideoInfoFragment : BaseFragment() {
         super.onCreate(savedInstanceState)
         val bundle = arguments
         if (bundle == null) {
-            MsgUtil.showMsg("视频详情页：数据为空")
+            MsgUtil.showMsg(UiText.of("视频详情页：数据为空"))
             return
         }
         aid = bundle.getLong("aid")
@@ -418,7 +421,7 @@ class VideoInfoFragment : BaseFragment() {
                 return@setOnLongClickListener true
             }
             StringUtil.copyText(ctx, videoInfo!!.bvid)
-            MsgUtil.showMsg("BV号已复制")
+            MsgUtil.showMsg(UiText.of("BV号已复制"))
             true
         }
 
@@ -435,21 +438,21 @@ class VideoInfoFragment : BaseFragment() {
             // 后来的 "65006 已经点赞过了" 分支还会把本地状态位改掉，导致图标与实际状态不一致。
             // 复位必须放在 finally，否则任何一条异常路径都会让按钮永久失效。
             if (isLikeRequesting) {
-                MsgUtil.showMsg("正在处理中…")
+                MsgUtil.showMsg(UiText.of("正在处理中…"))
                 return@setOnClickListener
             }
             isLikeRequesting = true
             CenterThreadPool.run {
                 try {
                     if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                        MsgUtil.showMsg("还没有登录喵~")
+                        MsgUtil.showMsg(UiText.of("还没有登录喵~"))
                         return@run
                     }
                     val result = LikeCoinFavApi.like(videoInfo!!.aid, if (videoInfo!!.stats.liked) 2 else 1)
                     if (result == 0) {
                         videoInfo!!.stats.liked = !videoInfo!!.stats.liked
                         runOnUiThread {
-                            MsgUtil.showMsg(if (videoInfo!!.stats.liked) "点赞成功" else "取消成功")
+                            MsgUtil.showMsg(if (videoInfo!!.stats.liked) UiText.of("点赞成功") else UiText.of("取消成功"))
 
                             if (videoInfo!!.stats.liked)
                                 likeLabel.text = StringUtil.toWan((++videoInfo!!.stats.like).toLong())
@@ -457,11 +460,11 @@ class VideoInfoFragment : BaseFragment() {
                             like.setImageResource(if (videoInfo!!.stats.liked) R.drawable.icon_like_1 else R.drawable.icon_like_0)
                         }
                     } else if (isAdded) {
-                        var msg = "操作失败：" + result
+                        var msg = ApiErrorText.opFailedWithDetail(result)
                         when (result) {
                             -403 -> msg = "当前请求触发B站风控"
                             65006 -> {
-                                msg = "已经点赞过了喵~"
+                                msg = UiText.of("已经点赞过了喵~")
                                 videoInfo!!.stats.liked = true
                                 runOnUiThread { like.setImageResource(R.drawable.icon_like_1) }
                             }
@@ -479,14 +482,14 @@ class VideoInfoFragment : BaseFragment() {
         rootview.findViewById<View>(R.id.layout_coin).setOnClickListener {
             // 同点赞：投币接口不幂等，连点会真的重复扣币，必须做进行中互斥（复位同样放 finally）。
             if (isCoinRequesting) {
-                MsgUtil.showMsg("正在处理中…")
+                MsgUtil.showMsg(UiText.of("正在处理中…"))
                 return@setOnClickListener
             }
             isCoinRequesting = true
             CenterThreadPool.run {
                 try {
                     if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                        MsgUtil.showMsg("还没有登录喵~")
+                        MsgUtil.showMsg(UiText.of("还没有登录喵~"))
                         return@run
                     }
                     if (videoInfo!!.stats.coined < videoInfo!!.stats.coin_limit) {
@@ -494,21 +497,21 @@ class VideoInfoFragment : BaseFragment() {
                         if (result == 0) {
                             if (++coinAdd <= 2) videoInfo!!.stats.coined++
                             runOnUiThread {
-                                MsgUtil.showMsg("投币成功")
+                                MsgUtil.showMsg(UiText.of("投币成功"))
                                 coinLabel.text = StringUtil.toWan((++videoInfo!!.stats.coin).toLong())
                                 coin.setImageResource(R.drawable.icon_coin_1)
                             }
                         } else if (isAdded) {
-                            var msg = "投币失败：" + result
+                            var msg = UiText.of("投币失败：") + result
                             if (result == -403) {
-                                msg = "当前请求触发B站风控"
+                                msg = UiText.of("当前请求触发B站风控")
                             } else if (result == 34002) {
-                                msg = "不能给自己投币哦"
+                                msg = UiText.of("不能给自己投币哦")
                             }
                             MsgUtil.showMsg(msg)
                         }
                     } else {
-                        MsgUtil.showMsg("投币数量到达上限")
+                        MsgUtil.showMsg(UiText.of("投币数量到达上限"))
                     }
                 } catch (e: Exception) {
                     MsgUtil.err(e)
@@ -530,8 +533,8 @@ class VideoInfoFragment : BaseFragment() {
             CenterThreadPool.run {
                 try {
                     val result = WatchLaterApi.add(videoInfo!!.aid)
-                    if (result == 0) MsgUtil.showMsg("添加成功")
-                    else MsgUtil.showMsg("添加失败，错误码：" + result)
+                    if (result == 0) MsgUtil.showMsg(UiText.of("添加成功"))
+                    else MsgUtil.showMsg(UiText.fmt(UiText.of("添加失败，错误码：%1\$s"), result))
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -549,7 +552,7 @@ class VideoInfoFragment : BaseFragment() {
             CenterThreadPool.run {
                 val downPath = FileUtil.getVideoDownloadPath(videoInfo!!.title, null)
                 FileUtil.deleteFolder(downPath)
-                MsgUtil.showMsg("已清除此视频的缓存文件夹")
+                MsgUtil.showMsg(UiText.of("已清除此视频的缓存文件夹"))
             }
             true
         }
@@ -565,7 +568,7 @@ class VideoInfoFragment : BaseFragment() {
         }
         relay.setOnLongClickListener {
             StringUtil.copyText(requireContext(), "https://www.bilibili.com/" + videoInfo!!.bvid)
-            MsgUtil.showMsg("视频完整链接已复制")
+            MsgUtil.showMsg(UiText.of("视频完整链接已复制"))
             true
         }
 
@@ -576,9 +579,9 @@ class VideoInfoFragment : BaseFragment() {
                     val upMid = if (videoInfo!!.staff != null && videoInfo!!.staff!!.isNotEmpty()) videoInfo!!.staff!![0].mid else 0L
                     val conclusion = VideoInfoApi.getVideoConclusion(videoInfo!!.aid, videoInfo!!.bvid, cid, upMid)
                     if (conclusion != null) {
-                        MsgUtil.showText("视频摘要 - " + videoInfo!!.title, conclusion)
+                        MsgUtil.showText(UiText.of("视频摘要 - ") + videoInfo!!.title, conclusion)
                     } else {
-                        MsgUtil.showMsg("获取视频摘要失败")
+                        MsgUtil.showMsg(UiText.of("获取视频摘要失败"))
                     }
                 } catch (e: Exception) {
                     MsgUtil.err(e)
@@ -603,7 +606,7 @@ class VideoInfoFragment : BaseFragment() {
 
         if (videoInfo!!.collection != null) {
             val collectionTitle = rootview.findViewById<TextView>(R.id.collectionText)
-            collectionTitle.text = String.format("合集 · %s", videoInfo!!.collection!!.title)
+            collectionTitle.text = String.format(UiText.of("合集 · %s"), videoInfo!!.collection!!.title)
             collectionCard.setOnClickListener {
                 startActivity(Intent(requireContext(), CollectionInfoActivity::class.java)
                     .putExtra("fromVideo", videoInfo!!.aid))
@@ -645,10 +648,10 @@ class VideoInfoFragment : BaseFragment() {
                                         like.setImageResource(R.drawable.icon_like_1)
                                         fav.setImageResource(R.drawable.icon_fav_1)
                                     }
-                                    MsgUtil.showMsg("三连成功")
-                                } else MsgUtil.showMsg("三连失败，错误码：" + code)
+                                    MsgUtil.showMsg(UiText.of("三连成功"))
+                                } else MsgUtil.showMsg(UiText.fmt(UiText.of("三连失败，错误码：%1\$s"), code))
                             } catch (e: Exception) {
-                                MsgUtil.err("三连失败", e)
+                                MsgUtil.err(UiText.of("三连失败"), e)
                             } finally {
                                 isTripleRequesting = false
                             }
@@ -693,10 +696,10 @@ class VideoInfoFragment : BaseFragment() {
     private fun getTitleSpan(): SpannableString {
         var string: String? = null
 
-        if (videoInfo!!.upowerExclusive) string = "充电专属"
-        else if (videoInfo!!.isSteinGate) string = "互动视频"
-        else if (videoInfo!!.is360) string = "全景视频"
-        else if (videoInfo!!.isCooperation) string = "联合投稿"
+        if (videoInfo!!.upowerExclusive) string = UiText.of("充电专属")
+        else if (videoInfo!!.isSteinGate) string = UiText.of("互动视频")
+        else if (videoInfo!!.is360) string = UiText.of("全景视频")
+        else if (videoInfo!!.isCooperation) string = UiText.of("联合投稿")
 
         if (string == null) return SpannableString(videoInfo!!.title)
 
@@ -707,7 +710,7 @@ class VideoInfoFragment : BaseFragment() {
     }
 
     private fun getDescSpan(tags: String): SpannableStringBuilder {
-        val tagStr = SpannableStringBuilder("标签：")
+        val tagStr = SpannableStringBuilder(UiText.of("标签："))
         for (str in tags.split("/").dropLastWhile { it.isEmpty() }.toTypedArray()) {
             val oldLen = tagStr.length
             tagStr.append(str).append("/")
@@ -744,7 +747,7 @@ class VideoInfoFragment : BaseFragment() {
         // 再用 aid 校验一次，确保交给播放器的不是"上一个视频"残留的数据。
         val data = playerData
         if (data == null || data.aid != videoInfo!!.aid) {
-            MsgUtil.showMsg("视频信息还在加载中")
+            MsgUtil.showMsg(UiText.of("视频信息还在加载中"))
             return
         }
 
@@ -775,14 +778,14 @@ class VideoInfoFragment : BaseFragment() {
 
         if (downPath.exists() && videoInfo!!.pagenames.size == 1) {
             val fileSign = File(downPath, ".DOWNLOADING")
-            MsgUtil.showMsg(if (fileSign.exists()) "已在下载队列\n如有异常，长按可清空文件" else "已下载完成")
+            MsgUtil.showMsg(if (fileSign.exists()) "已在下载队列\n如有异常，长按可清空文件" else UiText.of("已下载完成"))
         } else {
             if (videoInfo!!.pagenames.size > 1) {
                 // 与 playClick 同理：多P下载要把当前分P数据交给 MultiPageActivity，
                 // 后台任务未就绪时 playerData 为 null，原来直接塞进去会 NullPointerException。
                 val data = playerData
                 if (data == null || data.aid != videoInfo!!.aid) {
-                    MsgUtil.showMsg("视频信息还在加载中")
+                    MsgUtil.showMsg(UiText.of("视频信息还在加载中"))
                     return
                 }
                 val intent = Intent()

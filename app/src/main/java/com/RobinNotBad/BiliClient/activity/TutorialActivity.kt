@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -50,11 +52,11 @@ class TutorialActivity : BaseActivity() {
                 override fun run() {
                     runOnUiThread {
                         if (waitTime > 0) {
-                            closeBtn.text = String.format(Locale.getDefault(), "已阅(%ds)", waitTime)
+                            closeBtn.text = String.format(Locale.getDefault(), UiText.of("已阅(%ds)"), waitTime)
                             closeBtn.isEnabled = false
                             waitTime--
                         } else {
-                            closeBtn.text = "已阅"
+                            closeBtn.text = UiText.of("已阅")
                             closeBtn.isEnabled = true
                             timer.cancel()
                         }

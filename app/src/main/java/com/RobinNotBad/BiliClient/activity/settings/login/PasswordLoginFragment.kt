@@ -67,9 +67,9 @@ class PasswordLoginFragment : Fragment() {
             } else if (result.resultCode == CaptchaWebViewActivity.RESULT_UNAVAILABLE) {
                 // 设备建不出 WebView，人机验证根本没打开。报「验证已取消」会让用户以为是自己点错了，
                 // 这里直接指一条走得通的路（扫码登录不需要 WebView）。
-                setStatusText("此设备无法显示人机验证，请改用扫码登录")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_001))
             } else {
-                setStatusText("验证已取消")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_002))
             }
         }
     }
@@ -89,7 +89,7 @@ class PasswordLoginFragment : Fragment() {
             val username = usernameInput.text.toString().trim()
             val password = passwordInput.text.toString()
             if (username.isEmpty() || password.isEmpty()) {
-                setStatusText("请输入账号和密码")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_003))
                 return@setOnClickListener
             }
             startCaptcha()
@@ -113,7 +113,7 @@ class PasswordLoginFragment : Fragment() {
 
     @SuppressLint("SetTextI18n")
     private fun startCaptcha() {
-        setStatusText("正在获取验证码...")
+        setStatusText(getString(R.string.msg_login_status_passwordloginfragment_004))
         CenterThreadPool.run {
             try {
                 // checkCookies 失败不应阻塞登录，内部捕获异常
@@ -126,7 +126,7 @@ class PasswordLoginFragment : Fragment() {
                 }
                 val captchaResp = LoginApi.getCaptcha()
                 if (captchaResp.optInt("code", -1) != 0) {
-                    val msg = captchaResp.optString("message", "未知错误")
+                    val msg = captchaResp.optString("message", getString(R.string.msg_unknown_error))
                     setStatusText("验证码接口异常: $msg")
                     return@run
                 }
@@ -144,9 +144,9 @@ class PasswordLoginFragment : Fragment() {
                     captchaLauncher.launch(intent)
                 }
             } catch (e: IOException) {
-                setStatusText("网络错误，请重试")
+                setStatusText(getString(R.string.msg_network_error_retry))
             } catch (e: JSONException) {
-                setStatusText("验证码接口异常")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_005))
             }
         }
     }
@@ -158,7 +158,7 @@ class PasswordLoginFragment : Fragment() {
         else
             geetestValidate + "|jordan"
 
-        setStatusText("正在获取密钥...")
+        setStatusText(getString(R.string.msg_login_status_passwordloginfragment_006))
         CenterThreadPool.run {
             try {
                 val keyResp = LoginApi.getWebKey()
@@ -169,10 +169,10 @@ class PasswordLoginFragment : Fragment() {
                 val username = usernameInput.text.toString().trim()
                 val password = passwordInput.text.toString()
 
-                setStatusText("正在加密密码...")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_007))
                 val encryptedPassword = PasswordEncryptUtil.encryptPassword(password, hash, pubKey)
 
-                setStatusText("正在登录...")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_008))
                 val loginResp = LoginApi.passwordLogin(username, encryptedPassword, captchaToken, captchaChallenge, geetestValidate, seccode)
                 val code = loginResp.optInt("code", -1)
 
@@ -184,17 +184,17 @@ class PasswordLoginFragment : Fragment() {
                         handleLoginSuccess(loginResp)
                     }
                 } else if (code == -629) {
-                    setStatusText("账号或密码错误")
+                    setStatusText(getString(R.string.msg_login_status_passwordloginfragment_009))
                 } else if (code == -662) {
-                    setStatusText("提交超时，请重试")
+                    setStatusText(getString(R.string.msg_login_status_passwordloginfragment_010))
                 } else if (code == -105) {
-                    setStatusText("验证码错误，请重试")
+                    setStatusText(getString(R.string.msg_login_status_passwordloginfragment_011))
                 } else {
-                    val message = loginResp.optString("message", "未知错误")
+                    val message = loginResp.optString("message", getString(R.string.msg_unknown_error))
                     setStatusText("登录失败: $message")
                 }
             } catch (e: IOException) {
-                setStatusText("网络错误，请重试")
+                setStatusText(getString(R.string.msg_network_error_retry))
             } catch (e: Exception) {
                 setStatusText("登录失败: " + e.message)
             }
@@ -206,7 +206,7 @@ class PasswordLoginFragment : Fragment() {
         val message = loginData.optString("message", "")
         if (message.contains("手机号")) {
             CenterThreadPool.runOnUiThread {
-                setStatusText("需要手机号验证，请使用短信验证码登录")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_012))
             }
         } else {
             CenterThreadPool.runOnUiThread {

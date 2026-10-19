@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.message
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.View
@@ -111,7 +113,7 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
                         val seekReply = if (message.rootId == 0L) message.sourceId else message.rootId
                         when (message.businessId) {
                             ReplyApi.REPLY_TYPE_VIDEO_CHILD -> {
-                                MsgUtil.showMsg("视频的子评论暂时无法定位，也许以后会做吧……")
+                                MsgUtil.showMsg(UiText.of("视频的子评论暂时无法定位，也许以后会做吧……"))
                                 TerminalContext.getInstance().enterVideoDetailPage(context, 0, childReply.ofBvid, null, seekReply)
                             }
                             ReplyApi.REPLY_TYPE_VIDEO -> {
@@ -127,7 +129,7 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
                                 TerminalContext.getInstance().enterArticleDetailPage(context, message.subjectId, seekReply)
                             }
                             else -> {
-                                MsgUtil.showMsg("不支持这个类型喵：" + message.businessId)
+                                MsgUtil.showMsg(UiText.fmt(UiText.of("不支持这个类型喵：%1\$s"), message.businessId))
                             }
                         }
                     } else {
@@ -144,14 +146,14 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
                                         TerminalContext.getInstance().enterArticleDetailPage(context, message.subjectId)
                                     }
                                     else -> {
-                                        MsgUtil.showMsg("不支持这个类型喵：" + message.itemType)
+                                        MsgUtil.showMsg(UiText.fmt(UiText.of("不支持这个类型喵：%1\$s"), message.itemType))
                                     }
                                 }
                             }
                         }
                     }
         } catch (e: Exception) {
-            MsgUtil.err("跳转出错？", e)
+            MsgUtil.err(UiText.of("跳转出错？"), e)
         }
             }
         }

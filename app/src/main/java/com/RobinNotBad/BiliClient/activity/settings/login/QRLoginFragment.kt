@@ -49,10 +49,10 @@ class QRLoginFragment : Fragment() {
      * 横屏/平板上高度会超出视口，状态提示文字被挤出屏幕。现在默认 0.15/0.85（70% 宽），
      * 点击二维码仍在 大→中→小 之间循环。
      */
-    private enum class QrScale(val left: Float, val right: Float, val tip: String) {
-        SMALL(0.25f, 0.75f, "切换为中等二维码"),
-        MEDIUM(0.15f, 0.85f, "切换为大二维码"),
-        LARGE(0.05f, 0.95f, "切换为小二维码")
+    private enum class QrScale(val left: Float, val right: Float, @androidx.annotation.StringRes val tipRes: Int) {
+        SMALL(0.25f, 0.75f, R.string.a11y_qr_zoom_medium),
+        MEDIUM(0.15f, 0.85f, R.string.a11y_qr_zoom_large),
+        LARGE(0.05f, 0.95f, R.string.a11y_qr_zoom_small)
     }
 
     private var qrScale = QrScale.MEDIUM
@@ -136,7 +136,7 @@ class QRLoginFragment : Fragment() {
                     QrScale.SMALL -> QrScale.LARGE
                 }
                 applyQrScale()
-                MsgUtil.showMsg(qrScale.tip)
+                MsgUtil.showMsg(getString(qrScale.tipRes))
             }
         }
 
@@ -164,11 +164,11 @@ class QRLoginFragment : Fragment() {
 
     private fun updateModeUI() {
         if (isTVMode) {
-            modeSwitchBtn.text = "TV端扫码登录"
-            scanStat.text = "正在获取TV端二维码"
+            modeSwitchBtn.text = getString(R.string.text_qr_mode_tv)
+            scanStat.text = getString(R.string.text_qr_stat_getting_tv)
         } else {
-            modeSwitchBtn.text = "WEB端扫码登录"
-            scanStat.text = "正在获取二维码"
+            modeSwitchBtn.text = getString(R.string.text_qr_mode_web)
+            scanStat.text = getString(R.string.text_qr_stat_getting)
         }
     }
 
@@ -181,10 +181,10 @@ class QRLoginFragment : Fragment() {
                 qrImageView.isEnabled = false
 
                 if (isTVMode) {
-                    CenterThreadPool.runOnUiThread { scanStat.text = "正在获取TV端二维码" }
+                    CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_stat_getting_tv) }
                     QRImage = LoginApi.getTVLoginQR()
                 } else {
-                    CenterThreadPool.runOnUiThread { scanStat.text = "正在获取二维码" }
+                    CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_stat_getting) }
                     // checkCookies 失败不应阻塞登录流程，内部捕获异常
                     try {
                         CookiesApi.checkCookies()
@@ -208,21 +208,21 @@ class QRLoginFragment : Fragment() {
                 CenterThreadPool.runOnUiThread {
                     qrImageView.isEnabled = true
                     need_refresh = true
-                    scanStat.text = "获取二维码失败，网络错误"
+                    scanStat.text = getString(R.string.text_qr_get_failed_network)
                 }
                 e.printStackTrace()
             } catch (e: JSONException) {
                 CenterThreadPool.runOnUiThread {
                     qrImageView.isEnabled = true
                     need_refresh = true
-                    scanStat.text = "登录接口可能失效，请找开发者"
+                    scanStat.text = getString(R.string.text_qr_api_invalid)
                 }
                 e.printStackTrace()
             } catch (e: Exception) {
                 CenterThreadPool.runOnUiThread {
                     qrImageView.isEnabled = true
                     need_refresh = true
-                    scanStat.text = "遇到其他错误：\n" + e.message
+                    scanStat.text = getString(R.string.err_qr_other, e.message)
                 }
                 e.printStackTrace()
             }
@@ -254,7 +254,7 @@ class QRLoginFragment : Fragment() {
                     if (isAdded) CenterThreadPool.runOnUiThread {
                         qrImageView.isEnabled = true
                         need_refresh = true
-                        scanStat.text = "无法获取二维码信息，点击上方重试\n" + e.message
+                        scanStat.text = getString(R.string.err_qr_no_info, e.message)
                         MsgUtil.err(e)
                     }
                     this.cancel()
@@ -281,14 +281,14 @@ class QRLoginFragment : Fragment() {
             val code = loginJson.getInt("code")
             when (code) {
                 86039 -> CenterThreadPool.runOnUiThread {
-                    scanStat.text = "请使用手机端哔哩哔哩扫码登录（TV端模式）\n点击二维码可以进行放大和缩小"
+                    scanStat.text = getString(R.string.text_qr_hint_tv)
                 }
                 86090 -> CenterThreadPool.runOnUiThread {
-                    scanStat.text = "已扫描，请在手机上点击确认登录"
+                    scanStat.text = getString(R.string.text_qr_scanned_confirm)
                 }
                 86038 -> {
                     CenterThreadPool.runOnUiThread {
-                        scanStat.text = "二维码已失效，点击上方重新获取"
+                        scanStat.text = getString(R.string.text_qr_expired)
                         qrImageView.isEnabled = true
                         need_refresh = true
                     }
@@ -296,7 +296,7 @@ class QRLoginFragment : Fragment() {
                 }
                 0 -> {
                     this@QRLoginFragment.timer?.cancel()
-                    CenterThreadPool.runOnUiThread { scanStat.text = "正在处理TV端登录……" }
+                    CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_processing_tv) }
 
                     val data = loginJson.getJSONObject("data")
                     val accessToken = data.getString("access_token")
@@ -344,21 +344,21 @@ class QRLoginFragment : Fragment() {
                     if (isAdded) requireActivity().finish()
                 }
                 else -> CenterThreadPool.runOnUiThread {
-                    scanStat.text = "TV端登录API可能变动，\n但你仍然可以尝试扫码登录。\n建议反馈给开发者"
+                    scanStat.text = getString(R.string.text_qr_tv_api_changed)
                 }
             }
         } catch (e: JSONException) {
             if (isAdded) CenterThreadPool.runOnUiThread {
                 qrImageView.isEnabled = true
                 need_refresh = true
-                scanStat.text = "TV端登录接口返回异常\n" + e.message
+                scanStat.text = getString(R.string.err_qr_tv_api, e.message)
             }
             this@QRLoginFragment.timer?.cancel()
         } catch (e: IOException) {
             if (isAdded) CenterThreadPool.runOnUiThread {
                 qrImageView.isEnabled = true
                 need_refresh = true
-                scanStat.text = "TV端网络错误，点击重试\n" + e.message
+                scanStat.text = getString(R.string.err_qr_tv_network, e.message)
             }
             this@QRLoginFragment.timer?.cancel()
         }
@@ -380,11 +380,11 @@ class QRLoginFragment : Fragment() {
 
         val code = loginJson.getJSONObject("data").getInt("code")
         when (code) {
-            86090 -> CenterThreadPool.runOnUiThread { scanStat.text = "已扫描，请在手机上点击登录" }
-            86101 -> CenterThreadPool.runOnUiThread { scanStat.text = "请使用官方手机端哔哩哔哩扫码登录\n点击二维码可以进行放大和缩小" }
+            86090 -> CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_scanned_login) }
+            86101 -> CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_hint_official) }
             86038 -> {
                 CenterThreadPool.runOnUiThread {
-                    scanStat.text = "二维码已失效，点击上方重新获取"
+                    scanStat.text = getString(R.string.text_qr_expired)
                     qrImageView.isEnabled = true
                     need_refresh = true
                 }
@@ -392,7 +392,7 @@ class QRLoginFragment : Fragment() {
             }
             0 -> {
                 this@QRLoginFragment.timer?.cancel()
-                CenterThreadPool.runOnUiThread { scanStat.text = "正在处理登录……" }
+                CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_processing) }
                 val cookies = SharedPreferencesUtil.getString(SharedPreferencesUtil.cookies, "")
 
                 SharedPreferencesUtil.putLong(SharedPreferencesUtil.mid, NetWorkUtil.getInfoFromCookie("DedeUserID", cookies).toLong())
@@ -424,7 +424,7 @@ class QRLoginFragment : Fragment() {
 
                 if (isAdded) requireActivity().finish()
             }
-            else -> CenterThreadPool.runOnUiThread { scanStat.text = "二维码登录API可能变动，\n但你仍然可以尝试扫码登录。\n建议反馈给开发者" }
+            else -> CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_api_changed) }
         }
     }
 }

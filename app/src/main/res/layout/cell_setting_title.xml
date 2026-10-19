@@ -10,7 +10,7 @@
         android:id="@+id/setting_title_text"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="标题"
+        android:text="@string/text_cellsettingtitle_01"
         android:textColor="?attr/colorPrimary"
         android:textSize="@dimen/text_subtitle"
         android:textStyle="bold"

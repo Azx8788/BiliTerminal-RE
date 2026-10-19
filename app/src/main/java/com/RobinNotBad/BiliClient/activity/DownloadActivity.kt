@@ -89,7 +89,7 @@ class DownloadActivity : BaseActivity() {
                 rootPath = File(intent.getStringExtra("path")!!)
                 if (!rootPath!!.exists()) rootPath!!.mkdirs()
                 downFile = File(rootPath, FileUtil.getFileNameFromLink(link!!))
-                download(link!!, downFile!!, "下载文件中", true)
+                download(link!!, downFile!!, getString(R.string.text_downloading_file), true)
             } else {
                 val title = FileUtil.stringToFile(intent.getStringExtra("title")!!)
 
@@ -112,8 +112,8 @@ class DownloadActivity : BaseActivity() {
                 val coverFile = File(rootPath, "cover.png")
                 val videoFile = File(downPath, "video.mp4")
                 downdanmu(danmaku!!, dmFile)
-                if (!coverFile.exists()) download(cover!!, coverFile, "下载封面", false)
-                download(link!!, videoFile, "下载视频", true)
+                if (!coverFile.exists()) download(cover!!, coverFile, getString(R.string.text_download_cover), false)
+                download(link!!, videoFile, getString(R.string.text_download_video), true)
             }
         }
 
@@ -146,7 +146,7 @@ class DownloadActivity : BaseActivity() {
             response.body!!.close()
             response.close()
         } catch (e: IOException) {
-            runOnUiThread { MsgUtil.showMsg("下载失败") }
+            runOnUiThread { MsgUtil.showMsg(getString(R.string.text_download_failed)) }
             e.printStackTrace()
             finish()
         }
@@ -157,17 +157,17 @@ class DownloadActivity : BaseActivity() {
             val apkFile = File(downloadedFile.parent, downloadedFile.name.replace(".bak", ".apk"))
             if (downloadedFile.renameTo(apkFile)) {
                 if (installApk(apkFile)) {
-                    runOnUiThread { MsgUtil.showMsg("下载完成，已尝试安装") }
+                    runOnUiThread { MsgUtil.showMsg(getString(R.string.text_download_complete_install_tried)) }
                 } else {
                     val bakFile = File(FileUtil.getDownloadPath(), downloadedFile.name)
                     apkFile.renameTo(bakFile)
-                    runOnUiThread { MsgUtil.showMsg("下载完成，安装失败，已保存到下载文件夹") }
+                    runOnUiThread { MsgUtil.showMsg(getString(R.string.text_download_complete_install_failed)) }
                 }
             } else {
-                runOnUiThread { MsgUtil.showMsg("下载完成，重命名失败") }
+                runOnUiThread { MsgUtil.showMsg(getString(R.string.text_download_complete_rename_failed)) }
             }
         } else {
-            runOnUiThread { MsgUtil.showMsg("下载完成") }
+            runOnUiThread { MsgUtil.showMsg(getString(R.string.text_update_download_complete)) }
         }
         val timer = Timer()
         timer.schedule(object : TimerTask() {
@@ -231,7 +231,7 @@ class DownloadActivity : BaseActivity() {
             response.body?.close()
             response.close()
         } catch (e: IOException) {
-            runOnUiThread { MsgUtil.showMsg("弹幕下载失败！") }
+            runOnUiThread { MsgUtil.showMsg(getString(R.string.text_danmaku_download_failed)) }
             finish()
             e.printStackTrace()
         }

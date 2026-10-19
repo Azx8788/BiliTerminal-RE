@@ -62,62 +62,62 @@
         <activity
             android:name=".activity.vote.VoteInfoActivity"
             android:exported="false"
-            android:label="投票详情"
+            android:label="@string/uitext_voteinfoactivity_007"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.local.DownloadListActivity"
             android:exported="false"
-            android:label="下载列表"
+            android:label="@string/uitext_cachelistadapter_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.series.SeriesInfoActivity"
             android:exported="false"
-            android:label="系列详情"
+            android:label="@string/uitext_seriesinfoactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.series.UserSeriesActivity"
             android:exported="false"
-            android:label="投稿的系列"
+            android:label="@string/uitext_userseriesactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.EmoteActivity"
             android:exported="false"
-            android:label="表情包选择"
+            android:label="@string/label_activity_no_24"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.collection.CollectionInfoActivity"
             android:exported="false"
-            android:label="合集详情"
+            android:label="@string/uitext_collectioninfoactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.live.LiveInfoActivity"
             android:exported="false"
-            android:label="直播详情页"
+            android:label="@string/label_activity_no_23"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.live.FollowLiveActivity"
             android:exported="false"
-            android:label="我关注的直播"
+            android:label="@string/uitext_followliveactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.live.RecommendLiveActivity"
             android:exported="false"
-            android:label="推荐直播"
+            android:label="@string/uitext_recommendliveactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.FollowingBangumisActivity"
             android:exported="false"
-            android:label="追番列表"
+            android:label="@string/uitext_followingbangumisactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SponsorActivity"
             android:exported="false"
-            android:label="捐赠列表"
+            android:label="@string/pagename_sponsoractivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.UpdateHistoryActivity"
             android:exported="false"
-            android:label="历史更新日志"
+            android:label="@string/pagename_updatehistoryactivity_001"
             android:screenOrientation="locked" />
         <!-- 26.10.04 批次 3（B8）：崩溃页跑独立进程 :error_activity。
              主进程此时已经处于"崩溃 + 即将 killProcess"的状态，同进程再启 Activity 很容易
@@ -126,14 +126,14 @@
             android:name=".activity.CatchActivity"
             android:exported="false"
             android:process=":error_activity"
-            android:label="崩溃捕捉"
+            android:label="@string/label_activity_no_22"
             android:screenOrientation="locked" />
         <!-- 26.10.09：自建反馈通道。与 B 站账号体系无关，不需要登录，故 exported=false 即可
              （只从关于页 / 设置页进入）。 -->
         <activity
             android:name=".activity.FeedbackActivity"
             android:exported="false"
-            android:label="反馈与建议"
+            android:label="@string/pagename_feedback"
             android:screenOrientation="locked" />
         <!-- 26.10.16：「我的反馈」列表 + 详情（详情页可追加说明，走自建服务器的反馈对话接口）。
              入口只在设置「反馈与统计」分组，不需要被外部拉起，故 exported=false。
@@ -141,29 +141,29 @@
         <activity
             android:name=".activity.feedback.FeedbackListActivity"
             android:exported="false"
-            android:label="我的反馈"
+            android:label="@string/feedback_mine_entry_title"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.feedback.FeedbackDetailActivity"
             android:exported="false"
-            android:label="反馈详情"
+            android:label="@string/uitext_feedbackdetailactivity_002"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.TutorialActivity"
             android:exported="false"
-            android:label="教程"
+            android:label="@string/pagename_tutorial"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe.AppCompat" />
         <activity
             android:name=".tutorial.TutorialPagerActivity"
             android:exported="false"
-            android:label="教程"
+            android:label="@string/pagename_tutorial"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe.AppCompat" />
         <activity
             android:name=".activity.GetIntentActivity"
             android:exported="true"
-            android:label="使用哔哩终端打开"
+            android:label="@string/label_activity_no_21"
             android:screenOrientation="locked">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -180,133 +180,133 @@
         <activity
             android:name=".activity.settings.AnnouncementsActivity"
             android:exported="false"
-            android:label="公告列表"
+            android:label="@string/pagename_announcementsactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.ListChooseActivity"
             android:exported="false"
-            android:label="选择"
+            android:label="@string/label_activity_no_07"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.player.PlayerActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:exported="false"
-            android:label="内置播放器"
+            android:label="@string/text_activitysettingplayerchoose_06"
             android:theme="@style/Theme.NoSwipe" />
         <activity
             android:name=".activity.article.OpusInfoActivity"
             android:exported="false"
-            android:label="文章详情"
+            android:label="@string/uitext_opusinfoactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.note.NoteActivity"
             android:exported="false"
-            android:label="笔记"
+            android:label="@string/uitext_noteactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingPrefActivity"
             android:exported="false"
-            android:label="偏好设置"
+            android:label="@string/pagename_settingprefactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingRepliesActivity"
             android:exported="false"
-            android:label="评论区设置"
+            android:label="@string/pagename_settingrepliesactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingInfoActivity"
             android:exported="false"
-            android:label="详情页设置"
+            android:label="@string/pagename_settinginfoactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingMenuActivity"
             android:exported="false"
-            android:label="菜单设置"
+            android:label="@string/pagename_setting_menu"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingMySpaceActivity"
             android:exported="false"
-            android:label="我的页面设置"
+            android:label="@string/pagename_settingmyspaceactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingSearchActivity"
             android:exported="false"
-            android:label="搜索设置"
+            android:label="@string/pagename_setting_search"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SearchSortActivity"
             android:exported="false"
-            android:label="搜索类别排序"
+            android:label="@string/pagename_setting_search_sort"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.local.LocalPageChooseActivity"
             android:exported="false"
-            android:label="缓存分页"
+            android:label="@string/label_activity_no_20"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.local.LocalListActivity"
             android:exported="false"
-            android:label="缓存"
+            android:label="@string/uitext_locallistactivity_018"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.DownloadActivity"
             android:exported="false"
-            android:label="下载"
+            android:label="@string/label_activity_no_19"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.dynamic.DynamicInfoActivity"
             android:exported="false"
-            android:label="动态详情"
+            android:label="@string/uitext_dynamicinfoactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.dynamic.DynamicActivity"
             android:exported="false"
-            android:label="动态"
+            android:label="@string/uitext_dynamicactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.dynamic.DynamicTopicActivity"
             android:exported="false"
-            android:label="话题"
+            android:label="@string/uitext_dynamictopicactivity_002"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingTerminalPlayerActivity"
             android:exported="false"
-            android:label="内置播放器设置"
+            android:label="@string/pagename_settingterminalplayeractivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.UIPreviewActivity"
             android:exported="false"
-            android:label="界面预览"
+            android:label="@string/label_activity_no_18"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.setup.SetupUIActivity"
             android:exported="false"
-            android:label="初始设置"
+            android:label="@string/label_activity_no_17"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.setup.IntroductionActivity"
             android:exported="false"
-            android:label="介绍"
+            android:label="@string/label_activity_no_16"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.login.SpecialLoginActivity"
             android:exported="false"
-            android:label="特殊登录"
+            android:label="@string/pagename_login_special"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.FollowUsersActivity"
             android:exported="false"
-            android:label="关注"
+            android:label="@string/uitext_myspacemenu_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.message.MessageActivity"
             android:exported="false"
-            android:label="消息"
+            android:label="@string/pagename_message"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.message.MessageSettingsActivity"
             android:exported="false"
-            android:label="消息设置"
+            android:label="@string/uitext_messagesettingsactivity_005"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.message.NoticeActivity"
@@ -315,299 +315,299 @@
         <activity
             android:name=".activity.ShowTextActivity"
             android:exported="false"
-            android:label="文本显示"
+            android:label="@string/label_activity_no_15"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.CopyTextActivity"
             android:exported="false"
-            android:label="复制文本"
+            android:label="@string/label_activity_no_14"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.info.AddFavoriteActivity"
             android:exported="false"
-            android:label="添加收藏"
+            android:label="@string/uitext_addfavoriteactivity_003"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingPlayerChooseActivity"
             android:exported="false"
-            android:label="选择播放器"
+            android:label="@string/pagename_setting_player_choose"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.JumpToPlayerActivity"
             android:exported="false"
-            android:label="跳转播放"
+            android:label="@string/label_activity_no_13"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.reply.WriteReplyActivity"
             android:exported="false"
-            android:label="写评论"
+            android:label="@string/pagename_write_reply"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.dynamic.send.SendDynamicActivity"
             android:exported="false"
-            android:label="发动态"
+            android:label="@string/pagename_send_dynamic"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.QualityChooserActivity"
             android:exported="false"
-            android:label="选择清晰度"
+            android:label="@string/text_activityliveinfo_10"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingQualityActivity"
             android:exported="false"
-            android:label="清晰度设置"
+            android:label="@string/label_activity_no_12"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.HistoryActivity"
             android:exported="false"
-            android:label="历史记录"
+            android:label="@string/uitext_historyactivity_002"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.LoginRecordActivity"
             android:exported="false"
-            android:label="登录记录"
+            android:label="@string/uitext_loginrecordactivity_002"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.CoinLogActivity"
             android:exported="false"
-            android:label="硬币变化记录"
+            android:label="@string/uitext_coinlogactivity_003"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.ExpLogActivity"
             android:exported="false"
-            android:label="经验变化记录"
+            android:label="@string/uitext_explogactivity_002"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.WatchLaterActivity"
             android:exported="false"
-            android:label="稍后再看"
+            android:label="@string/uitext_watchlateractivity_003"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.favorite.FavoriteVideoListActivity"
             android:exported="false"
-            android:label="收藏夹详情"
+            android:label="@string/label_activity_no_11"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.favorite.FavoriteFolderListActivity"
             android:exported="false"
-            android:label="收藏夹列表"
+            android:label="@string/label_activity_no_10"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.favorite.FavoriteFolderEditActivity"
             android:exported="false"
-            android:label="编辑收藏夹"
+            android:label="@string/text_activityfavoritefolderedit_06"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.favorite.FavoriteFolderCreateActivity"
             android:exported="false"
-            android:label="创建收藏夹"
+            android:label="@string/uitext_favoritefoldercreateactivity_003"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.info.UserInfoActivity"
             android:exported="false"
-            android:label="用户信息"
+            android:label="@string/uitext_userinfoactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.ImageViewerActivity"
             android:exported="false"
-            android:label="图片查看"
+            android:label="@string/pagename_image_viewer"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe" />
         <activity
             android:name=".activity.DialogActivity"
             android:exported="false"
-            android:label="提示框"
+            android:label="@string/label_activity_no_09"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe.AppCompat" />
         <activity
             android:name=".activity.ConfirmDialogActivity"
             android:exported="false"
-            android:label="确认"
+            android:label="@string/label_activity_no_08"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe.AppCompat" />
         <activity
             android:name=".activity.ListDialogActivity"
             android:exported="false"
-            android:label="选择"
+            android:label="@string/label_activity_no_07"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe.AppCompat" />
         <activity
             android:name=".activity.InputDialogActivity"
             android:exported="false"
-            android:label="输入"
+            android:label="@string/label_activity_no_06"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe.AppCompat" />
         <activity
             android:name=".activity.InteractionDebugActivity"
             android:exported="false"
-            android:label="互动视频变量调试"
+            android:label="@string/settingtext_settingsindex_041"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.reply.ReplyInfoActivity"
             android:exported="false"
-            android:label="评论详情"
+            android:label="@string/uitext_replyinfoactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.MultiPageActivity"
             android:exported="false"
-            android:label="分页视频选集"
+            android:label="@string/label_activity_no_05"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.MySpaceActivity"
             android:exported="false"
-            android:label="我的"
+            android:label="@string/pagename_myspace"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.MySpaceMoreActivity"
             android:exported="false"
-            android:label="更多"
+            android:label="@string/uitext_myspaceactivity_005"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.MedalWallActivity"
             android:exported="false"
-            android:label="粉丝勋章"
+            android:label="@string/uitext_medalwallactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.VipActivity"
             android:exported="false"
-            android:label="我的大会员"
+            android:label="@string/label_activity_no_04"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.AboutActivity"
             android:exported="false"
-            android:label="关于"
+            android:label="@string/pagename_about"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.OpenSourceActivity"
             android:exported="false"
-            android:label="开源信息"
+            android:label="@string/pagename_opensource"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingMainActivity"
             android:exported="false"
-            android:label="设置"
+            android:label="@string/pagename_setting_main"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.SettingGroupActivity"
             android:exported="false"
-            android:label="设置分组"
+            android:label="@string/label_activity_no_03"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.TutorialManagerActivity"
             android:exported="false"
-            android:label="教程管理"
+            android:label="@string/pagename_tutorial_manager"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.TodoListActivity"
             android:exported="false"
-            android:label="TO DO清单"
+            android:label="@string/settingtext_settinggroupactivity_086"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.UpdateActivity"
             android:exported="false"
-            android:label="检查更新"
+            android:label="@string/pagename_update_check"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.EditSignActivity"
             android:exported="false"
-            android:label="修改描述"
+            android:label="@string/label_activity_no_02"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.EditProfileActivity"
             android:exported="false"
-            android:label="编辑个人资料"
+            android:label="@string/uitext_myspacemenu_002"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.EditUserInfoActivity"
             android:exported="false"
-            android:label="编辑资料"
+            android:label="@string/text_activityedituserinfo_07"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.CreativeCenterActivity"
             android:exported="false"
-            android:label="创作中心"
+            android:label="@string/pagename_creative_center"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.search.SearchActivity"
             android:exported="false"
-            android:label="搜索"
+            android:label="@string/pagename_search"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.HotSearchActivity"
             android:exported="false"
-            android:label="热搜"
+            android:label="@string/uitext_hotsearchactivity_003"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.info.VideoInfoActivity"
             android:exported="false"
-            android:label="视频详情"
+            android:label="@string/uitext_videoinfoactivity_002"
             android:windowSoftInputMode="adjustResize"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.MenuActivity"
             android:exported="false"
-            android:label="菜单"
+            android:label="@string/pagename_menu"
             android:launchMode="singleTask"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.PreciousActivity"
             android:exported="false"
-            android:label="入站必刷"
+            android:label="@string/uitext_preciousactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.PopularActivity"
             android:exported="false"
-            android:label="热门"
+            android:label="@string/uitext_popularactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.RankingActivity"
             android:exported="false"
-            android:label="全站排行榜"
+            android:label="@string/uitext_rankingactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.ShortVideoPlayerActivity"
             android:exported="false"
-            android:label="短视频"
+            android:label="@string/uitext_menuactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.RecommendActivity"
             android:exported="false"
-            android:label="推荐"
+            android:label="@string/settingtext_settinggroupactivity_061"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.video.TimelineActivity"
             android:exported="false"
-            android:label="时间线"
+            android:label="@string/uitext_timelineactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.login.QRLoginHelpActivity"
             android:exported="false"
-            android:label="登录方式说明"
+            android:label="@string/pagename_qrloginhelpactivity_001"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.login.LoginActivity"
             android:exported="false"
-            android:label="登录"
+            android:label="@string/btn_login_confirm"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.login.AccountSwitchActivity"
             android:exported="false"
-            android:label="账号切换"
+            android:label="@string/pagename_account_switch"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.settings.login.CaptchaWebViewActivity"
             android:exported="false"
-            android:label="极验验证"
+            android:label="@string/label_activity_no_01"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.message.PrivateMsgActivity"
             android:exported="false"
-            android:label="私信"
+            android:label="@string/pagename_private_message"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.user.favorite.FavouriteOpusListActivity"
             android:exported="false"
-            android:label="图文收藏夹"
+            android:label="@string/uitext_favoritefolderadapter_002"
             android:screenOrientation="locked" />
         <activity
             android:name=".activity.SplashActivity"

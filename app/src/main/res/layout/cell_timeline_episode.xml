@@ -29,7 +29,7 @@
                 android:id="@+id/text_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="标题"
+                android:text="@string/text_cellsettingtitle_01"
                 android:textSize="14sp"
                 android:maxLines="2"
                 android:ellipsize="end" />
@@ -39,7 +39,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="第1话"
+                android:text="@string/text_celltimelineepisode_01"
                 android:textSize="12sp"
                 android:alpha="0.7" />
 

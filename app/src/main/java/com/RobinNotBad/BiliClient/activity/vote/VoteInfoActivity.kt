@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.vote
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -60,12 +62,12 @@ class VoteInfoActivity : BaseActivity() {
 
         voteId = intent.getLongExtra(EXTRA_VOTE_ID, 0)
         if (voteId == 0L) {
-            MsgUtil.showMsg("投票ID无效")
+            MsgUtil.showMsg(UiText.of("投票ID无效"))
             finish()
             return
         }
 
-        setPageName("投票详情")
+        setPageName(UiText.of("投票详情"))
 
         // 初始化视图
         voteTitle = findViewById(R.id.vote_title)
@@ -89,7 +91,7 @@ class VoteInfoActivity : BaseActivity() {
             if (isVoting) return@setOnClickListener
             val info = voteInfo ?: return@setOnClickListener
             if (selectedOptions.isEmpty()) {
-                MsgUtil.showMsg("请先选择选项")
+                MsgUtil.showMsg(UiText.of("请先选择选项"))
                 return@setOnClickListener
             }
             if (selectedOptions.size < info.choice_cnt) {
@@ -112,7 +114,7 @@ class VoteInfoActivity : BaseActivity() {
                 val info = VoteApi.getVoteInfo(voteId)
                 if (info == null) {
                     runOnUiThread {
-                        MsgUtil.showMsg("投票信息获取失败")
+                        MsgUtil.showMsg(UiText.of("投票信息获取失败"))
                         finish()
                     }
                     return@run
@@ -123,12 +125,12 @@ class VoteInfoActivity : BaseActivity() {
                 }
             } catch (e: IOException) {
                 runOnUiThread {
-                    MsgUtil.err("网络错误", e)
+                    MsgUtil.err(UiText.of("网络错误"), e)
                     finish()
                 }
             } catch (e: JSONException) {
                 runOnUiThread {
-                    MsgUtil.err("数据解析错误", e)
+                    MsgUtil.err(UiText.of("数据解析错误"), e)
                     finish()
                 }
             }
@@ -151,15 +153,15 @@ class VoteInfoActivity : BaseActivity() {
         // 参与人数
         voteJoinNum.text = "${info.join_num} 人参与"
         if (info.isExpired()) {
-            voteJoinNum.append(" · 已结束")
+            voteJoinNum.append(UiText.of(" · 已结束"))
         }
 
         // 状态标签
         val hasVoted = info.hasVoted()
         when {
-            info.isExpired() -> voteStatus.text = "已结束"
-            hasVoted -> voteStatus.text = "已投票"
-            else -> voteStatus.text = "投票中"
+            info.isExpired() -> voteStatus.text = UiText.of("已结束")
+            hasVoted -> voteStatus.text = UiText.of("已投票")
+            else -> voteStatus.text = UiText.of("投票中")
         }
         voteStatus.setTextColor(
             when {
@@ -266,17 +268,17 @@ class VoteInfoActivity : BaseActivity() {
             }
             voteSubmitBtn.visibility = View.VISIBLE
             voteSubmitBtn.isEnabled = true
-            voteSubmitBtn.text = "确认投票"
+            voteSubmitBtn.text = UiText.of("确认投票")
         } else if (info.hasVoted()) {
             voteHint.visibility = View.GONE
             voteSubmitBtn.visibility = View.VISIBLE
             voteSubmitBtn.isEnabled = false
-            voteSubmitBtn.text = "已投票"
+            voteSubmitBtn.text = UiText.of("已投票")
         } else {
             voteHint.visibility = View.GONE
             voteSubmitBtn.visibility = View.VISIBLE
             voteSubmitBtn.isEnabled = false
-            voteSubmitBtn.text = "已结束"
+            voteSubmitBtn.text = UiText.of("已结束")
         }
     }
 
@@ -289,7 +291,7 @@ class VoteInfoActivity : BaseActivity() {
     private fun doVote(info: VoteInfo, votes: List<Int>) {
         // 未登录时提示
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-            MsgUtil.showMsg("请先登录")
+            MsgUtil.showMsg(UiText.of("请先登录"))
             return
         }
         isVoting = true
@@ -299,14 +301,14 @@ class VoteInfoActivity : BaseActivity() {
                 if (!isDestroyed) {
                     runOnUiThread {
                         if (result == 0) {
-                            MsgUtil.showMsg("投票成功~")
+                            MsgUtil.showMsg(UiText.of("投票成功~"))
                             // 本地立即标记已投，避免依赖接口返回 my_votes 导致可重复投票
                             info.my_votes.clear()
                             info.my_votes.addAll(votes)
                             runOnUiThread { bindVoteInfo(info) }
                         } else {
                             val msg = when (result) {
-                                -111 -> "需要重新登录"
+                                -111 -> UiText.of("需要重新登录")
                                 else -> "投票失败：$result"
                             }
                             MsgUtil.showMsg(msg)
@@ -331,9 +333,9 @@ class VoteInfoActivity : BaseActivity() {
     private fun confirmDeleteVote() {
         TerminalDialog.confirm(
             context = this,
-            title = "删除投票",
-            message = "确定删除这个投票吗？删除后不可恢复。",
-            confirmText = "删除"
+            title = UiText.of("删除投票"),
+            message = UiText.of("确定删除这个投票吗？删除后不可恢复。"),
+            confirmText = UiText.of("删除")
         ) {
             isVoting = true
             CenterThreadPool.run {
@@ -342,7 +344,7 @@ class VoteInfoActivity : BaseActivity() {
                     if (!isDestroyed) {
                         runOnUiThread {
                             if (result == 0) {
-                                MsgUtil.showMsg("删除成功")
+                                MsgUtil.showMsg(UiText.of("删除成功"))
                                 finish()
                             } else {
                                 MsgUtil.showMsg("删除失败：$result")

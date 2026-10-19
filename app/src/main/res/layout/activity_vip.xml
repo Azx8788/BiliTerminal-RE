@@ -23,7 +23,7 @@
             android:layout_toStartOf="@id/timeText"
             android:layout_toLeftOf="@id/timeText"
             android:lines="1"
-            android:text="大会员"
+            android:text="@string/uitext_vipactivity_007"
             android:textStyle="bold"
             app:drawableStartCompat="@drawable/arrow_back" />
 
@@ -63,14 +63,14 @@
                     android:id="@+id/experienceButton"
                     android:layout_height="wrap_content"
                     android:layout_width="match_parent"
-                    android:text="领取每日经验" />
+                    android:text="@string/text_activityvip_09" />
 
             </LinearLayout>
 
             <TextView
                 android:layout_height="wrap_content"
                 android:layout_width="wrap_content"
-                android:text="大会员信息" />
+                android:text="@string/text_activityvip_08" />
 
             <com.google.android.material.card.MaterialCardView
                 android:layout_height="match_parent"
@@ -90,7 +90,7 @@
                         android:layout_marginTop="8dp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         android:id="@+id/vipStatus"
-                        android:text="加载中..." />
+                        android:text="@string/text_activitymyspace_01" />
 
                     <TextView
                         android:layout_height="wrap_content"
@@ -105,7 +105,7 @@
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         android:lines="1"
-                        android:text="大会员状态" />
+                        android:text="@string/text_activityvip_07" />
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -129,7 +129,7 @@
                         android:layout_marginTop="8dp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         android:id="@+id/vipType"
-                        android:text="加载中..." />
+                        android:text="@string/text_activitymyspace_01" />
 
                     <TextView
                         android:layout_height="wrap_content"
@@ -144,7 +144,7 @@
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         android:lines="1"
-                        android:text="会员类型" />
+                        android:text="@string/text_activityvip_06" />
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -168,7 +168,7 @@
                         android:layout_marginTop="8dp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         android:id="@+id/vipDueDate"
-                        android:text="加载中..." />
+                        android:text="@string/text_activitymyspace_01" />
 
                     <TextView
                         android:layout_height="wrap_content"
@@ -183,7 +183,7 @@
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         android:lines="1"
-                        android:text="过期时间" />
+                        android:text="@string/text_activityvip_05" />
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -207,7 +207,7 @@
                         android:layout_marginTop="8dp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         android:id="@+id/level"
-                        android:text="加载中..." />
+                        android:text="@string/text_activitymyspace_01" />
 
                     <TextView
                         android:layout_height="wrap_content"
@@ -222,7 +222,7 @@
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         android:lines="1"
-                        android:text="当前等级" />
+                        android:text="@string/text_activityvip_04" />
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -246,7 +246,7 @@
                         android:layout_marginTop="8dp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         android:id="@+id/exp"
-                        android:text="加载中..." />
+                        android:text="@string/text_activitymyspace_01" />
 
                     <TextView
                         android:layout_height="wrap_content"
@@ -261,7 +261,7 @@
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         android:lines="1"
-                        android:text="经验值" />
+                        android:text="@string/text_activityvip_03" />
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -285,7 +285,7 @@
                         android:layout_marginTop="8dp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         android:id="@+id/bindPhone"
-                        android:text="加载中..." />
+                        android:text="@string/text_activitymyspace_01" />
 
                     <TextView
                         android:layout_height="wrap_content"
@@ -300,7 +300,7 @@
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintStart_toStartOf="parent"
                         android:lines="1"
-                        android:text="绑定手机" />
+                        android:text="@string/text_activityvip_02" />
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -316,7 +316,7 @@
                 <TextView
                     android:layout_height="wrap_content"
                     android:layout_width="wrap_content"
-                    android:text="卡券信息"
+                    android:text="@string/text_activityvip_01"
                     android:layout_marginTop="8dp" />
 
                 <com.google.android.material.card.MaterialCardView

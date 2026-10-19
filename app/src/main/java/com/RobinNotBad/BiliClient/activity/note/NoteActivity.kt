@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.note
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.graphics.Typeface
@@ -42,7 +44,7 @@ class NoteActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_note)
-        setPageName("笔记")
+        setPageName(UiText.of("笔记"))
 
         titleView = findViewById(R.id.note_title)
         infoView = findViewById(R.id.note_info)
@@ -53,11 +55,11 @@ class NoteActivity : BaseActivity() {
         var noteId = intent.getStringExtra("note_id").orEmpty()
 
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-            showEmpty("登录后才能看笔记喵~")
+            showEmpty(UiText.of("登录后才能看笔记喵~"))
             return
         }
         if (aid <= 0L && noteId.isEmpty()) {
-            showEmpty("笔记参数不对")
+            showEmpty(UiText.of("笔记参数不对"))
             return
         }
 
@@ -66,7 +68,7 @@ class NoteActivity : BaseActivity() {
                 if (noteId.isEmpty()) {
                     val ids = NoteApi.getNoteIdsOfVideo(aid)
                     if (ids.isEmpty()) {
-                        runOnUiThread { showEmpty("这个视频还没有笔记") }
+                        runOnUiThread { showEmpty(UiText.of("这个视频还没有笔记")) }
                         return@run
                     }
                     noteId = ids[0]
@@ -102,18 +104,18 @@ class NoteActivity : BaseActivity() {
 
     @SuppressLint("SetTextI18n")
     private fun showNote(note: Note) {
-        titleView.text = note.title.ifEmpty { "无标题笔记" }
+        titleView.text = note.title.ifEmpty { UiText.of("无标题笔记") }
         titleView.visibility = View.VISIBLE
 
         val info = ArrayList<String>()
-        if (note.videoTitle.isNotEmpty()) info.add("视频：" + note.videoTitle)
+        if (note.videoTitle.isNotEmpty()) info.add(UiText.of("视频：") + note.videoTitle)
         if (note.summary.isNotEmpty()) info.add(note.summary)
         infoView.text = info.joinToString("\n")
         infoView.visibility = if (info.isEmpty()) View.GONE else View.VISIBLE
 
         val content = renderBlocks(note.blocks)
         if (content.isEmpty()) {
-            showEmpty("这篇笔记还没有正文")
+            showEmpty(UiText.of("这篇笔记还没有正文"))
             return
         }
         contentView.text = content
@@ -128,7 +130,7 @@ class NoteActivity : BaseActivity() {
         for (block in blocks) {
             when (block.type) {
                 NoteBlock.TYPE_IMAGE -> {
-                    builder.append("[图片]")
+                    builder.append(UiText.of("[图片]"))
                 }
                 NoteBlock.TYPE_TAG -> {
                     builder.append(tagText(block))

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.content.Intent
 import com.RobinNotBad.BiliClient.activity.video.QualityChooserActivity
@@ -30,7 +32,7 @@ object VideoQuickCache {
         // 番剧/影视卡片走的是"快速缓存视频"这条投稿链路，但它的 aid 字段装的是 media_id（季ID），
         // 拿去做 VideoInfoApi.getVideoInfo 必然失败。这里统一拦住，避免三个适配器各自漏判。
         if (videoCard.type == "media_bangumi") {
-            CenterThreadPool.runOnUiThread { MsgUtil.showMsg("番剧暂不支持快速缓存") }
+            CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("番剧暂不支持快速缓存")) }
             return
         }
         val qualitySetting = SharedPreferencesUtil.getString("cache_default_quality", "dialog")
@@ -40,7 +42,7 @@ object VideoQuickCache {
                     try {
                         val videoInfo = fetchVideoInfo(videoCard)
                         if (FileUtil.isVideoCached(videoInfo.title)) {
-                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg("该视频已缓存，请先删除原缓存文件") }
+                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("该视频已缓存，请先删除原缓存文件")) }
                             return@run
                         }
                         CenterThreadPool.runOnUiThread {
@@ -52,7 +54,7 @@ object VideoQuickCache {
                             context.startActivity(intent)
                         }
                     } catch (e: Exception) {
-                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg("获取视频信息失败") }
+                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("获取视频信息失败")) }
                         e.printStackTrace()
                     }
                 }
@@ -62,7 +64,7 @@ object VideoQuickCache {
                     try {
                         val videoInfo = fetchVideoInfo(videoCard)
                         if (FileUtil.isVideoCached(videoInfo.title)) {
-                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg("该视频已缓存，请先删除原缓存文件") }
+                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("该视频已缓存，请先删除原缓存文件")) }
                             return@run
                         }
                         val playerData = videoInfo.toPlayerData(0)
@@ -71,10 +73,10 @@ object VideoQuickCache {
                         if (qnValues != null && qnValues.isNotEmpty()) {
                             val highestQn = qnValues.maxOrNull() ?: qnValues[0]
                             PlayerApi.startDownloading(videoInfo, 0, highestQn)
-                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg("已开始缓存") }
+                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("已开始缓存")) }
                         }
                     } catch (e: Exception) {
-                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg("获取视频信息失败") }
+                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("获取视频信息失败")) }
                         e.printStackTrace()
                     }
                 }
@@ -84,7 +86,7 @@ object VideoQuickCache {
                     try {
                         val videoInfo = fetchVideoInfo(videoCard)
                         if (FileUtil.isVideoCached(videoInfo.title)) {
-                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg("该视频已缓存，请先删除原缓存文件") }
+                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("该视频已缓存，请先删除原缓存文件")) }
                             return@run
                         }
                         val playerData = videoInfo.toPlayerData(0)
@@ -93,14 +95,14 @@ object VideoQuickCache {
                         if (qnValues != null && qnValues.isNotEmpty()) {
                             PlayerApi.getVideoDash(playerData)
                             if (playerData.audioUrl == null || playerData.audioUrl!!.isEmpty()) {
-                                CenterThreadPool.runOnUiThread { MsgUtil.showMsg("该视频没有可用的音频流") }
+                                CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("该视频没有可用的音频流")) }
                                 return@run
                             }
                             PlayerApi.startDownloadingAudioOnly(videoInfo, 0, qnValues[0], playerData.audioUrl!!)
-                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg("已开始缓存音频") }
+                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("已开始缓存音频")) }
                         }
                     } catch (e: Exception) {
-                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg("获取视频信息失败") }
+                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("获取视频信息失败")) }
                         e.printStackTrace()
                     }
                 }
@@ -111,13 +113,13 @@ object VideoQuickCache {
                     try {
                         val videoInfo = fetchVideoInfo(videoCard)
                         if (FileUtil.isVideoCached(videoInfo.title)) {
-                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg("该视频已缓存，请先删除原缓存文件") }
+                            CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("该视频已缓存，请先删除原缓存文件")) }
                             return@run
                         }
                         PlayerApi.startDownloading(videoInfo, 0, qn)
-                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg("已开始缓存") }
+                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("已开始缓存")) }
                     } catch (e: Exception) {
-                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg("获取视频信息失败") }
+                        CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("获取视频信息失败")) }
                         e.printStackTrace()
                     }
                 }

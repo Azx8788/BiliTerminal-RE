@@ -14,7 +14,7 @@
         android:layout_marginTop="2dp"
         android:singleLine="true"
         android:textStyle="bold"
-        android:text="蔡徐坤"
+        android:text="@string/text_cellcollectioninfo_02"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
@@ -27,7 +27,7 @@
         android:ellipsize="end"
         android:alpha="0.7"
         android:maxLines="2"
-        android:text="只因你太美！"
+        android:text="@string/text_cellcollectioninfo_01"
         android:textSize="13sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

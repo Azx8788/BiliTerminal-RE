@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.reply
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
@@ -262,7 +264,7 @@ class ReplyFragment : RefreshListFragment() {
                     setRefreshing(false)
                 }
                 if (generation == loadGeneration && emptyPages >= MAX_EMPTY_PAGES)
-                    MsgUtil.showMsgLong("暂时没有更多评论了")
+                    MsgUtil.showMsgLong(UiText.of("暂时没有更多评论了"))
             } catch (e: Exception) {
                 // 异常路径同样要复位加载状态并回退页码，这是父类"加载完必须 setRefreshing(false)"的硬约定
                 runOnUiThread {

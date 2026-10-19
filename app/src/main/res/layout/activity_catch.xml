@@ -31,7 +31,7 @@
                 android:layout_height="wrap_content"
                 android:padding="4dp"
                 android:gravity="center_vertical"
-                android:text="可能的崩溃原因：\n？？？"
+                android:text="@string/text_crash_reason"
                 android:textAlignment="textStart"
                 android:textSize="13sp"
                 tools:ignore="RtlCompat" />
@@ -52,7 +52,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="崩溃堆栈："
+                    android:text="@string/text_activitycatch_07"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
@@ -74,7 +74,7 @@
             android:layout_height="wrap_content"
             android:alpha="0.7"
             android:gravity="center"
-            android:text="点击上方展开错误堆栈"
+            android:text="@string/text_activitycatch_06"
             android:textSize="11sp" />
 
         <!-- 这段说明讲的是**上游手动上传**那条路（「点击下面的按钮」指 upload_btn）。
@@ -114,7 +114,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:checked="true"
-                    android:text="附带应用日志"
+                    android:text="@string/feedback_attach_log"
                     android:textColor="?android:attr/textColorPrimary"
                     android:textSize="12sp"
                     app:buttonTint="?attr/colorPrimary" />
@@ -125,7 +125,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:alpha="0.7"
-                    android:text="崩溃前最近的应用运行日志，已脱敏；不勾选就不会发送"
+                    android:text="@string/text_activitycatch_05"
                     android:textSize="11sp" />
 
             </LinearLayout>
@@ -148,7 +148,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/upload_btn"
-            android:text="上传堆栈"
+            android:text="@string/text_activitycatch_04"
             android:layout_marginTop="2dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -156,13 +156,13 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/restart_btn"
-            android:text="重启应用"
+            android:text="@string/text_activitycatch_03"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/exit_btn"
-            android:text="退出捕捉"
+            android:text="@string/text_activitycatch_02"
             android:layout_marginBottom="6dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content" />
@@ -172,7 +172,7 @@
             android:layout_height="wrap_content"
             android:alpha="0.1"
             android:textSize="12sp"
-            android:text="“哔哩终端坏掉了，这不是终端的错，绝对不是”"
+            android:text="@string/text_activitycatch_01"
             android:gravity="center" />
     </LinearLayout>
 </com.RobinNotBad.BiliClient.ui.widget.RotaryScrollView>

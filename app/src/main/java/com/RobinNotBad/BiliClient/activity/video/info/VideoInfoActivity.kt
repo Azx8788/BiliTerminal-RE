@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.info
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
@@ -60,7 +62,7 @@ class VideoInfoActivity : BaseActivity() {
     }
 
     fun initMediaInfoView() {
-        setPageName("番剧详情")
+        setPageName(UiText.of("番剧详情"))
 
         fragmentList = ArrayList(2)
         contentFragment = BangumiInfoFragment.newInstance(aid)
@@ -71,10 +73,10 @@ class VideoInfoActivity : BaseActivity() {
         viewPager.offscreenPageLimit = fragmentList!!.size
         val vpfAdapter = ViewPagerFragmentAdapter(supportFragmentManager, fragmentList!!)
         viewPager.adapter = vpfAdapter
-        registerPageNameListener("番剧详情")
+        registerPageNameListener(UiText.of("番剧详情"))
         if (seek_reply != -1L) viewPager.currentItem = 1
         if (SharedPreferencesUtil.getBoolean("first_videoinfo", true)) {
-            MsgUtil.showMsgLong("提示：本页面可以左右滑动")
+            MsgUtil.showMsgLong(UiText.of("提示：本页面可以左右滑动"))
             SharedPreferencesUtil.putBoolean("first_videoinfo", false)
         }
     }
@@ -83,7 +85,7 @@ class VideoInfoActivity : BaseActivity() {
         // 视频详情页的教程改由 BaseActivity 按 Tutorials 注册表集中触发，这里不再手动调用
         TutorialHelper.showPagerTutorial(this, 3)
 
-        setPageName("视频详情")
+        setPageName(UiText.of("视频详情"))
         TerminalContext.getInstance().getVideoInfoByAidOrBvId(aid, bvid).observe(this) { result ->
             result.onSuccess { videoInfo ->
                 aid = videoInfo.aid
@@ -106,11 +108,11 @@ class VideoInfoActivity : BaseActivity() {
                 viewPager.offscreenPageLimit = fragmentList!!.size
                 val vpfAdapter = ViewPagerFragmentAdapter(supportFragmentManager, fragmentList!!)
                 viewPager.adapter = vpfAdapter
-                registerPageNameListener("视频详情")
+                registerPageNameListener(UiText.of("视频详情"))
                 if (seek_reply != -1L) viewPager.currentItem = 1
             }.onFailure { error ->
                 loading.setImageResource(R.mipmap.loading_2233_error)
-                MsgUtil.showMsg("获取信息失败！\n可能是视频不存在？")
+                MsgUtil.showMsg(UiText.of("获取信息失败！\n可能是视频不存在？"))
                 CenterThreadPool.runOnUIThreadAfter(5L, TimeUnit.SECONDS) {
                     MsgUtil.err(error)
                 }
@@ -142,9 +144,9 @@ class VideoInfoActivity : BaseActivity() {
             return
         }
         val sub = when (list[position]) {
-            is ReplyFragment -> "评论"
-            is VideoRcmdFragment -> "相关推荐"
-            else -> "简介"
+            is ReplyFragment -> UiText.of("评论")
+            is VideoRcmdFragment -> UiText.of("相关推荐")
+            else -> UiText.of("简介")
         }
         setPageName("$mainTitle-$sub")
     }
@@ -184,7 +186,7 @@ class VideoInfoActivity : BaseActivity() {
     private fun setupLongPressToRoot() {
         val topBar = findViewById<View>(R.id.top)
         topBar?.setOnLongClickListener {
-            MsgUtil.showMsg("已返回初始页面")
+            MsgUtil.showMsg(UiText.of("已返回初始页面"))
             EventBus.getDefault().post(CloseAllVideoPagesEvent())
             true
         }

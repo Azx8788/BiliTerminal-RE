@@ -26,7 +26,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="变化说明"
+            android:text="@string/text_celllog_02"
             android:textSize="13sp" />
 
         <TextView
@@ -34,7 +34,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="时间"
+            android:text="@string/text_celllog_01"
             android:textSize="12sp"
             android:alpha="0.7" />
     </LinearLayout>

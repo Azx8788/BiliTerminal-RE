@@ -59,8 +59,8 @@ class SettingMainActivity : InstanceActivity() {
     private fun addResult(entry: SettingsIndex.Entry) {
         val header = layoutInflater.inflate(R.layout.cell_group_header, settingsContainer, false) as MaterialCardView
         header.findViewById<ImageView>(R.id.group_icon).setImageResource(R.drawable.icon_search)
-        header.findViewById<TextView>(R.id.group_title).text = entry.name
-        header.findViewById<TextView>(R.id.group_desc).text = entry.desc
+        header.findViewById<TextView>(R.id.group_title).text = SettingText.resolve(this, entry.name)
+        header.findViewById<TextView>(R.id.group_desc).text = SettingText.resolve(this, entry.desc)
         header.findViewById<ImageView>(R.id.group_arrow).setImageResource(R.drawable.arrow_forward)
         header.setOnClickListener { entry.open(this) }
         settingsContainer.addView(header)
@@ -90,7 +90,7 @@ class SettingMainActivity : InstanceActivity() {
     ) {
         val header = layoutInflater.inflate(R.layout.cell_group_header, settingsContainer, false) as MaterialCardView
         header.findViewById<ImageView>(R.id.group_icon).setImageResource(iconRes)
-        header.findViewById<TextView>(R.id.group_title).text = title
+        header.findViewById<TextView>(R.id.group_title).text = SettingText.resolve(this, title)
         header.findViewById<TextView>(R.id.group_desc).text = desc
         // 箭头始终向前，表示跳转
         header.findViewById<ImageView>(R.id.group_arrow).setImageResource(R.drawable.arrow_forward)
@@ -101,7 +101,7 @@ class SettingMainActivity : InstanceActivity() {
             } else {
                 val intent = Intent(this, SettingGroupActivity::class.java)
                 intent.putExtra("group_type", groupType)
-                intent.putExtra("group_title", title)
+                intent.putExtra("group_title", SettingText.resolve(this, title))
                 startActivity(intent)
             }
         }

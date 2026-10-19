@@ -45,7 +45,7 @@
                 android:layout_marginTop="24dp"
                 android:gravity="center"
                 android:maxWidth="220dp"
-                android:text="听视频模式"
+                android:text="@string/settingtext_settingsindex_051"
                 android:textColor="?android:attr/textColorPrimary"
                 android:textSize="15sp"
                 android:textStyle="bold" />
@@ -57,7 +57,7 @@
                 android:layout_marginTop="12dp"
                 android:gravity="center"
                 android:maxWidth="220dp"
-                android:text="听视频模式，仅播放音频"
+                android:text="@string/text_activityplayer_08"
                 android:textColor="#99ffffff"
                 android:textSize="11sp"
                 android:lineSpacingExtra="2dp" />
@@ -367,7 +367,7 @@
                         android:layout_height="28dp"
                         android:gravity="center"
                         android:paddingHorizontal="8dp"
-                        android:text="视频详情"
+                        android:text="@string/uitext_videoinfoactivity_002"
                         android:textColor="?android:attr/textColorPrimary"
                         android:textSize="12sp"
                         android:background="@android:color/transparent"
@@ -473,7 +473,7 @@
                 android:shadowDx="2.0"
                 android:shadowDy="0.0"
                 android:shadowRadius="3.0"
-                android:text="加载中"
+                android:text="@string/a11y_activityloading_01"
                 android:textAlignment="center"
                 android:textColor="#DDDDDD"
                 android:textSize="10sp" />
@@ -514,7 +514,7 @@
                 android:shadowDx="2.0"
                 android:shadowDy="0.0"
                 android:shadowRadius="3.0"
-                android:text="倍速调节"
+                android:text="@string/text_activityplayer_07"
                 android:textAlignment="center"
                 android:textColor="#DDDDDD"
                 android:textSize="14sp"
@@ -563,7 +563,7 @@
         android:shadowDx="2.0"
         android:shadowDy="0.0"
         android:shadowRadius="3.0"
-        android:text="音量：100%"
+        android:text="@string/text_activityplayer_06"
         android:textColor="?android:attr/textColorPrimary"
         android:textSize="13sp"
         android:visibility="gone" />
@@ -593,7 +593,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingHorizontal="3dp"
-                android:text="选择字幕"
+                android:text="@string/text_activityplayer_05"
                 android:textSize="14sp" />
 
             <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView
@@ -624,7 +624,7 @@
                 android:layout_marginHorizontal="4dp"
                 android:layout_marginTop="4dp"
                 android:paddingHorizontal="3dp"
-                android:text="发送弹幕"
+                android:text="@string/text_activityplayer_04"
                 android:textSize="14sp" />
 
             <EditText
@@ -632,7 +632,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="4dp"
-                android:hint="发个友善的弹幕见证当下"
+                android:hint="@string/hint_activityplayer_03"
                 android:maxLength="100"
                 android:maxLines="1"
                 android:singleLine="true"
@@ -647,7 +647,7 @@
                 android:layout_marginBottom="6dp"
                 android:background="@drawable/background_card_borderless"
                 android:gravity="center"
-                android:text="发送" />
+                android:text="@string/btn_send" />
 
         </LinearLayout>
 
@@ -669,7 +669,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingHorizontal="3dp"
-                android:text="选择分P"
+                android:text="@string/text_activityplayer_02"
                 android:textSize="14sp" />
 
             <!-- 嵌套层的进出入口：在根目录层显示「进入分P / 进入合集」，进了层显示「← 返回主合集」。
@@ -712,7 +712,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingHorizontal="3dp"
-                android:text="选择清晰度"
+                android:text="@string/text_activityliveinfo_10"
                 android:textSize="14sp" />
 
             <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView
@@ -742,7 +742,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingHorizontal="3dp"
-                android:text="视频分段"
+                android:text="@string/text_activityplayer_01"
                 android:textSize="14sp" />
 
             <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user.info
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log

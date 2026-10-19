@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.message
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -106,7 +108,7 @@ class PrivateMsgAdapter(
                     holder.textContentCard.visibility = View.VISIBLE
 
                     if (msg.msg_source >= 8 && msg.msg_source <= 11) {
-                        holder.tipTv.text = "此条消息为自动回复"
+                        holder.tipTv.text = UiText.of("此条消息为自动回复")
                         holder.tipTv.visibility = View.VISIBLE
                     }
 
@@ -167,7 +169,7 @@ class PrivateMsgAdapter(
                     holder.picMsg.visibility = View.GONE
                     holder.videoCard.visibility = View.GONE
                     holder.textContentCard.visibility = View.GONE
-                    holder.tipTv.text = msg.name + "撤回了一条消息"
+                    holder.tipTv.text = msg.name + UiText.of("撤回了一条消息")
                 }
                 PrivateMessage.TYPE_VIDEO -> {
                     holder.videoCard.visibility = View.VISIBLE
@@ -210,12 +212,12 @@ class PrivateMsgAdapter(
                                             ?.groupValues?.get(1)?.toLongOrNull()
                                             ?: shareContent.optLong("id", 0)
                                         if (roomId > 0) terminal.enterLiveDetailPage(context, roomId)
-                                        else MsgUtil.showMsg("无法解析直播间信息")
+                                        else MsgUtil.showMsg(UiText.of("无法解析直播间信息"))
                                     }
                                     else -> {
                                         val url = shareContent.optString("url", "")
                                         if (url.isNotEmpty()) LinkUrlUtil.handleWebURL(context, url)
-                                        else MsgUtil.showMsg("暂不支持打开此类分享内容")
+                                        else MsgUtil.showMsg(UiText.of("暂不支持打开此类分享内容"))
                                     }
                                 }
                             } catch (err: JSONException) {
@@ -296,7 +298,7 @@ class PrivateMsgAdapter(
                         if (firstCard == null) {
                             holder.videoCard.visibility = View.GONE
                             holder.textContentCard.visibility = View.VISIBLE
-                            holder.textContentTv.text = "暂时无法显示该消息"
+                            holder.textContentTv.text = UiText.of("暂时无法显示该消息")
                         } else {
                             val coverUrl = firstCard.optString("cover_url", "")
                             Glide.with(BiliTerminal.context!!)
@@ -329,7 +331,7 @@ class PrivateMsgAdapter(
                 }
                 else -> {
                     holder.textContentCard.visibility = View.VISIBLE
-                    holder.textContentTv.text = "暂时无法显示该消息"
+                    holder.textContentTv.text = UiText.of("暂时无法显示该消息")
                     holder.tipTv.visibility = View.GONE
                     holder.picMsg.visibility = View.GONE
                     holder.nameTv.visibility = View.VISIBLE

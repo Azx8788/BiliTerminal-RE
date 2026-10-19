@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.feedback
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
@@ -47,7 +49,7 @@ class FeedbackListActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("我的反馈")
+        setPageName(UiText.of("我的反馈"))
 
         setOnRefreshListener { load() }
         // 空态也要能重试：空态下基类会把 recyclerView 置成 GONE，SwipeRefreshLayout 没有可滑动的
@@ -64,7 +66,7 @@ class FeedbackListActivity : RefreshListActivity() {
                 runOnUiThread {
                     if (isDestroyed) return@runOnUiThread
                     if (list.isEmpty()) {
-                        emptyView?.text = "还没有提交过反馈\n可在「设置 - 关于与帮助 - 反馈与建议」里发一条\n点我重试"
+                        emptyView?.text = UiText.of("还没有提交过反馈\n可在「设置 - 关于与帮助 - 反馈与建议」里发一条\n点我重试")
                         showEmptyView()
                     } else {
                         hideEmptyView()

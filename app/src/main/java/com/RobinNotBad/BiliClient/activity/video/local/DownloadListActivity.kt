@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.local
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -50,7 +52,7 @@ class DownloadListActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        setPageName("下载列表")
+        setPageName(UiText.of("下载列表"))
         setRefreshing(false)
         weakRef = WeakReference(this)
 
@@ -133,7 +135,7 @@ class DownloadListActivity : RefreshListActivity() {
         if (sections == null || sections!!.isEmpty()) {
             if (!emptyTipShown) {
                 runOnUiThread {
-                    MsgUtil.showMsg("下载列表为空")
+                    MsgUtil.showMsg(UiText.of("下载列表为空"))
                     showEmptyView()
                 }
                 emptyTipShown = true
@@ -162,13 +164,13 @@ class DownloadListActivity : RefreshListActivity() {
                                 // 点击下载中的任务：暂停该任务（不停止其他并行任务）
                                 "downloading" -> {
                                     DownloadService.pauseDownload(section.id)
-                                    runOnUiThread { MsgUtil.showMsg("已暂停下载") }
+                                    runOnUiThread { MsgUtil.showMsg(UiText.of("已暂停下载")) }
                                     refreshList(false)
                                 }
                                 // 点击已暂停的任务：恢复下载
                                 "paused" -> {
                                     DownloadService.resumeDownload(section.id)
-                                    runOnUiThread { MsgUtil.showMsg("已恢复下载") }
+                                    runOnUiThread { MsgUtil.showMsg(UiText.of("已恢复下载")) }
                                     refreshList(false)
                                 }
                                 "error" -> {
@@ -198,7 +200,7 @@ class DownloadListActivity : RefreshListActivity() {
                             } else {
                                 longClickPosition = position
                                 longClickTimestamp = now
-                                runOnUiThread { MsgUtil.showMsg("再次长按删除") }
+                                runOnUiThread { MsgUtil.showMsg(UiText.of("再次长按删除")) }
                             }
                         }
                     }
@@ -235,7 +237,7 @@ class DownloadListActivity : RefreshListActivity() {
             DownloadService.removeDownloadProgress(section.id)
 
             refreshList(false)
-            runOnUiThread { MsgUtil.showMsg("删除成功") }
+            runOnUiThread { MsgUtil.showMsg(UiText.of("删除成功")) }
         } catch (e: Exception) {
             MsgUtil.err(e)
         }
@@ -284,10 +286,10 @@ class DownloadListActivity : RefreshListActivity() {
         // 更新速度（所有并行下载的聚合速度）
         val speedText = when {
             DownloadService.speedStr.isNotEmpty() -> {
-                val prefix = if (DownloadService.isSpeedMode) "高速 " else ""
+                val prefix = if (DownloadService.isSpeedMode) UiText.of("高速 ") else ""
                 prefix + DownloadService.speedStr
             }
-            downloadingCount > 0 -> "准备中..."
+            downloadingCount > 0 -> UiText.of("准备中...")
             else -> "--"
         }
         textTotalSpeed?.text = speedText
@@ -295,10 +297,10 @@ class DownloadListActivity : RefreshListActivity() {
         // 更新预估剩余时间：用下载中项目的剩余字节数除以聚合速度
         val speedBytes = parseSpeedToBytes(DownloadService.speedStr)
         val etaStr = when {
-            overallProgress >= 1f -> "即将完成"
+            overallProgress >= 1f -> UiText.of("即将完成")
             speedBytes > 0 && activeRemainingBytes > 0 ->
                 formatDuration(activeRemainingBytes * 1000 / speedBytes)
-            else -> "计算中..."
+            else -> UiText.of("计算中...")
         }
         textTotalEta?.text = etaStr
 
@@ -329,7 +331,7 @@ class DownloadListActivity : RefreshListActivity() {
     }
 
     private fun formatDuration(ms: Long): String {
-        if (ms <= 0) return "即将完成"
+        if (ms <= 0) return UiText.of("即将完成")
         val seconds = ms / 1000
         return when {
             seconds < 60 -> "${seconds}秒"

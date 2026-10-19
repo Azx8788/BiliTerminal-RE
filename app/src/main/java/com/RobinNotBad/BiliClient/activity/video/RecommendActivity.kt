@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import com.RobinNotBad.BiliClient.R
@@ -30,7 +32,7 @@ class RecommendActivity : RefreshMainActivity() {
         // 空数据时可点击重试，而不是只能退出重进
         setOnEmptyRetry { refreshRecommend() }
 
-        setPageName("推荐")
+        setPageName(UiText.of("推荐"))
 
         recyclerView.setHasFixedSize(true)
 

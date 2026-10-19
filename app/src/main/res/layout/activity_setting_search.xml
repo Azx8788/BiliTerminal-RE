@@ -62,7 +62,7 @@
                     android:background="@android:color/transparent"
                     android:clickable="false"
                     android:enabled="false"
-                    android:text="视频搜索（始终启用）" />
+                    android:text="@string/text_activitysettingsearch_07" />
             </com.google.android.material.card.MaterialCardView>
 
             <!-- 专栏搜索 -->
@@ -75,7 +75,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:background="@android:color/transparent"
-                    android:text="显示“专栏”搜索" />
+                    android:text="@string/text_activitysettingsearch_06" />
             </com.google.android.material.card.MaterialCardView>
 
             <!-- 用户搜索 -->
@@ -88,7 +88,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:background="@android:color/transparent"
-                    android:text="显示“用户”搜索" />
+                    android:text="@string/text_activitysettingsearch_05" />
             </com.google.android.material.card.MaterialCardView>
 
             <!-- 直播搜索 -->
@@ -101,7 +101,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:background="@android:color/transparent"
-                    android:text="显示“直播”搜索" />
+                    android:text="@string/text_activitysettingsearch_04" />
             </com.google.android.material.card.MaterialCardView>
 
             <!-- 番剧搜索 -->
@@ -114,14 +114,14 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:background="@android:color/transparent"
-                    android:text="显示“番剧”搜索" />
+                    android:text="@string/text_activitysettingsearch_03" />
             </com.google.android.material.card.MaterialCardView>
 
             <!-- 调整排序按钮 -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/sort"
                 android:layout_marginVertical="2dp"
-                android:text="调整搜索类别排序"
+                android:text="@string/text_activitysettingsearch_02"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
 
@@ -129,7 +129,7 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/reset"
                 android:layout_marginVertical="2dp"
-                android:text="重置为默认设置"
+                android:text="@string/text_activitysettingsearch_01"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content" />
 

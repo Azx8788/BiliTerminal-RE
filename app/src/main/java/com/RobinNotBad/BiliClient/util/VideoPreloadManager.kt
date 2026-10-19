@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.util
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Handler
 import android.os.Looper
 import com.RobinNotBad.BiliClient.api.ShortVideoFeedApi
@@ -40,7 +42,7 @@ class VideoPreloadManager(private val preloadCount: Int = 2) {
                     mainHandler.post { onItemsLoaded?.invoke(items) }
                     preloadNext()
                 } else {
-                    mainHandler.post { onLoadError?.invoke("获取视频列表失败") }
+                    mainHandler.post { onLoadError?.invoke(UiText.of("获取视频列表失败")) }
                 }
             } finally {
                 // 必须 finally：否则 fetch 抛异常会让 isLoading 永远为 true，之后再也拉不到数据

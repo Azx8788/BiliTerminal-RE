@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.ui.widget.recycler
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.util.AttributeSet
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -26,7 +28,7 @@ class CustomLinearManager : LinearLayoutManager {
         try {
             super.onLayoutChildren(recycler, state)
         } catch (e: Throwable) {
-            MsgUtil.err("列表报错：", e)
+            MsgUtil.err(UiText.of("列表报错："), e)
         }
     }
 }

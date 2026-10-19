@@ -23,7 +23,7 @@
             android:layout_toStartOf="@id/timeText"
             android:layout_toLeftOf="@id/timeText"
             android:lines="1"
-            android:text="修改个人描述"
+            android:text="@string/text_activityeditprofile_02"
             android:textStyle="bold"
             app:drawableStartCompat="@drawable/arrow_back" />
 
@@ -57,7 +57,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="4dp"
-                android:text="修改签名不会立即生效，会等待审核队列稍后生效"
+                android:text="@string/text_activityeditsign_03"
                 android:textSize="12sp"
                 android:textColor="?android:attr/textColorSecondary" />
 
@@ -66,7 +66,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@drawable/background_edittext"
-                android:hint="请输入个人描述（最多70个字符）"
+                android:hint="@string/hint_activityeditsign_02"
                 android:inputType="textMultiLine"
                 android:minHeight="120dp"
                 android:padding="8dp"
@@ -96,7 +96,7 @@
                     app:drawableEndCompat="@drawable/arrow_forward"
                     android:layout_marginHorizontal="8dp"
                     android:gravity="center_vertical"
-                    android:text="提交"
+                    android:text="@string/text_activityeditsign_01"
                     android:textAlignment="textEnd"
                     android:textSize="13sp"
                     android:visibility="visible"

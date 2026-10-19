@@ -55,7 +55,7 @@
             android:layout_marginBottom="2dp"
             android:ellipsize="end"
             android:maxLines="2"
-            android:text="收藏夹名称"
+            android:text="@string/text_activityfavoritefolderedit_05"
             android:textSize="@dimen/text_body"
             app:layout_constraintBottom_toTopOf="@+id/guide_title_bottom"
             app:layout_constraintEnd_toEndOf="parent"

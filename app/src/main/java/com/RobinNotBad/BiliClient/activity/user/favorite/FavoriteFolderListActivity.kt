@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -22,7 +24,7 @@ class FavoriteFolderListActivity : RefreshListActivity() {
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("收藏")
+        setPageName(UiText.of("收藏"))
 
         mid = SharedPreferencesUtil.getLong("mid", 0)
         folderList = ArrayList()
@@ -41,7 +43,7 @@ class FavoriteFolderListActivity : RefreshListActivity() {
                     if (position >= 0 && position < folderList.size) {
                         val folder = folderList[position]
                         if (folder.mediaId == 0L) {
-                            MsgUtil.showMsg("无法获取收藏夹信息，请稍后重试")
+                            MsgUtil.showMsg(UiText.of("无法获取收藏夹信息，请稍后重试"))
                             return@setOnLongClickListener
                         }
                         val intent = Intent(this, FavoriteFolderEditActivity::class.java)

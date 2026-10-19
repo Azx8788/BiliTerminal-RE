@@ -1,4 +1,8 @@
 package com.RobinNotBad.BiliClient.api;
+
+import com.RobinNotBad.BiliClient.R;
+
+import com.RobinNotBad.BiliClient.BiliTerminal;
 
 import android.text.TextUtils;
 import android.util.Log;
@@ -451,7 +455,7 @@ public class ReplyApi {
             case 65007:
                 return "已经点过踩了";
             default:
-                return "操作失败（错误码 " + code + "）";
+                return ApiErrorText.opFailed(code);
         }
     }
 

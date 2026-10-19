@@ -37,9 +37,9 @@ internal class DownloadNotifier(private val service: DownloadService) {
         service.notifyManager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(service.NOTIFICATION_CHANNEL_ID, "哔哩终端下载服务",
+            val channel = NotificationChannel(service.NOTIFICATION_CHANNEL_ID, service.getString(R.string.channel_download),
                 NotificationManager.IMPORTANCE_DEFAULT)
-            channel.description = "哔哩终端下载服务"
+            channel.description = service.getString(R.string.channel_download)
             channel.setSound(null, null)
             channel.enableVibration(false)
 
@@ -50,7 +50,7 @@ internal class DownloadNotifier(private val service: DownloadService) {
         val pendingIntent = PendingIntent.getActivity(service, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         service.statusBuilder = NotificationCompat.Builder(service, service.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.icon)
-            .setContentTitle("下载视频中")
+            .setContentTitle(service.getString(R.string.text_download_video))
             .setProgress(100, 0, false)
             .setContentIntent(pendingIntent)
             .setSound(null)
@@ -60,7 +60,7 @@ internal class DownloadNotifier(private val service: DownloadService) {
 
         service.completionBuilder = NotificationCompat.Builder(service, service.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.icon)
-            .setContentTitle("下载完成")
+            .setContentTitle(service.getString(R.string.text_update_download_complete))
             .setContentIntent(pendingIntent)
             .setOngoing(false)
             .setSound(null)
@@ -90,7 +90,7 @@ internal class DownloadNotifier(private val service: DownloadService) {
                         DownloadRepository.getAll() ?: emptyList()
                     )
                     service.statusBuilder.setContentText(
-                        "总进度 " + (overall * 100).toInt() + "% · " + (DownloadService.section?.name_short ?: "下载中")
+                        service.getString(R.string.text_download_total_progress, (overall * 100).toInt(), DownloadService.section?.name_short ?: service.getString(R.string.text_download_in_progress))
                     )
                     service.statusBuilder.setProgress(100, (overall * 100).toInt(), false)
                     service.notifyManager.notify(service.FOREGROUND_ID, service.statusBuilder.build())
@@ -107,7 +107,7 @@ internal class DownloadNotifier(private val service: DownloadService) {
     fun notifyExit(content: String) {
         MsgUtil.showMsg(content)
         service.notifyManager.cancel(service.FOREGROUND_ID)
-        service.completionBuilder.setContentTitle("下载结束")
+        service.completionBuilder.setContentTitle(service.getString(R.string.text_download_end))
         service.completionBuilder.setContentText(content)
         service.completionBuilder.setProgress(0, 0, false)
         service.notifyManager.notify(2, service.completionBuilder.build())

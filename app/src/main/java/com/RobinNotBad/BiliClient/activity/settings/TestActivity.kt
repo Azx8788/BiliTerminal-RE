@@ -71,7 +71,7 @@ class TestActivity : BaseActivity() {
 
                     runOnUiThread {
                         output.setText("")
-                        MsgUtil.showMsg("发出请求！")
+                        MsgUtil.showMsg(SettingText.resolve(this, "发出请求！"))
                     }
                     val result: String
                     if (sw_post.isChecked) {
@@ -83,12 +83,12 @@ class TestActivity : BaseActivity() {
 
                     runOnUiThread {
                         output.setText(result)
-                        MsgUtil.showMsg("请求成功！")
+                        MsgUtil.showMsg(SettingText.resolve(this, "请求成功！"))
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
                         output.setText(e.toString())
-                        MsgUtil.showMsg("请求失败！")
+                        MsgUtil.showMsg(SettingText.resolve(this, "请求失败！"))
                     }
                     e.printStackTrace()
                 }
@@ -132,7 +132,7 @@ class TestActivity : BaseActivity() {
 
                     val api_key = input_link.text.toString()
                     if (api_key.isEmpty()) {
-                        MsgUtil.showMsg("请在链接栏填写API KEY！")
+                        MsgUtil.showMsg(SettingText.resolve(this, "请在链接栏填写API KEY！"))
                         return@run
                     } else {
                         SharedPreferencesUtil.putString("dev_catgirl_apikey", api_key)
@@ -148,7 +148,7 @@ class TestActivity : BaseActivity() {
 
                     val input_str = input_data.text.toString()
                     if (input_str.isEmpty()) {
-                        MsgUtil.showMsg("请在POST数据栏填写文字！")
+                        MsgUtil.showMsg(SettingText.resolve(this, "请在POST数据栏填写文字！"))
                         return@run
                     }
                     val input_json = JSONObject()
@@ -162,7 +162,7 @@ class TestActivity : BaseActivity() {
                     requestJson.put("stream", true)
                     requestJson.put("messages", conversation)
 
-                    MsgUtil.showMsg("发出请求，请等待回应！")
+                    MsgUtil.showMsg(SettingText.resolve(this, "发出请求，请等待回应！"))
                     runOnUiThread {
                         btn_crash.isEnabled = false
                         output.setText("")
@@ -185,7 +185,7 @@ class TestActivity : BaseActivity() {
                     }
                     val source = body.source()
 
-                    MsgUtil.showMsg("得到响应，请继续等待！")
+                    MsgUtil.showMsg(SettingText.resolve(this, "得到响应，请继续等待！"))
 
                     var reasoning = sw_wbi.isChecked
 
@@ -231,7 +231,7 @@ class TestActivity : BaseActivity() {
                         conversation!!.put(output_json)
                     }
 
-                    MsgUtil.showMsg("响应结束，请查看下方文本框！")
+                    MsgUtil.showMsg(SettingText.resolve(this, "响应结束，请查看下方文本框！"))
                 } catch (e: Exception) {
                     report(e)
                 }

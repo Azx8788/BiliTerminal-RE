@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -43,20 +45,20 @@ class MenuActivity : BaseActivity() {
 
     companion object {
         val btnNames: Map<String, Pair<String, Class<out InstanceActivity>>> = LinkedHashMap<String, Pair<String, Class<out InstanceActivity>>>().apply {
-            put("recommend", Pair("推荐", RecommendActivity::class.java))
-            put("short_video", Pair("短视频", ShortVideoPlayerActivity::class.java))
-            put("popular", Pair("热门", PopularActivity::class.java))
-            put("precious", Pair("入站必刷", PreciousActivity::class.java))
-            put("ranking", Pair("全站排行榜", RankingActivity::class.java))
-            put("hotsearch", Pair("热搜", HotSearchActivity::class.java))
-            put("live", Pair("直播", RecommendLiveActivity::class.java))
-            put("timeline", Pair("时间线", TimelineActivity::class.java))
-            put("search", Pair("搜索", SearchActivity::class.java))
-            put("dynamic", Pair("动态", DynamicActivity::class.java))
-            put("myspace", Pair("我的", MySpaceActivity::class.java))
-            put("message", Pair("消息", MessageActivity::class.java))
-            put("local", Pair("缓存", LocalListActivity::class.java))
-            put("settings", Pair("设置", SettingMainActivity::class.java))
+            put("recommend", Pair(UiText.of("推荐"), RecommendActivity::class.java))
+            put("short_video", Pair(UiText.of("短视频"), ShortVideoPlayerActivity::class.java))
+            put("popular", Pair(UiText.of("热门"), PopularActivity::class.java))
+            put("precious", Pair(UiText.of("入站必刷"), PreciousActivity::class.java))
+            put("ranking", Pair(UiText.of("全站排行榜"), RankingActivity::class.java))
+            put("hotsearch", Pair(UiText.of("热搜"), HotSearchActivity::class.java))
+            put("live", Pair(UiText.of("直播"), RecommendLiveActivity::class.java))
+            put("timeline", Pair(UiText.of("时间线"), TimelineActivity::class.java))
+            put("search", Pair(UiText.of("搜索"), SearchActivity::class.java))
+            put("dynamic", Pair(UiText.of("动态"), DynamicActivity::class.java))
+            put("myspace", Pair(UiText.of("我的"), MySpaceActivity::class.java))
+            put("message", Pair(UiText.of("消息"), MessageActivity::class.java))
+            put("local", Pair(UiText.of("缓存"), LocalListActivity::class.java))
+            put("settings", Pair(UiText.of("设置"), SettingMainActivity::class.java))
         }
     }
 
@@ -96,7 +98,7 @@ class MenuActivity : BaseActivity() {
         for (btn in btnList) {
             val materialButton = MaterialButton(this)
             when (btn) {
-                "login" -> materialButton.text = "登录"
+                "login" -> materialButton.text = UiText.of("登录")
                 "dynamic" -> {
                     var btnText = btnNames[btn]!!.first
                     if (btn == "dynamic") {

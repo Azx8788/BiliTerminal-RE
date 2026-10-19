@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.util.Log
 
@@ -15,7 +17,7 @@ class FavouriteOpusListActivity : RefreshListActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("图文收藏夹")
+        setPageName(UiText.of("图文收藏夹"))
 
         list = ArrayList()
 

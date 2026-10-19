@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.player
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.net.Uri
 import android.view.Surface

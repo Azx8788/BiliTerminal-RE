@@ -21,10 +21,6 @@ import com.RobinNotBad.BiliClient.util.view.ScrollRetractDecider
 
 open class RefreshListActivity : BaseActivity() {
     companion object {
-        /** 空态文案（可重试时多一行提示） */
-        const val EMPTY_TEXT = "啥都木有~"
-        const val EMPTY_TEXT_WITH_RETRY = "啥都木有~\n点我重试"
-
         /** 工具条收回/展开的动画时长（毫秒）。手表屏小，收放要快，拖久了像卡顿 */
         private const val BAR_ANIM_MS = 180L
     }
@@ -304,8 +300,8 @@ open class RefreshListActivity : BaseActivity() {
         val tip = loadMoreTip ?: return
         runOnUiThread {
             tip.text = when {
-                end -> "没有更多了"
-                loading -> "正在加载…"
+                end -> getString(R.string.text_list_no_more)
+                loading -> getString(R.string.text_list_loading)
                 else -> ""
             }
             tip.visibility = if (end || loading) View.VISIBLE else View.GONE
@@ -344,7 +340,7 @@ open class RefreshListActivity : BaseActivity() {
     fun setOnEmptyRetry(action: Runnable) {
         emptyView?.let { ev ->
             ev.isClickable = true
-            ev.text = EMPTY_TEXT_WITH_RETRY
+            ev.text = getString(R.string.text_list_empty_retry)
             ev.setOnClickListener {
                 hideEmptyView()
                 setRefreshing(true)
@@ -397,7 +393,7 @@ open class RefreshListActivity : BaseActivity() {
     fun loadFail() {
         isLoading = false
         page--
-        MsgUtil.showMsgLong("加载失败")
+        MsgUtil.showMsgLong(getString(R.string.text_load_failed))
         setRefreshing(false)
     }
 

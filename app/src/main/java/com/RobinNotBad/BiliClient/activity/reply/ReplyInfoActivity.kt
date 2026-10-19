@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.reply
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -62,7 +64,7 @@ class ReplyInfoActivity : BaseActivity() {
         recyclerView = findViewById(R.id.recyclerView)
         refreshLayout.setOnRefreshListener { refresh() }
 
-        setPageName("评论详情")
+        setPageName(UiText.of("评论详情"))
 
         if (SharedPreferencesUtil.getBoolean("ui_landscape", false)) {
             val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager

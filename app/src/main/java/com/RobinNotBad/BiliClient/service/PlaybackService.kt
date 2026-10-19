@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.service
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -99,7 +101,7 @@ class PlaybackService : Service() {
                 // Android 12+ 的 ForegroundServiceStartNotAllowedException、厂商省电策略等
                 playerRef = null
                 Logu.e("PlaybackService.start", e.message ?: "启动后台播放服务失败")
-                CenterThreadPool.runOnUiThread { MsgUtil.showMsg("后台播放启动失败") }
+                CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("后台播放启动失败")) }
             }
         }
 
@@ -141,8 +143,8 @@ class PlaybackService : Service() {
         super.onCreate()
         notifyManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "后台播放", NotificationManager.IMPORTANCE_LOW)
-            channel.description = "后台/熄屏播放时的常驻遥控通知"
+            val channel = NotificationChannel(CHANNEL_ID, UiText.of("后台播放"), NotificationManager.IMPORTANCE_LOW)
+            channel.description = UiText.of("后台/熄屏播放时的常驻遥控通知")
             channel.setShowBadge(false)
             channel.setSound(null, null)
             channel.enableVibration(false)
@@ -263,7 +265,7 @@ class PlaybackService : Service() {
         val playing = a?.serviceIsPlaying() == true
         val position = a?.servicePositionMs() ?: 0
         val duration = a?.serviceDurationMs() ?: 0
-        val title = a?.serviceTitle()?.takeIf { it.isNotBlank() } ?: "RE：哔哩终端正在播放"
+        val title = a?.serviceTitle()?.takeIf { it.isNotBlank() } ?: UiText.of("RE：哔哩终端正在播放")
 
         val toggleIntent = PendingIntent.getService(
             this, 0,
@@ -298,9 +300,9 @@ class PlaybackService : Service() {
             .clearActions()
             .addAction(
                 if (playing) R.drawable.btn_player_pause else R.drawable.btn_player_play,
-                if (playing) "暂停" else "播放", toggleIntent
+                if (playing) UiText.of("暂停") else UiText.of("播放"), toggleIntent
             )
-            .addAction(0, "关闭", stopIntent)
+            .addAction(0, UiText.of("关闭"), stopIntent)
             .build()
     }
 
@@ -311,7 +313,7 @@ class PlaybackService : Service() {
     private fun buildFallbackNotification(): Notification =
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.icon)
-            .setContentTitle("RE：哔哩终端正在播放")
+            .setContentTitle(UiText.of("RE：哔哩终端正在播放"))
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setShowWhen(false)

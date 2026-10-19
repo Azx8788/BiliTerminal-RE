@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.widget.EditText
 import android.widget.RadioGroup
@@ -24,7 +26,7 @@ class EditUserInfoActivity : BaseActivity() {
         setContentView(R.layout.activity_edit_user_info)
 
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-            MsgUtil.showMsg("还没有登录喵~")
+            MsgUtil.showMsg(UiText.of("还没有登录喵~"))
             finish()
             return
         }
@@ -49,19 +51,19 @@ class EditUserInfoActivity : BaseActivity() {
 
         submit.setOnClickListener {
             if (isSubmitting) {
-                MsgUtil.showMsg("正在提交中...")
+                MsgUtil.showMsg(UiText.of("正在提交中..."))
                 return@setOnClickListener
             }
 
             if (!SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.cookie_refresh, true)) {
-                MsgUtil.showDialog("无法提交", "上一次的Cookie刷新失败了，\n您可能需要重新登录以进行敏感操作", -1)
+                MsgUtil.showDialog(getString(R.string.text_cannot_submit), getString(R.string.msg_cookie_refresh_failed), -1)
                 return@setOnClickListener
             }
 
             val uname = etUsername.text.toString().trim()
             val birthday = etBirthday.text.toString().trim()
             if (birthday.isNotEmpty() && !birthday.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                MsgUtil.showMsg("生日格式错误，请使用YYYY-MM-DD")
+                MsgUtil.showMsg(UiText.of("生日格式错误，请使用YYYY-MM-DD"))
                 return@setOnClickListener
             }
 
@@ -72,7 +74,7 @@ class EditUserInfoActivity : BaseActivity() {
             }
 
             if (uname.isEmpty() && birthday.isEmpty() && sex == null) {
-                MsgUtil.showMsg("请至少填写一项要修改的内容")
+                MsgUtil.showMsg(UiText.of("请至少填写一项要修改的内容"))
                 return@setOnClickListener
             }
 
@@ -96,17 +98,17 @@ class EditUserInfoActivity : BaseActivity() {
                             submit.isEnabled = true
 
                             if (code == 0) {
-                                MsgUtil.showMsg("修改成功")
+                                MsgUtil.showMsg(UiText.of("修改成功"))
                                 finish()
                             } else {
                                 val errorMsg = when (code) {
-                                    -101 -> "账号未登录"
-                                    -111 -> "CSRF验证失败"
-                                    400 -> "昵称违规或已被占用"
-                                    412 -> "修改频率过高，请稍后再试"
-                                    2001 -> "昵称已存在"
-                                    21003 -> "生日格式错误"
-                                    -403 -> "权限不足"
+                                    -101 -> UiText.of("账号未登录")
+                                    -111 -> UiText.of("CSRF验证失败")
+                                    400 -> UiText.of("昵称违规或已被占用")
+                                    412 -> UiText.of("修改频率过高，请稍后再试")
+                                    2001 -> UiText.of("昵称已存在")
+                                    21003 -> UiText.of("生日格式错误")
+                                    -403 -> UiText.of("权限不足")
                                     else -> if (message.isNotEmpty()) message else "修改失败"
                                 }
                                 MsgUtil.showMsg(errorMsg)
@@ -118,7 +120,7 @@ class EditUserInfoActivity : BaseActivity() {
                         runOnUiThread {
                             isSubmitting = false
                             submit.isEnabled = true
-                            MsgUtil.err("修改失败", e)
+                            MsgUtil.err(UiText.of("修改失败"), e)
                         }
                     }
                 }

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.collection
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -35,7 +37,7 @@ class CollectionInfoActivity : RefreshListActivity() {
         super.onCreate(savedInstanceState)
 
         val fromAid = intent.getLongExtra("fromVideo", -1)
-        setPageName("合集详情")
+        setPageName(UiText.of("合集详情"))
         // 失败后可点空态重试（失败结果不入缓存，重建即重新请求）
         setOnEmptyRetry { recreate() }
 
@@ -117,8 +119,8 @@ class CollectionInfoActivity : RefreshListActivity() {
                 holder.showVideoCard(videoCard, context)
             } else if (holder is CollectionInfoHolder) {
                 holder.name.text = collection.title
-                holder.desc.text = if (TextUtils.isEmpty(collection.intro)) "这里没有简介哦" else collection.intro
-                holder.playTimes.text = "共" + collection.view
+                holder.desc.text = if (TextUtils.isEmpty(collection.intro)) UiText.of("这里没有简介哦") else collection.intro
+                holder.playTimes.text = UiText.fmt(UiText.of("共%1\$s"), collection.view)
                 Glide.with(context).asDrawable().load(GlideUtil.url_hq(collection.cover))
                     .transition(GlideUtil.getTransitionOptions())
                     .placeholder(R.mipmap.placeholder)
@@ -222,8 +224,8 @@ class CollectionInfoActivity : RefreshListActivity() {
                 holder.showVideoCard(videoCard, context)
             } else if (holder is CollectionInfoHolder) {
                 holder.name.text = collection.title
-                holder.desc.text = if (TextUtils.isEmpty(collection.intro)) "这里没有简介哦" else collection.intro
-                holder.playTimes.text = "共" + collection.view
+                holder.desc.text = if (TextUtils.isEmpty(collection.intro)) UiText.of("这里没有简介哦") else collection.intro
+                holder.playTimes.text = UiText.fmt(UiText.of("共%1\$s"), collection.view)
                 Glide.with(context).asDrawable().load(GlideUtil.url_hq(collection.cover))
                     .transition(GlideUtil.getTransitionOptions())
                     .placeholder(R.mipmap.placeholder)

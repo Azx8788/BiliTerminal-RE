@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.article
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -50,7 +52,7 @@ class OpusAdapter(
         }
 
         if (opus.content != null && opus.content == "内容失效") {
-            holder.itemView.setOnClickListener { MsgUtil.showMsg("内容失效，无法打开") }
+            holder.itemView.setOnClickListener { MsgUtil.showMsg(UiText.of("内容失效，无法打开")) }
         } else {
             holder.itemView
                 .setOnClickListener { TerminalContext.getInstance().enterOpusDetailPage(context, opus.id) }

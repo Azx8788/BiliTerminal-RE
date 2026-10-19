@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.article
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -38,7 +40,7 @@ class OpusInfoActivity : BaseActivity() {
         oid = intent.getLongExtra("id", 114514)
         seek_reply = intent.getLongExtra("seekReply", -1)
 
-        setPageName("文章详情")
+        setPageName(UiText.of("文章详情"))
         loadingView = findViewById(R.id.loading)
 
         val viewPager = findViewById<ViewPager>(R.id.viewPager)

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -35,7 +37,7 @@ class FeedbackListAdapter(
 
         holder.category.text = categoryLabel(item.category)
         // 状态只用「待受理 / 已受理」——绝不要写「已处理」，见 FeedbackItem.handled 的说明
-        holder.status.text = if (item.handled) "已受理" else "待受理"
+        holder.status.text = if (item.handled) UiText.of("已受理") else UiText.of("待受理")
         holder.content.text = item.content
         holder.time.text = item.ctime
         holder.cardView.setOnClickListener { onClick(item) }

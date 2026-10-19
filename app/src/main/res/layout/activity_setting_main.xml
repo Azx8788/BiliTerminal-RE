@@ -45,7 +45,7 @@
         android:layout_below="@id/top"
         android:layout_marginHorizontal="@dimen/activity_padding_horizontal"
         android:layout_marginTop="4dp"
-        android:hint="搜索设置项"
+        android:hint="@string/hint_activitysettingmain_01"
         android:imeOptions="actionSearch"
         android:inputType="text"
         android:paddingHorizontal="12dp"

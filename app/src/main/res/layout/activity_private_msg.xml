@@ -80,7 +80,7 @@
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:text="图"
+            android:text="@string/text_activityprivatemsg_01"
             android:textColor="#ffffff"
             android:textSize="15sp" />
 

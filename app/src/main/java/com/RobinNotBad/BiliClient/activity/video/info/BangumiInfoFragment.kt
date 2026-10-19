@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.info
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Dialog
@@ -159,7 +161,7 @@ class BangumiInfoFragment : Fragment() {
                 result.onSuccess { bangumi ->
                     this.bangumi = bangumi
                     initView()
-                }.onFailure { error -> MsgUtil.err("番剧详情：", error) }
+                }.onFailure { error -> MsgUtil.err(UiText.of("番剧详情："), error) }
             }
     }
 
@@ -217,7 +219,7 @@ class BangumiInfoFragment : Fragment() {
         }
 
         if (bangumi!!.info.score > 0) {
-            rating.text = String.format("评分：%.1f (%d人)", bangumi!!.info.score, bangumi!!.info.count)
+            rating.text = String.format(UiText.of("评分：%.1f (%d人)"), bangumi!!.info.score, bangumi!!.info.count)
             rating.visibility = View.VISIBLE
         } else {
             rating.visibility = View.GONE
@@ -234,15 +236,15 @@ class BangumiInfoFragment : Fragment() {
         if (bangumi!!.info.stat != null) {
             val statBuilder = StringBuilder()
             if (bangumi!!.info.stat!!.views > 0) {
-                statBuilder.append("播放：").append(formatNumber(bangumi!!.info.stat!!.views))
+                statBuilder.append(UiText.of("播放：")).append(formatNumber(bangumi!!.info.stat!!.views))
             }
             if (bangumi!!.info.stat!!.favorites > 0) {
                 if (statBuilder.isNotEmpty()) statBuilder.append(" ")
-                statBuilder.append("收藏：").append(formatNumber(bangumi!!.info.stat!!.favorites))
+                statBuilder.append(UiText.of("收藏：")).append(formatNumber(bangumi!!.info.stat!!.favorites))
             }
             if (bangumi!!.info.stat!!.series_follow > 0) {
                 if (statBuilder.isNotEmpty()) statBuilder.append(" ")
-                statBuilder.append("追番：").append(formatNumber(bangumi!!.info.stat!!.series_follow))
+                statBuilder.append(UiText.of("追番：")).append(formatNumber(bangumi!!.info.stat!!.series_follow))
             }
             if (statBuilder.isNotEmpty()) {
                 stats.text = statBuilder.toString()
@@ -255,7 +257,7 @@ class BangumiInfoFragment : Fragment() {
         }
 
         if (bangumi!!.info.styles != null && bangumi!!.info.styles!!.isNotEmpty()) {
-            val styleText = "标签：" + bangumi!!.info.styles!!.joinToString(" ")
+            val styleText = UiText.of("标签：") + bangumi!!.info.styles!!.joinToString(" ")
             styles.text = styleText
             styles.visibility = View.VISIBLE
         } else {
@@ -291,7 +293,7 @@ class BangumiInfoFragment : Fragment() {
         }
 
         if (bangumi!!.info.record != null && bangumi!!.info.record!!.trim().isNotEmpty()) {
-            record.text = "备案号：" + bangumi!!.info.record!!.trim()
+            record.text = UiText.of("备案号：") + bangumi!!.info.record!!.trim()
             record.visibility = View.VISIBLE
         } else {
             record.visibility = View.GONE
@@ -318,7 +320,7 @@ class BangumiInfoFragment : Fragment() {
         val firstSection = firstSectionWithEpisodes()
         if (firstSection < 0) {
             // 还没上线的番剧：没有季可切也没有集可选，选集区只留一行状态文案
-            episodeChoose!!.text = "敬请期待"
+            episodeChoose!!.text = UiText.of("敬请期待")
             seasonTabsRecyclerView!!.visibility = View.GONE
             episodeRecyclerView!!.visibility = View.GONE
             playButton.visibility = View.GONE
@@ -337,7 +339,7 @@ class BangumiInfoFragment : Fragment() {
         // 从历史列表进来时带着上次观看的 epid：定位到就直接选中那一集；
         // 定位失败（换季/下架/数据异常）保持第 1 集，不崩也不白屏
         if (locateEpisodeByEpid(targetEpid) && (selectedSection != firstSection || selectedEpisode != 0)) {
-            MsgUtil.showMsg("已定位到上次观看的「" + (currentEpisode()?.title ?: "") + "」")
+            MsgUtil.showMsg(UiText.fmt(UiText.of("已定位到上次观看的「%1\$s」"), currentEpisode()?.title ?: ""))
         }
 
         setupSeasonTabs()
@@ -402,7 +404,7 @@ class BangumiInfoFragment : Fragment() {
         if (currentIndex < 0) {
             val current = Bangumi.Season()
             current.season_id = currentSeasonId
-            current.season_title = "正片"
+            current.season_title = UiText.of("正片")
             current.seasonType = currentSeasonType
             current.statusDesc = bangumi?.info?.newEpDesc
             tabs.add(0, current)
@@ -455,7 +457,7 @@ class BangumiInfoFragment : Fragment() {
                 if (meta.sectionList.none { !it.episodeList.isNullOrEmpty() }) {
                     CenterThreadPool.runOnUiThread {
                         switchingSeason = false
-                        if (isAdded) MsgUtil.showMsg("该季暂无内容")
+                        if (isAdded) MsgUtil.showMsg(UiText.of("该季暂无内容"))
                     }
                     return@run
                 }
@@ -466,10 +468,10 @@ class BangumiInfoFragment : Fragment() {
                     applySeason(tabIndex, target, meta)
                 }
             } catch (e: Exception) {
-                MsgUtil.err("番剧切季：", e)
+                MsgUtil.err(UiText.of("番剧切季："), e)
                 CenterThreadPool.runOnUiThread {
                     switchingSeason = false
-                    if (isAdded) MsgUtil.showMsg("切换失败，请稍后重试")
+                    if (isAdded) MsgUtil.showMsg(UiText.of("切换失败，请稍后重试"))
                 }
             }
         }
@@ -543,7 +545,7 @@ class BangumiInfoFragment : Fragment() {
 
         fun applyFollowed(value: Boolean) {
             followed = value
-            button.text = if (value) "已追番" else "追番"
+            button.text = if (value) UiText.of("已追番") else UiText.of("追番")
         }
 
         button.visibility = View.VISIBLE
@@ -551,7 +553,7 @@ class BangumiInfoFragment : Fragment() {
 
         button.setOnClickListener {
             if (!loggedIn) {
-                MsgUtil.showMsg("未登录，无法追番")
+                MsgUtil.showMsg(UiText.of("未登录，无法追番"))
                 return@setOnClickListener
             }
             val target = !followed
@@ -564,16 +566,16 @@ class BangumiInfoFragment : Fragment() {
                         if (code == 0) {
                             applyFollowed(target)
                             SharedPreferencesUtil.putBoolean(BangumiApi.FOLLOW_KEY_PREFIX + seasonId, target)
-                            MsgUtil.showMsg(if (target) "已追番" else "已取消追番")
+                            MsgUtil.showMsg(if (target) UiText.of("已追番") else UiText.of("已取消追番"))
                         } else {
-                            MsgUtil.showMsg("操作失败，请稍后重试")
+                            MsgUtil.showMsg(UiText.of("操作失败，请稍后重试"))
                         }
                     }
                 } catch (e: Exception) {
                     // 失败不能翻转按钮状态，否则用户以为追上了、重进页面又变回来
                     CenterThreadPool.runOnUiThread {
                         button.isEnabled = true
-                        MsgUtil.showMsg("操作失败，请稍后重试")
+                        MsgUtil.showMsg(UiText.of("操作失败，请稍后重试"))
                     }
                 }
             }
@@ -704,7 +706,7 @@ class BangumiInfoFragment : Fragment() {
 
         // 双保险：数据刷新后仍可能落到空季上，空列表既不能建下标也不能建选择项
         if (labels.isEmpty()) {
-            MsgUtil.showMsg("该季暂无剧集")
+            MsgUtil.showMsg(UiText.of("该季暂无剧集"))
             dialog = TerminalDialog.alert(requireContext(), message = "该季暂无剧集")
             return dialog!!
         }
@@ -715,7 +717,7 @@ class BangumiInfoFragment : Fragment() {
 
         dialog = TerminalDialog.singleChoice(
             context = requireContext(),
-            title = "选择剧集",
+            title = UiText.of("选择剧集"),
             items = labels,
             checked = checked
         ) { _, which ->

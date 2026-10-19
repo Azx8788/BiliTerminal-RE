@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.tutorial
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.os.Handler
@@ -209,7 +211,7 @@ class TutorialPagerActivity : BaseActivity() {
         closeBtn.text = when {
             canClose -> getString(R.string.btn_read)
             // 还没翻到最后一页：明确告诉用户往哪滑（水平分页，向左滑 = 下一页）
-            !readAll -> "向左滑动以完成教程"
+            !readAll -> UiText.of("向左滑动以完成教程")
             else -> String.format(Locale.getDefault(), "已阅(%ds)", max(0, WAIT_SECONDS - elapsedSeconds))
         }
     }

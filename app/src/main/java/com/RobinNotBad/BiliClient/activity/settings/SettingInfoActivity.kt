@@ -14,7 +14,7 @@ class SettingInfoActivity : RefreshListActivity() {
     @SuppressLint("MissingInflatedId", "SetTextI18n", "InflateParams")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("详情页设置")
+        setPageName(getString(R.string.pagename_settinginfoactivity_001))
         Log.e("debug", "进入详情页设置")
 
         val sectionList: List<SettingSection> = ArrayList<SettingSection>().apply {

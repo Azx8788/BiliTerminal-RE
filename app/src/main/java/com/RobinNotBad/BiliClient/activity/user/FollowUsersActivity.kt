@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -133,14 +135,14 @@ class FollowUsersActivity : RefreshListActivity() {
 
     private fun showGroupMenu(tag: FollowTag) {
         if (!isEditableTag(tag)) {
-            MsgUtil.showMsg("默认分组和特别关注不能改名或删除")
+            MsgUtil.showMsg(UiText.of("默认分组和特别关注不能改名或删除"))
             return
         }
         // 「删除分组」是破坏性操作（索引 1），用危险色标出来
         TerminalDialog.menu(
             context = this,
             title = tag.name,
-            items = listOf("重命名分组", "删除分组"),
+            items = listOf(UiText.of("重命名分组"), "删除分组"),
             danger = setOf(1)
         ) { which ->
             when (which) {
@@ -165,7 +167,7 @@ class FollowUsersActivity : RefreshListActivity() {
             ?: emptyList()
 
         if (targets.isEmpty()) {
-            MsgUtil.showMsg("还没有别的分组可以移过去")
+            MsgUtil.showMsg(UiText.of("还没有别的分组可以移过去"))
             return
         }
 
@@ -185,9 +187,9 @@ class FollowUsersActivity : RefreshListActivity() {
     private fun confirmMoveUser(fromTag: FollowTag, toTag: FollowTag, user: UserInfo) {
         TerminalDialog.confirm(
             context = this,
-            title = "移动分组",
+            title = UiText.of("移动分组"),
             message = "把「${user.name}」从「${fromTag.name}」移动到「${toTag.name}」？",
-            confirmText = "移动",
+            confirmText = UiText.of("移动"),
             confirmIsDanger = false
         ) {
             CenterThreadPool.run {
@@ -203,7 +205,7 @@ class FollowUsersActivity : RefreshListActivity() {
                         }
                     }
                 } catch (e: Exception) {
-                    runOnUiThread { MsgUtil.err("移动分组失败", e) }
+                    runOnUiThread { MsgUtil.err(UiText.of("移动分组失败"), e) }
                 }
             }
         }.show()
@@ -220,21 +222,21 @@ class FollowUsersActivity : RefreshListActivity() {
                         val code = FollowApi.createFollowTag(name)
                         runOnUiThread {
                             if (code == 0) {
-                                MsgUtil.showMsg("分组已创建")
+                                MsgUtil.showMsg(UiText.of("分组已创建"))
                                 loadGroupMode()
                             } else {
                                 MsgUtil.showMsg(FollowApi.tagErrorMsg(code))
                             }
                         }
                     } catch (e: Exception) {
-                        runOnUiThread { MsgUtil.err("创建分组失败", e) }
+                        runOnUiThread { MsgUtil.err(UiText.of("创建分组失败"), e) }
                     }
                 }
             }
         }
         inputLauncher.launch(
             Intent(this, InputDialogActivity::class.java)
-                .putExtra("title", "新建分组")
+                .putExtra("title", UiText.of("新建分组"))
                 .putExtra("hint", "请输入分组名（最多 ${FollowApi.TAG_NAME_MAX_LENGTH} 个字）")
         )
     }
@@ -259,14 +261,14 @@ class FollowUsersActivity : RefreshListActivity() {
                             }
                         }
                     } catch (e: Exception) {
-                        runOnUiThread { MsgUtil.err("重命名分组失败", e) }
+                        runOnUiThread { MsgUtil.err(UiText.of("重命名分组失败"), e) }
                     }
                 }
             }
         }
         inputLauncher.launch(
             Intent(this, InputDialogActivity::class.java)
-                .putExtra("title", "重命名分组")
+                .putExtra("title", UiText.of("重命名分组"))
                 .putExtra("initial_text", tag.name)
         )
     }
@@ -274,23 +276,23 @@ class FollowUsersActivity : RefreshListActivity() {
     private fun showDeleteGroupDialog(tag: FollowTag) {
         TerminalDialog.confirm(
             context = this,
-            title = "删除分组",
+            title = UiText.of("删除分组"),
             message = "确定删除「${tag.name}」吗？\n分组里的关注不会取关，只是回到默认分组。",
-            confirmText = "删除"
+            confirmText = UiText.of("删除")
         ) {
             CenterThreadPool.run {
                 try {
                     val code = FollowApi.deleteFollowTag(tag.tagid)
                     runOnUiThread {
                         if (code == 0) {
-                            MsgUtil.showMsg("分组已删除")
+                            MsgUtil.showMsg(UiText.of("分组已删除"))
                             loadGroupMode()
                         } else {
                             MsgUtil.showMsg(FollowApi.tagErrorMsg(code))
                         }
                     }
                 } catch (e: Exception) {
-                    runOnUiThread { MsgUtil.err("删除分组失败", e) }
+                    runOnUiThread { MsgUtil.err(UiText.of("删除分组失败"), e) }
                 }
             }
         }.show()

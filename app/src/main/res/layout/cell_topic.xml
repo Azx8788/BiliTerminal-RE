@@ -21,7 +21,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="话题"
+            android:text="@string/uitext_dynamictopicactivity_002"
             android:textAlignment="textStart"
             android:textSize="14sp"
             tools:ignore="RtlCompat" />
@@ -34,7 +34,7 @@
             android:alpha="0.7"
             android:ellipsize="end"
             android:maxLines="1"
-            android:text="0 动态 · 0 浏览"
+            android:text="@string/text_celltopic_01"
             android:textAlignment="textStart"
             android:textSize="11sp"
             tools:ignore="RtlCompat" />

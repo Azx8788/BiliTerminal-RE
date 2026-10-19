@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.util
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.content.pm.PackageManager
 import java.io.File
@@ -64,7 +66,7 @@ object ApkVerifier {
     @Suppress("DEPRECATION")
     fun verify(context: Context, apkFile: File): Result {
         if (!apkFile.isFile || apkFile.length() == 0L) {
-            return Result(false, "安装包不存在或为空")
+            return Result(false, UiText.of("安装包不存在或为空"))
         }
 
         val packageManager = context.packageManager
@@ -73,7 +75,7 @@ object ApkVerifier {
             packageManager.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
         } catch (e: Exception) {
             null
-        } ?: return Result(false, "安装包无法解析，文件可能已损坏")
+        } ?: return Result(false, UiText.of("安装包无法解析，文件可能已损坏"))
 
         if (!isSamePackage(context.packageName, archive.packageName)) {
             return Result(false, "安装包包名不符（${archive.packageName}），已拒绝安装")
@@ -86,12 +88,12 @@ object ApkVerifier {
             emptyList()
         }
         if (expectedSignatures.isEmpty()) {
-            return Result(false, "无法读取当前应用签名，为安全起见已拒绝安装")
+            return Result(false, UiText.of("无法读取当前应用签名，为安全起见已拒绝安装"))
         }
 
         val actualSignatures = archive.signatures?.map { signatureHex(it.toByteArray()) } ?: emptyList()
         if (!isSameSignature(expectedSignatures, actualSignatures)) {
-            return Result(false, "安装包签名与当前应用不一致，已拒绝安装")
+            return Result(false, UiText.of("安装包签名与当前应用不一致，已拒绝安装"))
         }
 
         return Result(true)

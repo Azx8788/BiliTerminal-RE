@@ -13,7 +13,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:text="分区标题"
+        android:text="@string/text_cellsectionheader_02"
         android:textSize="13sp"
         android:textStyle="bold"
         android:alpha="0.7" />
@@ -22,7 +22,7 @@
         android:id="@+id/sectionCount"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="0项"
+        android:text="@string/text_cellsectionheader_01"
         android:textSize="12sp"
         android:alpha="0.45" />
 </LinearLayout>

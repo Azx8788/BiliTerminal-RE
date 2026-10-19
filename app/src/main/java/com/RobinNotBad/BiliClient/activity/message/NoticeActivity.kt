@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.message
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.util.Pair
 
@@ -19,7 +21,7 @@ class NoticeActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("详情")
+        setPageName(UiText.of("详情"))
 
         // 跳转方未传 type 时必须直接结束：否则 when 全不匹配、cursor 保持 null，
         // 翻页时 cursor!! 必然 NPE（此前闪退的一个来源）。

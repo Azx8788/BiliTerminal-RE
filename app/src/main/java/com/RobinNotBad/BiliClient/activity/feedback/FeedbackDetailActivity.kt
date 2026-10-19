@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.feedback
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
@@ -70,7 +72,7 @@ class FeedbackDetailActivity : BaseActivity() {
         item = data
 
         asyncInflate(R.layout.activity_feedback_detail) { _, _ ->
-            setPageName("反馈详情")
+            setPageName(UiText.of("反馈详情"))
 
             renderMeta(data)
             findViewById<TextView>(R.id.detail_time).text = data.ctime
@@ -98,7 +100,7 @@ class FeedbackDetailActivity : BaseActivity() {
      */
     private fun renderMeta(data: FeedbackItem) {
         findViewById<TextView>(R.id.detail_meta).text =
-            "${categoryLabel(data.category)} · ${if (data.handled) "已受理" else "待受理"}"
+            "${categoryLabel(data.category)} · ${if (data.handled) UiText.of("已受理") else UiText.of("待受理")}"
     }
 
     /** 重画整条对话时间线。消息很少（多为 0~5 条），直接清空重建，不必为它单写一个 adapter。 */
@@ -117,7 +119,7 @@ class FeedbackDetailActivity : BaseActivity() {
         section.visibility = View.VISIBLE
         // 只有开发者回复时「开发者回复」更具体；一旦有来回，「对话记录」才准确
         findViewById<TextView>(R.id.reply_header).text =
-            if (replies.any { it.isFromUser() }) "对话记录" else "开发者回复"
+            if (replies.any { it.isFromUser() }) UiText.of("对话记录") else UiText.of("开发者回复")
 
         val inflater = LayoutInflater.from(this)
         for (reply in replies) {
@@ -140,7 +142,7 @@ class FeedbackDetailActivity : BaseActivity() {
         val fromUser = reply.isFromUser()
 
         view.findViewById<TextView>(R.id.reply_title).text =
-            if (fromUser) "我的补充" else reply.title.ifEmpty { "开发者回复" }
+            if (fromUser) UiText.of("我的补充") else reply.title.ifEmpty { UiText.of("开发者回复") }
         view.findViewById<TextView>(R.id.reply_time).text = reply.ctime
         view.findViewById<TextView>(R.id.reply_content).text = reply.content
 
@@ -166,12 +168,12 @@ class FeedbackDetailActivity : BaseActivity() {
         if (sending) return
         TerminalDialog.input(
             context = this,
-            title = "追加说明",
-            hint = "补充复现步骤或说明…",
+            title = UiText.of("追加说明"),
+            hint = UiText.of("补充复现步骤或说明…"),
             initialText = initial,
             maxLength = MAX_NOTE,
-            confirmText = "发送",
-            cancelText = "取消"
+            confirmText = UiText.of("发送"),
+            cancelText = UiText.of("取消")
         ) { text -> sendNote(data, text) }.show()
     }
 
@@ -184,7 +186,7 @@ class FeedbackDetailActivity : BaseActivity() {
      */
     private fun sendNote(data: FeedbackItem, text: String) {
         sending = true
-        MsgUtil.showMsg("正在发送…")
+        MsgUtil.showMsg(UiText.of("正在发送…"))
         CenterThreadPool.run {
             val result = TerminalApi.submitFeedbackReply(data.id, text)
             runOnUiThread {
@@ -213,7 +215,7 @@ class FeedbackDetailActivity : BaseActivity() {
                 scrollToBottom()
                 // 列表页那份是进详情前的快照，状态已经变了，让它回来时重拉一次
                 setResult(Activity.RESULT_OK)
-                MsgUtil.showMsg("已发送，开发者会看到")
+                MsgUtil.showMsg(UiText.of("已发送，开发者会看到"))
             }
         }
     }

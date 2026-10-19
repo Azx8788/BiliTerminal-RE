@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.live
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
@@ -17,7 +19,7 @@ class FollowLiveActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("我关注的直播")
+        setPageName(UiText.of("我关注的直播"))
 
         recyclerView.setHasFixedSize(true)
 

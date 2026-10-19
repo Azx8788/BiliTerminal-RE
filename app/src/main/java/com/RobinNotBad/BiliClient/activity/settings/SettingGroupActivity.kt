@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.settings
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -75,9 +77,9 @@ class SettingGroupActivity : RefreshListActivity() {
             val error = FontStyle.install(this, uri)
             runOnUiThread {
                 if (error != null) {
-                    MsgUtil.showMsg("字体未应用：$error")
+                    MsgUtil.showMsg(getString(R.string.msg_font_apply_failed, error))
                 } else {
-                    MsgUtil.showMsg("自定义字体已应用")
+                    MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_001))
                     rebuild(GROUP_APPEARANCE)
                     recreate()
                 }
@@ -94,7 +96,7 @@ class SettingGroupActivity : RefreshListActivity() {
             finish()
             return
         }
-        setPageName(groupTitle)
+        setPageName(SettingText.resolve(this, groupTitle))
 
         buildContent(groupType)
 
@@ -233,7 +235,7 @@ class SettingGroupActivity : RefreshListActivity() {
         sb.append(if (mid > 0) "UID：$mid" else "UID：未登录").append("\n")
         sb.append(if (csrf.isNotEmpty()) "CSRF Token：已获取" else "CSRF Token：未获取").append("\n")
         sb.append(if (refreshToken.isNotEmpty()) "Refresh Token：已获取（${refreshToken.take(8)}...）" else "Refresh Token：未获取")
-        MsgUtil.showText("登录凭证状态", sb.toString())
+        MsgUtil.showText(SettingText.resolve(this, "登录凭证状态"), sb.toString())
     }
 
     private fun buildUIGroup() {
@@ -244,7 +246,7 @@ class SettingGroupActivity : RefreshListActivity() {
             SharedPreferencesUtil.putInt(SettingsKeys.DENSITY, -1)
             SharedPreferencesUtil.putBoolean(SettingsKeys.UI_ROUND, false)
             refresh()
-            MsgUtil.showMsg("恢复完成")
+            MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_002))
         }
         button("查看预览") {
             startActivity(Intent(this, UIPreviewActivity::class.java))
@@ -255,7 +257,7 @@ class SettingGroupActivity : RefreshListActivity() {
             SharedPreferencesUtil.putInt(SettingsKeys.PADDING_H, if (isChecked) 5 else 0)
             SharedPreferencesUtil.putInt(SettingsKeys.PADDING_V, if (isChecked) 3 else 0)
             refresh()
-            if (isChecked) MsgUtil.showMsg("界面边距已更改\n可以手动微调喵")
+            if (isChecked) MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_003))
         }
         input("界面大小", getString(R.string.desc_setting_ui), SettingsKeys.DPI, "input_float", "1.0") { value ->
             try {
@@ -320,7 +322,7 @@ class SettingGroupActivity : RefreshListActivity() {
             "选择应用的主题配色方案",
             SettingsKeys.THEME,
             ColorScheme.THEME_DEFAULT,
-            listOf("B站粉", "知乎蓝", "爱奇艺绿", "紫色空灵", "五彩斑斓", "经典灰", "经典终端"),
+            listOf(UiText.of("B站粉"), "知乎蓝", "爱奇艺绿", "紫色空灵", "五彩斑斓", "经典灰", "经典终端"),
             listOf(
                 ColorScheme.THEME_BILIBILI_PINK,
                 ColorScheme.THEME_ZHIHU_BLUE,
@@ -375,18 +377,18 @@ class SettingGroupActivity : RefreshListActivity() {
             fontPickerLauncher.launch(intent)
         } catch (e: Throwable) {
             // 手表上不一定装了文件管理器，也可能没有 activity 能处理该 intent
-            MsgUtil.showMsg("没有可用的文件管理器")
+            MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_004))
         }
     }
 
     /** 删除已安装字体并回到系统字体。未装字体时只提示，不做多余的重建。 */
     private fun restoreSystemFont() {
         if (!FontStyle.hasCustomFont()) {
-            MsgUtil.showMsg("当前已是系统字体")
+            MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_005))
             return
         }
         FontStyle.clear(this)
-        MsgUtil.showMsg("已恢复系统字体")
+        MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_006))
         rebuild(GROUP_APPEARANCE)
         recreate()
     }
@@ -478,9 +480,9 @@ class SettingGroupActivity : RefreshListActivity() {
         ) { isChecked ->
             PerformanceManager.setHighPerformanceMode(isChecked)
             if (isChecked && PerformanceManager.getCurrentPerfLevel() != PerformanceManager.PERF_LEVEL_HIGH) {
-                MsgUtil.showMsg("高性能模式已开启，部分优化将在下次启动应用时生效")
+                MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_007))
             } else if (!isChecked) {
-                MsgUtil.showMsg("已切换到性能优先模式")
+                MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_008))
             }
         }
 
@@ -491,7 +493,7 @@ class SettingGroupActivity : RefreshListActivity() {
             "选择使用哪个API获取推荐视频",
             SharedPreferencesUtil.RECOMMEND_SOURCE,
             SharedPreferencesUtil.RECOMMEND_SOURCE_WEB,
-            listOf("网页源", "APP源", "混合使用"),
+            listOf(UiText.of("网页源"), "APP源", "混合使用"),
             listOf(
                 SharedPreferencesUtil.RECOMMEND_SOURCE_WEB,
                 SharedPreferencesUtil.RECOMMEND_SOURCE_APP,
@@ -519,7 +521,7 @@ class SettingGroupActivity : RefreshListActivity() {
             onClick = { startActivity(Intent(this, AboutActivity::class.java)) },
             onLongClick = {
                 val eggList = resources.getStringArray(R.array.eggs)
-                MsgUtil.showText("回声洞", eggList[eggClick])
+                MsgUtil.showText(SettingText.resolve(this, "回声洞"), eggList[eggClick])
                 if (eggClick < eggList.size - 1) eggClick++
                 true
             }

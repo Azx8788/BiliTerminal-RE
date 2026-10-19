@@ -22,7 +22,7 @@
         android:padding="@dimen/space_xl"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:text="啥都木有~"
+        android:text="@string/text_list_empty"
         android:textAlignment="center"
         android:gravity="center"
         android:visibility="gone" />

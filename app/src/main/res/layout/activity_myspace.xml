@@ -86,7 +86,7 @@
                         android:ellipsize="marquee"
                         android:marqueeRepeatLimit="marquee_forever"
                         android:singleLine="true"
-                        android:text="加载中..."
+                        android:text="@string/text_activitymyspace_01"
                         android:textColor="?android:attr/textColorPrimary"
                         android:textSize="13sp"
                         app:layout_constraintBottom_toTopOf="@+id/userFans"

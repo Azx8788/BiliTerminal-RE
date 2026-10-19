@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -204,13 +206,13 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
 
         when (videoCard.type) {
             "live" -> {
-                val sstrLive = SpannableString("[直播]" + StringUtil.htmlToString(videoCard.title))
+                val sstrLive = SpannableString(UiText.of("[直播]") + StringUtil.htmlToString(videoCard.title))
                 sstrLive.setSpan(TITLE_COLOR_SPAN, 0, 4,
                     Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 title.text = sstrLive
             }
             "series" -> {
-                val sstrSeries = SpannableString("[系列]" + StringUtil.htmlToString(videoCard.title))
+                val sstrSeries = SpannableString(UiText.of("[系列]") + StringUtil.htmlToString(videoCard.title))
                 sstrSeries.setSpan(TITLE_COLOR_SPAN, 0, 4,
                     Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
                 title.text = sstrSeries
@@ -237,7 +239,7 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
             intent.putExtra("progress_sec", card.progress)
             intent.putExtra("seekReply", -1L)
             ctx.startActivity(intent)
-        } else MsgUtil.showMsg("番剧信息获取失败")
+        } else MsgUtil.showMsg(UiText.of("番剧信息获取失败"))
     }
 
     companion object {

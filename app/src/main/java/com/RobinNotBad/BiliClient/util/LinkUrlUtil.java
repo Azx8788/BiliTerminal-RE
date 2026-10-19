@@ -1,5 +1,8 @@
 package com.RobinNotBad.BiliClient.util;
 
+import com.RobinNotBad.BiliClient.util.UiText;
+import com.RobinNotBad.BiliClient.R;
+
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
@@ -116,7 +119,7 @@ public class LinkUrlUtil {
         try {
             context.startActivity(new Intent(Intent.ACTION_VIEW).setData(Uri.parse(text)));
         } catch (ActivityNotFoundException e) {
-            MsgUtil.showMsg("没有可处理此链接的应用！");
+            MsgUtil.showMsg(UiText.of("没有可处理此链接的应用！"));
         } catch (Throwable th) {
             MsgUtil.err(th);
         }
@@ -156,11 +159,11 @@ public class LinkUrlUtil {
                 if (response.code() == 200 && (body = response.body()) != null) {
                     JSONObject json = new JSONObject(body.string());
                     if (json.has("code") && json.getInt("code") == -404) {
-                        MsgUtil.showMsg("啥都木有~");
+                        MsgUtil.showMsg(context.getString(R.string.text_list_empty));
                     }
                 }
             } catch (IOException | JSONException e) {
-                MsgUtil.showMsg("解析失败！");
+                MsgUtil.showMsg(context.getString(R.string.text_parse_failed));
             }
         });
     }

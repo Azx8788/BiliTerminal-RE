@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.api;
 
+import com.RobinNotBad.BiliClient.util.UiText;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.pm.PackageManager;
@@ -53,10 +54,10 @@ public class AppInfoApi {
             SharedPreferencesUtil.putBoolean("disclaimer_shown", true);
             if (nightNow) {
                 MsgUtil.runAfterDialogClosed(() ->
-                        MsgUtil.showDialog("温馨提醒", "夜深了，要注意休息呐~", 3));
+                        MsgUtil.showDialog(UiText.of("温馨提醒"), UiText.of("夜深了，要注意休息呐~"), 3));
             }
         } else if (nightNow) {
-            MsgUtil.showDialog("温馨提醒", "夜深了，要注意休息呐~", 3);
+            MsgUtil.showDialog(UiText.of("温馨提醒"), UiText.of("夜深了，要注意休息呐~"), 3);
         }
     }
 
@@ -81,8 +82,8 @@ public class AppInfoApi {
                     if (file.exists()) {
                         if (file.delete()) {
                             SharedPreferencesUtil.putString("terminal_update_pkg", "");
-                            MsgUtil.showMsg("更新包已删除");
-                        } else MsgUtil.showMsg("更新包删除失败");
+                            MsgUtil.showMsg(UiText.of("更新包已删除"));
+                        } else MsgUtil.showMsg(UiText.of("更新包删除失败"));
                     } else SharedPreferencesUtil.putString("terminal_update_pkg", "");
                 }
 
@@ -103,7 +104,7 @@ public class AppInfoApi {
             MsgUtil.showMsg("无法连接到终端公告接口\n也许是服务器宕机了？\n（对软件内容无影响）");
         } catch (Exception e) {
             Logu.e(e.toString());
-            MsgUtil.err("终端接口出现问题（不影响软件内容）", e);
+            MsgUtil.err(UiText.of("终端接口出现问题（不影响软件内容）"), e);
         }
     }
 

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.util.Log
 
@@ -17,7 +19,7 @@ class FollowingBangumisActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("追番列表")
+        setPageName(UiText.of("追番列表"))
 
         recyclerView.setHasFixedSize(true)
 

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.base
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -255,7 +257,7 @@ open class BaseActivity : AppCompatActivity() {
                     pagename.setPadding(0, 0, ToolsUtil.dp2px(5f), 0)
                     Logu.d("round", "ok")
                 } catch (e: Throwable) {
-                    MsgUtil.err("圆屏适配执行错误：", e)
+                    MsgUtil.err(UiText.of("圆屏适配执行错误："), e)
                 }
             }
         }

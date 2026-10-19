@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.ui.appearance
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.content.Context
 import android.os.Build
@@ -574,13 +576,13 @@ object ColorScheme {
 
     fun getThemeDisplayName(): String {
         return when (getCurrentThemeName()) {
-            THEME_ZHIHU_BLUE -> "知乎蓝"
-            THEME_IQIYI_GREEN -> "爱奇艺绿"
-            THEME_PURPLE_FANTASY -> "紫色空灵"
-            THEME_RAINBOW_FANTASY -> "五彩斑斓"
-            THEME_CLASSIC_GRAY -> "经典灰"
-            THEME_CLASSIC_TERMINAL -> "经典终端"
-            else -> "B站粉"
+            THEME_ZHIHU_BLUE -> UiText.of("知乎蓝")
+            THEME_IQIYI_GREEN -> UiText.of("爱奇艺绿")
+            THEME_PURPLE_FANTASY -> UiText.of("紫色空灵")
+            THEME_RAINBOW_FANTASY -> UiText.of("五彩斑斓")
+            THEME_CLASSIC_GRAY -> UiText.of("经典灰")
+            THEME_CLASSIC_TERMINAL -> UiText.of("经典终端")
+            else -> UiText.of("B站粉")
         }
     }
 }

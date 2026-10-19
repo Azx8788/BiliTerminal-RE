@@ -25,7 +25,7 @@
             android:layout_height="wrap_content"
             android:maxLines="1"
             android:ellipsize="end"
-            android:text="用户名"
+            android:text="@string/text_cellelectricuser_02"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -37,7 +37,7 @@
             android:alpha="0.7"
             android:ellipsize="end"
             android:maxLines="2"
-            android:text="充电留言"
+            android:text="@string/text_cellelectricuser_01"
             android:textSize="12sp"
             android:visibility="gone" />
 

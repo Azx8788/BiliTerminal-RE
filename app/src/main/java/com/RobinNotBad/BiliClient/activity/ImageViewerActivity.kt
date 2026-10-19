@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -31,7 +33,7 @@ class ImageViewerActivity : BaseActivity() {
         // 本页面 exported=true，外部可传空 Intent，缺少必要参数时直接退出而非崩溃
         val imageList = intent.getStringArrayListExtra("imageList")
         if (imageList.isNullOrEmpty()) {
-            MsgUtil.showMsgLong("未收到图片数据")
+            MsgUtil.showMsgLong(UiText.of("未收到图片数据"))
             finish()
             return
         }
@@ -50,7 +52,7 @@ class ImageViewerActivity : BaseActivity() {
                     .putExtra("path", FileUtil.getPicturePath().absolutePath)
                     .putExtra("type", 0)
                 startActivity(intent1)
-            } else MsgUtil.showMsg("再次点击下载")
+            } else MsgUtil.showMsg(UiText.of("再次点击下载"))
             longClickTimestamp = timeNow
         }
 
@@ -65,9 +67,9 @@ class ImageViewerActivity : BaseActivity() {
                     .into(photoView)
                 photoView.maximumScale = 6.25f
             } catch (e: OutOfMemoryError) {
-                MsgUtil.showMsg("超出内存，加载失败")
+                MsgUtil.showMsg(UiText.of("超出内存，加载失败"))
             } catch (e: Exception) {
-                MsgUtil.err("图片查看", e)
+                MsgUtil.err(UiText.of("图片查看"), e)
             }
 
             photoViewList.add(photoView)

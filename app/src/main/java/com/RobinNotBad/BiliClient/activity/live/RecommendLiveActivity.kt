@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.live
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
@@ -17,7 +19,7 @@ class RecommendLiveActivity : RefreshMainActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("推荐直播")
+        setPageName(UiText.of("推荐直播"))
 
         recyclerView.setHasFixedSize(true)
 

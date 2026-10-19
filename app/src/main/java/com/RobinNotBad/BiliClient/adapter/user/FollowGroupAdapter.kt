@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
@@ -246,7 +248,7 @@ class FollowGroupAdapter(
             val group = getGroupForPosition(position)
             if (group != null) {
                 holder.groupName.text = group.tag.name
-                holder.groupCount.text = group.tag.count.toString() + " 位成员"
+                holder.groupCount.text = group.tag.count.toString() + UiText.of(" 位成员")
 
                 val expanded = expandedMap[group.tag.tagid]
                 val targetRotation = if (expanded != null && expanded) 90f else 0f

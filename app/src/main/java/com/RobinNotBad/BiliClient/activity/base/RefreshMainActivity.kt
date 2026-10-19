@@ -77,8 +77,8 @@ open class RefreshMainActivity : InstanceActivity() {
         val tip = loadMoreTip ?: return
         runOnUiThread {
             tip.text = when {
-                end -> "没有更多了"
-                loading -> "正在加载…"
+                end -> getString(R.string.text_list_no_more)
+                loading -> getString(R.string.text_list_loading)
                 else -> ""
             }
             tip.visibility = if (end || loading) View.VISIBLE else View.GONE
@@ -117,7 +117,7 @@ open class RefreshMainActivity : InstanceActivity() {
     fun setOnEmptyRetry(action: Runnable) {
         emptyView?.let { ev ->
             ev.isClickable = true
-            ev.text = RefreshListActivity.EMPTY_TEXT_WITH_RETRY
+            ev.text = getString(R.string.text_list_empty_retry)
             ev.setOnClickListener {
                 hideEmptyView()
                 setRefreshing(true)
@@ -163,7 +163,7 @@ open class RefreshMainActivity : InstanceActivity() {
 
     fun loadFail() {
         page--
-        MsgUtil.showMsgLong("加载失败")
+        MsgUtil.showMsgLong(getString(R.string.text_load_failed))
         setRefreshing(false)
     }
 

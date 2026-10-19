@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.RobinNotBad.BiliClient.BiliTerminal
+import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.InstanceActivity
 import com.RobinNotBad.BiliClient.activity.video.local.DownloadListActivity
 import com.RobinNotBad.BiliClient.activity.video.local.LocalListActivity
@@ -198,7 +199,7 @@ class DownloadService : Service() {
                     cursor = database.rawQuery("select * from download where aid=? and cid=?",
                         arrayOf(aid.toString(), cid.toString()))
                     if (cursor != null && cursor.count > 0) {
-                        MsgUtil.showMsg("该视频已在下载队列中")
+                        MsgUtil.showMsg(BiliTerminal.context!!.getString(R.string.text_download_already_queued))
                         return@run
                     }
                     cursor?.close()
@@ -223,7 +224,7 @@ class DownloadService : Service() {
                     // 保存完整视频元数据到 .video_meta.json
                     DownloadRepository.saveVideoMeta(path_single, title, aid, cid, qn, downloadType)
 
-                    val msg = if (DownloadPathSpec.TYPE_AUDIO_ONLY == downloadType) "已添加音频下载" else "已添加下载"
+                    val msg = if (DownloadPathSpec.TYPE_AUDIO_ONLY == downloadType) BiliTerminal.context!!.getString(R.string.text_download_added_audio) else BiliTerminal.context!!.getString(R.string.text_download_added)
                     MsgUtil.showMsg(msg)
 
                     start(-1)
@@ -249,7 +250,7 @@ class DownloadService : Service() {
                     cursor = database.rawQuery("select * from download where aid=? and cid=?",
                         arrayOf(aid.toString(), cid.toString()))
                     if (cursor != null && cursor.count > 0) {
-                        MsgUtil.showMsg("该视频已在下载队列中")
+                        MsgUtil.showMsg(BiliTerminal.context!!.getString(R.string.text_download_already_queued))
                         return@run
                     }
                     cursor?.close()
@@ -274,7 +275,7 @@ class DownloadService : Service() {
                     // 保存完整视频元数据到 .video_meta.json
                     DownloadRepository.saveVideoMeta(path_page, child, aid, cid, qn, downloadType)
 
-                    val msg = if (DownloadPathSpec.TYPE_AUDIO_ONLY == downloadType) "已添加音频下载" else "已添加下载"
+                    val msg = if (DownloadPathSpec.TYPE_AUDIO_ONLY == downloadType) BiliTerminal.context!!.getString(R.string.text_download_added_audio) else BiliTerminal.context!!.getString(R.string.text_download_added)
                     MsgUtil.showMsg(msg)
 
                     start(-1)
@@ -295,7 +296,7 @@ class DownloadService : Service() {
             // 并发进入时两个线程会同时通过 if 检查、各自启动一个下载批次，最终并发写同一批文件。
             if (started) {
                 // 不重复启动，但要给出可感知的反馈，避免用户点了"继续下载"以为没生效
-                MsgUtil.showMsg("下载队列已在进行中")
+                MsgUtil.showMsg(BiliTerminal.context!!.getString(R.string.text_download_queue_running))
                 return
             }
             started = true
@@ -312,7 +313,7 @@ class DownloadService : Service() {
                 started = false
                 Logu.e("start", e.message ?: "启动下载服务失败")
                 CenterThreadPool.runOnUiThread {
-                    MsgUtil.showMsg("启动下载服务失败，请重试")
+                    MsgUtil.showMsg(BiliTerminal.context!!.getString(R.string.text_download_service_start_failed))
                 }
             }
         }
@@ -408,13 +409,13 @@ class DownloadService : Service() {
 
                 exitCode = DownloadPathSpec.NORMAL
                 exitMessage = if (batchStats.failed > 0)
-                    "${batchStats.failed} 个任务下载失败，请重试"
+                    getString(R.string.text_download_some_failed, batchStats.failed)
                 else
-                    "全部下载完成"
+                    getString(R.string.text_download_all_complete)
             } catch (e: Exception) {
                 MsgUtil.err(e)
                 exitCode = DownloadPathSpec.ERR_UNKNOWN
-                exitMessage = "下载失败，未知错误"
+                exitMessage = getString(R.string.text_download_failed_unknown)
             }
 
             stopSelf()
@@ -469,13 +470,13 @@ class DownloadService : Service() {
 
             // 立即标记为下载中，防止竞态条件导致同一任务被重复调度
             DownloadRepository.setState(sectionToProcess.id, "downloading")
-            setDownloadProgress(sectionToProcess.id, 0f, "准备中")
+            setDownloadProgress(sectionToProcess.id, 0f, getString(R.string.text_download_preparing))
 
             activeCount.incrementAndGet()
             activeDownloadsCount = activeCount.get()
 
             section = sectionToProcess
-            state = "准备中"
+            state = getString(R.string.text_download_preparing)
             percent = 0f
 
             val taskSection = sectionToProcess
@@ -589,7 +590,7 @@ class DownloadService : Service() {
             }
         } catch (e: JSONException) {
             DownloadRepository.setState(downloadSection.id, "error")
-            notifier.notifyCompletion("下载链接获取失败：\n" + downloadSection.name_short, downloadSection.id.toInt())
+            notifier.notifyCompletion(getString(R.string.text_download_link_failed, downloadSection.name_short), downloadSection.id.toInt())
             section = null
             refreshDownloadList()
             return false
@@ -603,12 +604,12 @@ class DownloadService : Service() {
             DownloadRepository.setState(downloadSection.id, "downloading")
 
             // 更新进度追踪
-            setDownloadProgress(downloadSection.id, 0f, "开始下载")
+            setDownloadProgress(downloadSection.id, 0f, getString(R.string.text_download_start))
 
             // 更新当前显示的section
             section = downloadSection
             percent = 0f
-            state = "开始下载"
+            state = getString(R.string.text_download_start)
             refreshDownloadList()
 
             var file_sign: File? = null
@@ -635,8 +636,8 @@ class DownloadService : Service() {
                     if (downloadSection.isAudioOnly) {
                         // 音频下载：先写临时文件，成功后替换，避免失败破坏旧文件
                         val audioTmp = File(path_single, DownloadPathSpec.FILE_AUDIO_TMP)
-                        state = "下载音频"
-                        setDownloadProgress(downloadSection.id, 0.2f, "下载音频")
+                        state = getString(R.string.text_download_audio)
+                        setDownloadProgress(downloadSection.id, 0.2f, getString(R.string.text_download_audio))
                         result = downFile(url_audio, audioTmp, downloadSection.id, 0.2f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
@@ -648,15 +649,15 @@ class DownloadService : Service() {
                         // 先下载到临时文件，全部成功后再替换正式文件（重新下载/切换清晰度时不破坏旧视频）
                         val videoTmp = File(path_single, DownloadPathSpec.FILE_VIDEO_TMP)
                         val audioTmp = File(path_single, DownloadPathSpec.FILE_AUDIO_TMP)
-                        state = "下载视频"
-                        setDownloadProgress(downloadSection.id, 0f, "下载视频")
+                        state = getString(R.string.text_download_video)
+                        setDownloadProgress(downloadSection.id, 0f, getString(R.string.text_download_video))
                         result = downFile(url_video, videoTmp, downloadSection.id, 0f, 1.0f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
                             return false
                         }
-                        state = "下载音频"
-                        setDownloadProgress(downloadSection.id, 0f, "下载音频")
+                        state = getString(R.string.text_download_audio)
+                        setDownloadProgress(downloadSection.id, 0f, getString(R.string.text_download_audio))
                         result = downFile(url_audio, audioTmp, downloadSection.id, 0f, 1.0f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
@@ -664,12 +665,12 @@ class DownloadService : Service() {
                         }
                         if (!replaceTempOrFail(videoTmp, File(path_single, DownloadPathSpec.FILE_VIDEO))) return false
                         if (!replaceTempOrFail(audioTmp, File(path_single, DownloadPathSpec.FILE_AUDIO))) return false
-                        setDownloadProgress(downloadSection.id, 1.0f, "下载完成")
+                        setDownloadProgress(downloadSection.id, 1.0f, getString(R.string.text_update_download_complete))
                     } else {
                         // MP4格式或无音轨DASH：直接下载单个文件（音视频已合并/无音轨）
                         val videoTmp = File(path_single, DownloadPathSpec.FILE_VIDEO_TMP)
-                        state = "下载视频"
-                        setDownloadProgress(downloadSection.id, 0.2f, "下载视频")
+                        state = getString(R.string.text_download_video)
+                        setDownloadProgress(downloadSection.id, 0.2f, getString(R.string.text_download_video))
                         result = downFile(url_video, videoTmp, downloadSection.id, 0.2f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
@@ -708,8 +709,8 @@ class DownloadService : Service() {
                     if (downloadSection.isAudioOnly) {
                         // 音频下载：先写临时文件，成功后替换，避免失败破坏旧文件
                         val audioTmp = File(path_page, DownloadPathSpec.FILE_AUDIO_TMP)
-                        state = "下载音频"
-                        setDownloadProgress(downloadSection.id, 0.2f, "下载音频")
+                        state = getString(R.string.text_download_audio)
+                        setDownloadProgress(downloadSection.id, 0.2f, getString(R.string.text_download_audio))
                         result = downFile(url_audio, audioTmp, downloadSection.id, 0.2f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
@@ -721,15 +722,15 @@ class DownloadService : Service() {
                         // 先下载到临时文件，全部成功后再替换正式文件（重新下载/切换清晰度时不破坏旧视频）
                         val videoTmp = File(path_page, DownloadPathSpec.FILE_VIDEO_TMP)
                         val audioTmp = File(path_page, DownloadPathSpec.FILE_AUDIO_TMP)
-                        state = "下载视频"
-                        setDownloadProgress(downloadSection.id, 0f, "下载视频")
+                        state = getString(R.string.text_download_video)
+                        setDownloadProgress(downloadSection.id, 0f, getString(R.string.text_download_video))
                         result = downFile(url_video, videoTmp, downloadSection.id, 0f, 1.0f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
                             return false
                         }
-                        state = "下载音频"
-                        setDownloadProgress(downloadSection.id, 0f, "下载音频")
+                        state = getString(R.string.text_download_audio)
+                        setDownloadProgress(downloadSection.id, 0f, getString(R.string.text_download_audio))
                         result = downFile(url_audio, audioTmp, downloadSection.id, 0f, 1.0f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
@@ -737,12 +738,12 @@ class DownloadService : Service() {
                         }
                         if (!replaceTempOrFail(videoTmp, File(path_page, DownloadPathSpec.FILE_VIDEO))) return false
                         if (!replaceTempOrFail(audioTmp, File(path_page, DownloadPathSpec.FILE_AUDIO))) return false
-                        setDownloadProgress(downloadSection.id, 1.0f, "下载完成")
+                        setDownloadProgress(downloadSection.id, 1.0f, getString(R.string.text_update_download_complete))
                     } else {
                         // MP4格式或无音轨DASH：直接下载单个文件（音视频已合并/无音轨）
                         val videoTmp = File(path_page, DownloadPathSpec.FILE_VIDEO_TMP)
-                        state = "下载视频"
-                        setDownloadProgress(downloadSection.id, 0.2f, "下载视频")
+                        state = getString(R.string.text_download_video)
+                        setDownloadProgress(downloadSection.id, 0.2f, getString(R.string.text_download_video))
                         result = downFile(url_video, videoTmp, downloadSection.id, 0.2f)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
@@ -757,7 +758,7 @@ class DownloadService : Service() {
                 }
             }
 
-            notifier.notifyCompletion("下载成功：\n" + downloadSection.name_short, downloadSection.id.toInt())
+            notifier.notifyCompletion(getString(R.string.text_download_success, downloadSection.name_short), downloadSection.id.toInt())
 
             // 移除进度映射
             removeDownloadProgress(downloadSection.id)
@@ -845,8 +846,8 @@ class DownloadService : Service() {
         useDash: Boolean
     ): Boolean {
         // 封面
-        state = "下载封面"
-        setDownloadProgress(downloadSection.id, if (useDash) 0f else 0.05f, "下载封面")
+        state = getString(R.string.text_download_cover)
+        setDownloadProgress(downloadSection.id, if (useDash) 0f else 0.05f, getString(R.string.text_download_cover))
         if (!coverFile.exists() && downloadSection.url_cover.isNotEmpty()) {
             val result = if (useDash)
                 downFile(downloadSection.url_cover, coverFile, downloadSection.id, 0f, 0.4f)
@@ -860,13 +861,13 @@ class DownloadService : Service() {
 
         if (!downloadSection.isAudioOnly) {
             // 字幕
-            state = "下载字幕"
-            setDownloadProgress(downloadSection.id, if (useDash) 0.4f else 0.1f, "下载字幕")
+            state = getString(R.string.text_download_subtitle)
+            setDownloadProgress(downloadSection.id, if (useDash) 0.4f else 0.1f, getString(R.string.text_download_subtitle))
             downSubtitles(downloadSection.aid, downloadSection.cid, subtitleFolder)
 
             // 弹幕：DASH 传 0.95 使完成后进度为 1.0（附件阶段走满）
-            state = "下载弹幕"
-            setDownloadProgress(downloadSection.id, if (useDash) 0.6f else 0.15f, "下载弹幕")
+            state = getString(R.string.text_download_danmaku)
+            setDownloadProgress(downloadSection.id, if (useDash) 0.6f else 0.15f, getString(R.string.text_download_danmaku))
             val result = if (useDash)
                 downDanmaku(url_danmaku, danmakuFile, downloadSection.id, 0.95f)
             else
@@ -995,7 +996,7 @@ class DownloadService : Service() {
                             pseudoProgress = DownloadProgressMath.pseudoProgressStep(pseudoProgress)
                             DownloadProgressMath.progressForPseudo(pseudoProgress, baseProgress, endProgress)
                         }
-                        setDownloadProgress(sectionId, actualProgress, state ?: "下载中", totalDown, TotalFileSize)
+                        setDownloadProgress(sectionId, actualProgress, state ?: getString(R.string.text_download_in_progress), totalDown, TotalFileSize)
                     }
                 }
             }
@@ -1029,7 +1030,7 @@ class DownloadService : Service() {
         }
         // 下载成功后把进度推进到阶段终点，保证阶段进度条走满（分段进度依赖）
         if (result == DownloadPathSpec.NORMAL && sectionId > 0) {
-            setDownloadProgress(sectionId, endProgress, state ?: "下载中")
+            setDownloadProgress(sectionId, endProgress, state ?: getString(R.string.text_download_in_progress))
         }
         return result
     }
@@ -1121,7 +1122,7 @@ class DownloadService : Service() {
                                 }
                                 percent = actualProgress
                                 if (sectionId > 0) {
-                                    setDownloadProgress(sectionId, actualProgress, state ?: "下载中", total, effectiveTotalSize)
+                                    setDownloadProgress(sectionId, actualProgress, state ?: getString(R.string.text_download_in_progress), total, effectiveTotalSize)
                                 }
                             }
                         }
@@ -1154,7 +1155,7 @@ class DownloadService : Service() {
         if (singleResult == DownloadPathSpec.NORMAL) {
             percent = endProgress
             if (sectionId > 0) {
-                setDownloadProgress(sectionId, endProgress, state ?: "下载中", downloaded, effectiveTotalSize)
+                setDownloadProgress(sectionId, endProgress, state ?: getString(R.string.text_download_in_progress), downloaded, effectiveTotalSize)
             }
         }
         return singleResult
@@ -1197,7 +1198,7 @@ class DownloadService : Service() {
             // 更新进度到进度映射表
             if (sectionId > 0) {
                 val actualProgress = DownloadProgressMath.progressForBytes(totalDownloaded.get(), totalSize, baseProgress, endProgress)
-                setDownloadProgress(sectionId, actualProgress, state ?: "下载中", totalDownloaded.get(), totalSize)
+                setDownloadProgress(sectionId, actualProgress, state ?: getString(R.string.text_download_in_progress), totalDownloaded.get(), totalSize)
             }
 
             try {
@@ -1233,7 +1234,7 @@ class DownloadService : Service() {
             // 进度同步退回阶段起点：单线程重下会从 0 重新推进 percent，
             // 若保留分片阶段的高位进度，进度条会先满后退。
             if (sectionId > 0) {
-                setDownloadProgress(sectionId, baseProgress, state ?: "下载中", 0L, totalSize)
+                setDownloadProgress(sectionId, baseProgress, state ?: getString(R.string.text_download_in_progress), 0L, totalSize)
             }
             return downFileSpeedSingle(url, file, client, headers, totalSize, sectionId, baseProgress, endProgress)
         }
@@ -1241,7 +1242,7 @@ class DownloadService : Service() {
         val segResult = if (started) DownloadPathSpec.NORMAL else DownloadPathSpec.ERR_UNKNOWN
         // 下载成功后把进度推进到阶段终点，保证阶段进度条走满（分段进度依赖）
         if (segResult == DownloadPathSpec.NORMAL && sectionId > 0) {
-            setDownloadProgress(sectionId, endProgress, state ?: "下载中")
+            setDownloadProgress(sectionId, endProgress, state ?: getString(R.string.text_download_in_progress))
         }
         return segResult
     }
@@ -1335,7 +1336,7 @@ class DownloadService : Service() {
             
             // 更新进度
             if (sectionId > 0) {
-                setDownloadProgress(sectionId, baseProgress + 0.05f, "下载弹幕")
+                setDownloadProgress(sectionId, baseProgress + 0.05f, getString(R.string.text_download_danmaku))
             }
         } catch (e: IOException) {
             return DownloadPathSpec.ERR_FILE
@@ -1367,7 +1368,7 @@ class DownloadService : Service() {
         notifyTimer = null
 
         if (exitMessage == null)
-            exitMessage = "下载服务已退出"
+            exitMessage = getString(R.string.text_download_service_exit)
 
         Logu.d("退出下载服务")
         if (section != null) {

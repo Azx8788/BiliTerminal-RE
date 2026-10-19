@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Matrix
@@ -199,7 +201,7 @@ class ShortVideoPlayerActivity : InstanceActivity() {
     private fun loadFeed() {
         loadingLayout.visibility = View.VISIBLE
         errorLayout.visibility = View.GONE
-        loadingText.text = "加载短视频..."
+        loadingText.text = UiText.of("加载短视频...")
         preloadManager.loadInitial()
     }
 }
@@ -329,7 +331,7 @@ class ShortVideoPagerAdapter(
                 lastBufferingVisible = false
                 bufferingIndicator.visibility = View.GONE
             }
-            MsgUtil.showMsg("播放错误")
+            MsgUtil.showMsg(UiText.of("播放错误"))
         })
         private val playerScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
         private var stateJob: Job? = null
@@ -644,7 +646,7 @@ class ShortVideoPagerAdapter(
                         } else {
                             lastBufferingVisible = false
                             bufferingIndicator.visibility = View.GONE
-                            MsgUtil.showMsg("加载视频失败")
+                            MsgUtil.showMsg(UiText.of("加载视频失败"))
                         }
                     }
                 }
@@ -758,7 +760,7 @@ class ShortVideoPagerAdapter(
                 Logu.e("ShortVideo", "Player init error: ${e.message}")
                 lastBufferingVisible = false
                 bufferingIndicator.visibility = View.GONE
-                MsgUtil.showMsg("播放器初始化失败")
+                MsgUtil.showMsg(UiText.of("播放器初始化失败"))
             }
         }
 

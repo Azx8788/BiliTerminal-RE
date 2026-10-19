@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.widget.TextView
@@ -39,7 +41,7 @@ class PopularActivity : InstanceActivity() {
         swipeRefreshLayout.setOnRefreshListener { loadPopular() }
 
         val title = findViewById<TextView>(R.id.pageName)
-        title.text = "热门"
+        title.text = UiText.of("热门")
 
         loadPopular()
     }

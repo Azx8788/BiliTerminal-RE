@@ -73,9 +73,9 @@ class SMSLoginFragment : Fragment() {
                 doSendSms()
             } else if (result.resultCode == CaptchaWebViewActivity.RESULT_UNAVAILABLE) {
                 // 同 PasswordLoginFragment：把「设备不支持」和「用户取消」分开报，并给出可走的路
-                setStatusText("此设备无法显示人机验证，请改用扫码登录")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_001))
             } else {
-                setStatusText("验证已取消")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_002))
             }
         }
     }
@@ -96,7 +96,7 @@ class SMSLoginFragment : Fragment() {
         sendSmsBtn.setOnClickListener {
             val phone = phoneInput.text.toString().trim()
             if (phone.isEmpty() || phone.length < 11) {
-                setStatusText("请输入正确的手机号")
+                setStatusText(getString(R.string.msg_login_status_smsloginfragment_001))
                 return@setOnClickListener
             }
             getCaptchaAndVerify()
@@ -106,11 +106,11 @@ class SMSLoginFragment : Fragment() {
             val phone = phoneInput.text.toString().trim()
             val code = smsCodeInput.text.toString().trim()
             if (phone.isEmpty() || code.isEmpty()) {
-                setStatusText("请输入手机号和验证码")
+                setStatusText(getString(R.string.msg_login_status_smsloginfragment_002))
                 return@setOnClickListener
             }
             if (!captchaReady) {
-                setStatusText("请先完成人机验证")
+                setStatusText(getString(R.string.msg_login_status_smsloginfragment_003))
                 return@setOnClickListener
             }
             doSmsLogin(phone, code)
@@ -134,7 +134,7 @@ class SMSLoginFragment : Fragment() {
 
     @SuppressLint("SetTextI18n")
     private fun getCaptchaAndVerify() {
-        setStatusText("正在获取验证码...")
+        setStatusText(getString(R.string.msg_login_status_passwordloginfragment_004))
         captchaReady = false
         CenterThreadPool.run {
             try {
@@ -148,8 +148,8 @@ class SMSLoginFragment : Fragment() {
                 }
                 val captchaResp = LoginApi.getCaptcha()
                 if (captchaResp.optInt("code", -1) != 0) {
-                    val msg = captchaResp.optString("message", "未知错误")
-                    setStatusText("验证码接口异常: $msg")
+                    val msg = captchaResp.optString("message", getString(R.string.msg_unknown_error))
+                    setStatusText(getString(R.string.err_sms_api, msg))
                     return@run
                 }
                 val data = captchaResp.getJSONObject("data")
@@ -166,9 +166,9 @@ class SMSLoginFragment : Fragment() {
                     captchaLauncher.launch(intent)
                 }
             } catch (e: IOException) {
-                setStatusText("网络错误，请重试")
+                setStatusText(getString(R.string.msg_network_error_retry))
             } catch (e: JSONException) {
-                setStatusText("验证码接口异常")
+                setStatusText(getString(R.string.msg_login_status_passwordloginfragment_005))
             }
         }
     }
@@ -180,7 +180,7 @@ class SMSLoginFragment : Fragment() {
         else
             geetestValidate + "|jordan"
 
-        setStatusText("正在发送验证码...")
+        setStatusText(getString(R.string.msg_login_status_smsloginfragment_004))
         val phone = phoneInput.text.toString().trim()
 
         CenterThreadPool.run {
@@ -193,22 +193,22 @@ class SMSLoginFragment : Fragment() {
                         captchaKey = data.optString("captcha_key", "")
                     }
                     CenterThreadPool.runOnUiThread {
-                        setStatusText("验证码已发送，请查收短信")
+                        setStatusText(getString(R.string.msg_login_status_smsloginfragment_005))
                         startCountDown()
                     }
                 } else if (code == -105) {
-                    setStatusText("验证码错误，请重试")
+                    setStatusText(getString(R.string.msg_login_status_passwordloginfragment_011))
                     captchaReady = false
                 } else {
-                    val message = result.optString("message", "发送失败")
-                    setStatusText("发送失败: $message")
+                    val message = result.optString("message", getString(R.string.text_sms_send_failed_default))
+                    setStatusText(getString(R.string.err_sms_send_failed, message))
                     captchaReady = false
                 }
             } catch (e: IOException) {
-                setStatusText("网络错误，请重试")
+                setStatusText(getString(R.string.msg_network_error_retry))
                 captchaReady = false
             } catch (e: JSONException) {
-                setStatusText("接口异常")
+                setStatusText(getString(R.string.msg_login_status_smsloginfragment_006))
                 captchaReady = false
             }
         }
@@ -220,7 +220,7 @@ class SMSLoginFragment : Fragment() {
             override fun onTick(millisUntilFinished: Long) {
                 if (isAdded) {
                     CenterThreadPool.runOnUiThread {
-                        sendSmsText.text = (millisUntilFinished / 1000).toString() + "s后重发"
+                        sendSmsText.text = getString(R.string.text_sms_resend, millisUntilFinished / 1000)
                         sendSmsText.isEnabled = false
                     }
                 }
@@ -229,7 +229,7 @@ class SMSLoginFragment : Fragment() {
             override fun onFinish() {
                 if (isAdded) {
                     CenterThreadPool.runOnUiThread {
-                        sendSmsText.text = "获取验证码"
+                        sendSmsText.text = getString(R.string.text_sms_get_code)
                         sendSmsText.isEnabled = true
                     }
                 }
@@ -240,7 +240,7 @@ class SMSLoginFragment : Fragment() {
 
     @SuppressLint("SetTextI18n")
     private fun doSmsLogin(phone: String, code: String) {
-        setStatusText("正在登录...")
+        setStatusText(getString(R.string.msg_login_status_passwordloginfragment_008))
         CenterThreadPool.run {
             try {
                 val result = LoginApi.smsLogin(phone, code, captchaKey)
@@ -249,17 +249,17 @@ class SMSLoginFragment : Fragment() {
                 if (respCode == 0) {
                     handleLoginSuccess(result)
                 } else if (respCode == 1006) {
-                    setStatusText("请输入正确的短信验证码")
+                    setStatusText(getString(R.string.msg_login_status_smsloginfragment_007))
                 } else if (respCode == 1007) {
-                    setStatusText("短信验证码已过期")
+                    setStatusText(getString(R.string.msg_login_status_smsloginfragment_008))
                 } else {
-                    val message = result.optString("message", "登录失败")
-                    setStatusText("登录失败: $message")
+                    val message = result.optString("message", getString(R.string.text_sms_login_failed_default))
+                    setStatusText(getString(R.string.err_sms_login_failed, message))
                 }
             } catch (e: IOException) {
-                setStatusText("网络错误，请重试")
+                setStatusText(getString(R.string.msg_network_error_retry))
             } catch (e: JSONException) {
-                setStatusText("接口异常")
+                setStatusText(getString(R.string.msg_login_status_smsloginfragment_006))
             }
         }
     }
@@ -296,7 +296,7 @@ class SMSLoginFragment : Fragment() {
                 startActivity(Intent(requireContext(), SplashActivity::class.java))
                 if (isAdded) requireActivity().finish()
             } catch (e: Exception) {
-                setStatusText("登录成功但处理异常: " + e.message)
+                setStatusText(getString(R.string.err_sms_login_handle, e.message))
             }
         }
     }

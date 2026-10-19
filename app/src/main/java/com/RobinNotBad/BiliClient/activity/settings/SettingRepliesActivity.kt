@@ -14,7 +14,7 @@ class SettingRepliesActivity : RefreshListActivity() {
     @SuppressLint("MissingInflatedId", "SetTextI18n", "InflateParams")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("评论区设置")
+        setPageName(getString(R.string.pagename_settingrepliesactivity_001))
         Log.e("debug", "进入评论区设置")
 
         val sectionList: List<SettingSection> = ArrayList<SettingSection>().apply {

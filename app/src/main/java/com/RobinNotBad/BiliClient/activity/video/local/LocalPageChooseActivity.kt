@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.local
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -36,7 +38,7 @@ class LocalPageChooseActivity : BaseActivity() {
         findViewById<View>(R.id.top).setOnClickListener { finish() }
 
         val textView = findViewById<TextView>(R.id.pageName)
-        textView.text = "请选择分页"
+        textView.text = UiText.of("请选择分页")
 
         val intent = intent
         val title = intent.getStringExtra("title")!!
@@ -67,7 +69,7 @@ class LocalPageChooseActivity : BaseActivity() {
                 }
                 startActivity(player)
             } catch (e: ActivityNotFoundException) {
-                MsgUtil.showMsg("没有找到播放器，请检查是否安装")
+                MsgUtil.showMsg(UiText.of("没有找到播放器，请检查是否安装"))
             } catch (e: Exception) {
                 MsgUtil.err(e)
             }
@@ -91,14 +93,14 @@ class LocalPageChooseActivity : BaseActivity() {
                 adapter.notifyItemRemoved(position)
                 adapter.notifyItemRangeChanged(0, pageList.size - position)
 
-                MsgUtil.showMsg("删除成功")
+                MsgUtil.showMsg(UiText.of("删除成功"))
                 longClickPosition = -1
 
                 deleted = true
             } else {
                 longClickPosition = position
                 longClickTimestamp = timestamp
-                MsgUtil.showMsg("再次长按删除")
+                MsgUtil.showMsg(UiText.of("再次长按删除"))
             }
         }
 

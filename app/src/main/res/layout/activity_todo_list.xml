@@ -21,7 +21,7 @@
             android:layout_toStartOf="@id/timeText"
             android:layout_toLeftOf="@id/timeText"
             android:lines="1"
-            android:text="TO DO清单"
+            android:text="@string/settingtext_settinggroupactivity_086"
             android:textStyle="bold"
             app:drawableStartCompat="@drawable/arrow_back" />
 
@@ -54,7 +54,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingVertical="10dp"
-                android:text="手机端适配"
+                android:text="@string/text_activitytodolist_03"
                 android:textSize="14sp" />
 
             <TextView
@@ -62,7 +62,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingVertical="10dp"
-                android:text="平板端适配"
+                android:text="@string/text_activitytodolist_02"
                 android:textSize="14sp" />
 
             <TextView
@@ -70,7 +70,7 @@
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:paddingVertical="12dp"
-                android:text="不保证会实现"
+                android:text="@string/text_activitytodolist_01"
                 android:textColor="@android:color/darker_gray"
                 android:textSize="11sp" />
 

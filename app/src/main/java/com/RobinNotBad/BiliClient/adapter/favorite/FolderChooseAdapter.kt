@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.content.Context
 import android.view.LayoutInflater
@@ -68,7 +70,7 @@ class FolderChooseAdapter(
                                 changed = true
                             } else
                                 (context as Activity).runOnUiThread {
-                                    MsgUtil.showMsg("删除失败！错误码：" + result)
+                                    MsgUtil.showMsg(UiText.fmt(UiText.of("删除失败！错误码：%1\$s"), result))
                                     setCardView(cardView, true)
                                 }
                         } catch (e: IOException) {
@@ -91,7 +93,7 @@ class FolderChooseAdapter(
                                 added = true
                             } else
                                 (context as Activity).runOnUiThread {
-                                    MsgUtil.showMsg("添加失败！错误码：" + result)
+                                    MsgUtil.showMsg(UiText.fmt(UiText.of("添加失败！错误码：%1\$s"), result))
                                     setCardView(cardView, false)
                                 }
                             if (SharedPreferencesUtil.getBoolean("fav_single", false))

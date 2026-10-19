@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.widget.TextView
@@ -40,7 +42,7 @@ class DialogActivity : BaseActivity() {
                                 waitTime--
                                 closeBtn.text = "知道了(${waitTime}s)"
                             } else {
-                                closeBtn.text = "知道了"
+                                closeBtn.text = UiText.of("知道了")
                                 closeBtn.isEnabled = true
                                 cancelCountdown()
                             }

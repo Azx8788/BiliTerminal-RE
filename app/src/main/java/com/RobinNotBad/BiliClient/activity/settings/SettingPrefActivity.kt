@@ -17,7 +17,7 @@ class SettingPrefActivity : RefreshListActivity() {
     @SuppressLint("MissingInflatedId", "SetTextI18n", "InflateParams")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("偏好设置")
+        setPageName(getString(R.string.pagename_settingprefactivity_001))
         Log.e("debug", "进入偏好设置")
 
         val sectionList: List<SettingSection> = ArrayList<SettingSection>().apply {

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.dynamic
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -18,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.api.ApiErrorText
 import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.activity.dynamic.send.SendDynamicActivity
@@ -237,16 +240,16 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
             // 决定——`long_press_panel_enable` 管的是「长按走哪条路」，不是「面板里有什么」。
             val content = dynamic.content?.toString().orEmpty()
             if (LongPressPrefs.shouldOfferCopy(StringUtil.isCopyEnabled(), content))
-                actions.add("复制文字" to { StringUtil.openCopyPage(activity, content) })
-            if (dynamic.canEdit) actions.add("编辑动态" to { launchEdit(activity, dynamic, onEdited) })
+                actions.add(UiText.of("复制文字") to { StringUtil.openCopyPage(activity, content) })
+            if (dynamic.canEdit) actions.add(UiText.of("编辑动态") to { launchEdit(activity, dynamic, onEdited) })
             if (dynamic.canDelete) {
-                actions.add((if (dynamic.isTop) "取消置顶" else "置顶动态") to {
+                actions.add((if (dynamic.isTop) UiText.of("取消置顶") else UiText.of("置顶动态")) to {
                     toggleTop(activity, dynamic, onChanged)
                 })
             }
-            if (dynamic.canDelete) actions.add("删除动态" to { confirmDelete(activity, dynamic, onDeleted) })
+            if (dynamic.canDelete) actions.add(UiText.of("删除动态") to { confirmDelete(activity, dynamic, onDeleted) })
             if (actions.isEmpty()) {
-                MsgUtil.showMsg("没有可操作的项")
+                MsgUtil.showMsg(UiText.of("没有可操作的项"))
                 return
             }
             // 只剩「复制文字」一项时，不必弹一个只有单选项的菜单——直接进复制界面。
@@ -257,7 +260,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                 return
             }
             // 「删除动态」是破坏性操作，用危险色标出来
-            val dangerIndex = actions.indexOfFirst { it.first.startsWith("删除") }
+            val dangerIndex = actions.indexOfFirst { it.first.startsWith(UiText.of("删除")) }
             TerminalDialog.menu(
                 context = activity,
                 items = actions.map { it.first },
@@ -268,7 +271,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
         private fun launchEdit(activity: BaseActivity, dynamic: Dynamic, onEdited: ((String) -> Unit)?) {
             val text = dynamic.content?.toString().orEmpty()
             if (text.isEmpty()) {
-                MsgUtil.showMsg("这条动态没有能编辑的正文")
+                MsgUtil.showMsg(UiText.of("这条动态没有能编辑的正文"))
                 return
             }
             // ActivityResultLauncher 只能在 Activity 上注册一次，没有 per-holder 的回调注册点，
@@ -298,7 +301,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                             onChanged?.invoke()
                             MsgUtil.showMsg(DynamicApi.topSuccessMsg(top))
                         } else {
-                            MsgUtil.showMsg(DynamicApi.topErrorMsg(code).ifEmpty { "操作失败（$code）" })
+                            MsgUtil.showMsg(DynamicApi.topErrorMsg(code).ifEmpty { ApiErrorText.opFailedBrief(code) })
                         }
                     }
                 } catch (e: Exception) {
@@ -310,9 +313,9 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
         private fun confirmDelete(activity: BaseActivity, dynamic: Dynamic, onDeleted: () -> Unit) {
             TerminalDialog.confirm(
                 context = activity,
-                title = "删除动态",
-                message = "删除后无法恢复，确定删除这条动态吗？",
-                confirmText = "删除"
+                title = UiText.of("删除动态"),
+                message = UiText.of("删除后无法恢复，确定删除这条动态吗？"),
+                confirmText = UiText.of("删除")
             ) {
                 CenterThreadPool.run {
                     try {
@@ -320,10 +323,10 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                         if (result == 0) {
                             activity.runOnUiThread {
                                 onDeleted()
-                                MsgUtil.showMsg("删除成功~")
+                                MsgUtil.showMsg(UiText.of("删除成功~"))
                             }
                         } else {
-                            var msg = "操作失败：" + result
+                            var msg = ApiErrorText.opFailedWithDetail(result)
                             when (result) {
                                 500404 -> msg = "已经删除过了哦~"
                                 500406 -> msg = "不是自己的动态！"
@@ -489,7 +492,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
         val statusView = voteStatus ?: return
 
         // 设置标题
-        titleView.text = if (voteInfo.title.isNotEmpty()) voteInfo.title else "投票"
+        titleView.text = if (voteInfo.title.isNotEmpty()) voteInfo.title else UiText.of("投票")
 
         // 设置参与人数
         joinNumView.text = "${voteInfo.join_num}人参与"
@@ -503,9 +506,9 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
 
         // 设置状态文字
         statusView.text = when {
-            isExpired -> "已结束"
-            hasVoted -> "已投票"
-            else -> "投票"
+            isExpired -> UiText.of("已结束")
+            hasVoted -> UiText.of("已投票")
+            else -> UiText.of("投票")
         }
 
         // 动态 feed 里的投票信息通常不带 options，需异步拉取完整投票信息
@@ -615,7 +618,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
         optionView.setOnClickListener { v ->
             // 未登录时提示
             if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                MsgUtil.showMsg("请先登录")
+                MsgUtil.showMsg(UiText.of("请先登录"))
                 return@setOnClickListener
             }
             v.isEnabled = false
@@ -643,7 +646,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                                 voteInfo.options.addAll(updatedVote.options)
                                 (context as? Activity)?.runOnUiThread {
                                     showVoteCard(context, voteInfo)
-                                    MsgUtil.showMsg("投票成功~")
+                                    MsgUtil.showMsg(UiText.of("投票成功~"))
                                 }
                             }
                         } catch (e: Exception) {
@@ -654,7 +657,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                         }
                     } else {
                         val msg = when (result) {
-                            -111 -> "需要重新登录"
+                            -111 -> UiText.of("需要重新登录")
                             else -> "投票失败：$result"
                         }
                         (context as? Activity)?.runOnUiThread {
@@ -805,7 +808,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                                 .into(imageView)
                         }
                         val textView = cell_dynamic_image.findViewById<TextView>(R.id.imageCount)
-                        textView.text = "共" + pictureList.size + "张图片"
+                        textView.text = UiText.fmt(UiText.of("共%1\$s张图片"), pictureList.size)
                         imageView.setOnClickListener {
                             val intent = Intent()
                             intent.setClass(context, ImageViewerActivity::class.java)
@@ -913,7 +916,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                 // 不加的话用户连点会连发好几次点赞/取消，服务端只认最后一次，
                 // 而界面每次点击都改一次计数，结果就是点赞状态与服务端对不上
                 if (!likingDynamicIds.add(dynamic.dynamicId)) {
-                    MsgUtil.showMsg("正在处理中")
+                    MsgUtil.showMsg(UiText.of("正在处理中"))
                     return@setOnClickListener
                 }
                 CenterThreadPool.run {
@@ -923,7 +926,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                                 if (DynamicApi.likeDynamic(dynamic.dynamicId, true) == 0) {
                                     dynamic.stats.liked = true
                                     (context as Activity).runOnUiThread {
-                                        MsgUtil.showMsg("点赞成功")
+                                        MsgUtil.showMsg(UiText.of("点赞成功"))
                                         likeCount!!.text = StringUtil.toWan((++dynamic.stats.like).toLong())
                                         likeCount!!.setTextColor(ColorScheme.LIKE_COLOR)
                                         likeCount!!.setCompoundDrawablesWithIntrinsicBounds(
@@ -932,7 +935,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                                         )
                                     }
                                 } else
-                                    (context as Activity).runOnUiThread { MsgUtil.showMsg("点赞失败") }
+                                    (context as Activity).runOnUiThread { MsgUtil.showMsg(UiText.of("点赞失败")) }
                             } catch (e: IOException) {
                                 MsgUtil.err(e)
                             }
@@ -941,7 +944,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                                 if (DynamicApi.likeDynamic(dynamic.dynamicId, false) == 0) {
                                     dynamic.stats.liked = false
                                     (context as Activity).runOnUiThread {
-                                        MsgUtil.showMsg("取消成功")
+                                        MsgUtil.showMsg(UiText.of("取消成功"))
                                         likeCount!!.text = StringUtil.toWan((--dynamic.stats.like).toLong())
                                         likeCount!!.setTextColor(ColorScheme.TEXT_PRIMARY)
                                         likeCount!!.setCompoundDrawablesWithIntrinsicBounds(
@@ -950,7 +953,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                                         )
                                     }
                                 } else
-                                    (context as Activity).runOnUiThread { MsgUtil.showMsg("取消失败") }
+                                    (context as Activity).runOnUiThread { MsgUtil.showMsg(UiText.of("取消失败")) }
                             } catch (e: IOException) {
                                 e.printStackTrace()
                             }

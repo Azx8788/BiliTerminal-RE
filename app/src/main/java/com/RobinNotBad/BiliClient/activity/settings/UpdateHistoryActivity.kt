@@ -128,7 +128,7 @@ class UpdateHistoryActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         asyncInflate(R.layout.activity_update_history) { _, _ ->
-            setPageName("历史更新日志")
+            setPageName(getString(R.string.pagename_updatehistoryactivity_001))
 
             val versions = parseVersions(
                 resources.getStringArray(R.array.update_log_current),

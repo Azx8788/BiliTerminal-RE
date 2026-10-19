@@ -21,7 +21,7 @@ class OpenSourceActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_setting_opensource)
 
-        setPageName("开源信息")
+        setPageName(getString(R.string.pagename_opensource))
 
         // 借鉴的项目与第三方库
         val sourceView = findViewById<TextView>(R.id.source_content)

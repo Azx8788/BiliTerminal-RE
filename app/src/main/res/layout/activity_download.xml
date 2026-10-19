@@ -10,7 +10,7 @@
         android:id="@+id/progressText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="准备下载"
+        android:text="@string/text_activitydownload_01"
         android:textAlignment="center"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

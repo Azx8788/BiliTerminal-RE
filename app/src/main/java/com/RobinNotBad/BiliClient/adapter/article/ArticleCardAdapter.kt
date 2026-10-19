@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.article
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.view.MotionEvent
 import android.view.LayoutInflater
@@ -78,7 +80,7 @@ class ArticleCardAdapter(
 
                 val cacheFile = File(cacheDir, "${articleCard.id}.json")
                 if (cacheFile.exists()) {
-                    CenterThreadPool.runOnUiThread { MsgUtil.showMsg("该专栏已缓存") }
+                    CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("该专栏已缓存")) }
                     return@run
                 }
 
@@ -109,12 +111,12 @@ class ArticleCardAdapter(
                         json.put("stats", stats)
                     }
                     cacheFile.writeText(json.toString())
-                    CenterThreadPool.runOnUiThread { MsgUtil.showMsg("专栏已缓存") }
+                    CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("专栏已缓存")) }
                 } else {
-                    CenterThreadPool.runOnUiThread { MsgUtil.showMsg("获取专栏信息失败") }
+                    CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("获取专栏信息失败")) }
                 }
             } catch (e: Exception) {
-                CenterThreadPool.runOnUiThread { MsgUtil.showMsg("获取专栏信息失败") }
+                CenterThreadPool.runOnUiThread { MsgUtil.showMsg(UiText.of("获取专栏信息失败")) }
                 e.printStackTrace()
             }
         }

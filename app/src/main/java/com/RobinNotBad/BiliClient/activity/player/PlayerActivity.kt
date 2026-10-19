@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.player
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -565,7 +567,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         )
         screen_landscape = PlayerDefaults.resolveLandscape(playerOrientationMode, 0, 0)
         if (SharedPreferencesUtil.getBoolean("dev_player_rotate_software", false) && screen_landscape) {
-            MsgUtil.showMsg("不支持默认横屏！")
+            MsgUtil.showMsg(UiText.of("不支持默认横屏！"))
             screen_landscape = false
         } else {
             requestedOrientation = if (screen_landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -673,7 +675,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 }
 
                 runOnUiThread {
-                    loading_text0.text = "装填弹幕中"
+                    loading_text0.text = UiText.of("装填弹幕中")
                     loading_text1.text = "(≧∇≦)"
                 }
                 if (isOnlineVideo) {
@@ -1105,10 +1107,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         playerError = false
 
         if (isLiveMode) {
-            runOnUiThread { loading_text0.text = "载入直播中" }
+            runOnUiThread { loading_text0.text = UiText.of("载入直播中") }
             danmuSocketConnect()
         } else
-            runOnUiThread { loading_text0.text = "载入视频中" }
+            runOnUiThread { loading_text0.text = UiText.of("载入视频中") }
         try {
             if (isOnlineVideo) {
                 val headers = HashMap<String, String>()
@@ -1163,7 +1165,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         ijkPlayer!!.setOnErrorListener { failedPlayer, what, extra ->
             if (destroyed || failedPlayer !== ijkPlayer) return@setOnErrorListener true
-            val EReport = "播放器可能遇到错误！\n错误码：" + what + "\n附加：" + extra
+            val EReport = UiText.of("播放器可能遇到错误！\n错误码：") + what + UiText.of("\n附加：") + extra
             Logu.e("ijk-err", EReport)
             // 返回 false 会被 IjkMediaPlayer 改判成 onCompletion（IjkMediaPlayer.java:1013-1017），
             // 用户看到的是"这集看完了"并自动跳下一 P，而实际是解码/加载失败。
@@ -1196,7 +1198,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     runOnUiThread {
                         loading_info.visibility = View.VISIBLE
                         anim_loading!!.start()
-                        loading_text0.text = "正在缓冲"
+                        loading_text0.text = UiText.of("正在缓冲")
                         showLoadingSpeed()
                         if (hasDanmaku && mDanmakuView != null && isPlaying) mDanmakuView!!.pause()
                     }
@@ -1461,7 +1463,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             if (!stallGaveUp) {
                 stallGaveUp = true
                 Logu.d("停滞看门狗", "已连续自动恢复 $stallRetryCount 次，放弃自动恢复")
-                MsgUtil.showMsg("网络似乎已断开，可稍后手动重试")
+                MsgUtil.showMsg(UiText.of("网络似乎已断开，可稍后手动重试"))
             }
             // 继续刷新基准时间，避免每 250ms 都来一次提示
             stallLastAdvanceMs = now
@@ -1499,7 +1501,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val next = liveUrlCandidates[liveCandidateIndex]
         video_url = next
         Logu.d("停滞看门狗", "切换直播线路 → $liveCandidateIndex : $next")
-        MsgUtil.showMsg("网络不佳，正在切换线路")
+        MsgUtil.showMsg(UiText.of("网络不佳，正在切换线路"))
         // 直播不续播位置：从最新的流位置重新开始
         retryAfterPlayerError(0L)
     }
@@ -1522,7 +1524,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         if (progressSec <= 0) return
         lastReportedProgressMs = video_now.toLong()
         lastReportedProgressSec = progressSec
-        sendProgressReport(progressSec, "周期上报")
+        sendProgressReport(progressSec, UiText.of("周期上报"))
     }
 
     /**
@@ -1602,7 +1604,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     HistoryApi.reportHistory(fAid, fCid, progressSec)
                 }
             } catch (e: Exception) {
-                MsgUtil.err("进度上报：", e)
+                MsgUtil.err(UiText.of("进度上报："), e)
             }
         }
     }
@@ -1621,7 +1623,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     try {
                         online_number = VideoInfoApi.getWatching(aid, cid)
                         runOnUiThread {
-                            if (online_number.isNotEmpty()) text_online.text = online_number + "人在看"
+                            if (online_number.isNotEmpty()) text_online.text = online_number + UiText.of("人在看")
                             else text_online.text = ""
                         }
                     } catch (e: Exception) {
@@ -1737,7 +1739,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
 
             if (subtitleLinks!!.size == 1) {
-                if (fromBtn) MsgUtil.showMsg("本视频无字幕")
+                if (fromBtn) MsgUtil.showMsg(UiText.of("本视频无字幕"))
                 return
             }
 
@@ -1848,7 +1850,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         } catch (e: Exception) {
             e.printStackTrace()
             Logu.e("新版弹幕", "获取失败: " + e.message + "，回退到旧版接口")
-            runOnUiThread { MsgUtil.toast("新版弹幕获取失败，使用旧版接口") }
+            runOnUiThread { MsgUtil.toast(UiText.of("新版弹幕获取失败，使用旧版接口")) }
             CenterThreadPool.run { downdanmuOld() }
         }
     }
@@ -1949,7 +1951,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 }
                 loading_info.visibility = View.VISIBLE
                 anim_loading!!.start()
-                loading_text0.text = "重新载入"
+                loading_text0.text = UiText.of("重新载入")
             }
             try {
                 Thread.sleep(100)
@@ -1984,7 +1986,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val show = (volumeNow.toFloat() / volumeMax.toFloat() * 100).toInt()
 
         text_volume.visibility = View.VISIBLE
-        text_volume.text = "音量：" + show + "%"
+        text_volume.text = UiText.fmt(UiText.of("音量：%1\$s%%"), show)
 
         text_volume.removeCallbacks(hideVolume)
         text_volume.postDelayed(hideVolume, 3000)
@@ -2019,7 +2021,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         textureView!!.setTransform(matrix)
                     }
                 } else {
-                    MsgUtil.showMsg("请切换为TextureView才能支持软件旋屏！")
+                    MsgUtil.showMsg(UiText.of("请切换为TextureView才能支持软件旋屏！"))
                 }
             }
         changeVideoSize()
@@ -2120,7 +2122,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     fun serviceReportNow() {
-        runOnUiThread { reportProgressNow(true, "后台服务兜底") }
+        runOnUiThread { reportProgressNow(true, UiText.of("后台服务兜底")) }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -2134,7 +2136,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         super.onPause()
         Logu.v("onPause")
         // 退到后台/被别的页面盖住时补报一次：正常退出走 finish() 已经报过同一秒，这里会被去重拦掉
-        reportProgressNow(false, "切后台")
+        reportProgressNow(false, UiText.of("切后台"))
         if (!SharedPreferencesUtil.getBoolean("player_background", false)) {
             playerPause()
         } else if (!isFinishing && isPrepared && !finishWatching) {
@@ -2175,7 +2177,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         }
         // 销毁前的兜底上报：必须在 destroyed = true 与 release 播放器之前做，
         // 且只依赖内存里的 video_now（不碰 ijkPlayer 的 JNI 调用）。正常退出时会被去重拦掉。
-        reportProgressNow(true, "销毁兜底")
+        reportProgressNow(true, UiText.of("销毁兜底"))
         destroyed = true
 
         // 无论哪种退出原因（用户返回、被系统回收、后台通知里点"关闭"），
@@ -2267,7 +2269,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                 liveWebSocket = okHttpClient!!.newWebSocket(request, listener)
             } catch (e: Exception) {
-                MsgUtil.showMsg("直播弹幕连接失败")
+                MsgUtil.showMsg(UiText.of("直播弹幕连接失败"))
                 e.printStackTrace()
             }
         }
@@ -2484,26 +2486,26 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         findViewById<View>(R.id.danmaku_send).setOnClickListener {
             val editText = findViewById<EditText>(R.id.danmaku_send_edit)
             if (editText.text.toString().isEmpty()) {
-                MsgUtil.showMsg("不能发送空弹幕喵")
+                MsgUtil.showMsg(UiText.of("不能发送空弹幕喵"))
             } else {
                 layout_card_bg.visibility = View.GONE
                 card_danmaku_send.visibility = View.GONE
 
                 CenterThreadPool.run {
                     try {
-                        MsgUtil.showMsg("正在发送~")
+                        MsgUtil.showMsg(UiText.of("正在发送~"))
 
                         val result = DanmakuApi.sendVideoDanmakuByAid(cid, editText.text.toString(), aid,
                             video_now.toLong(), ToolsUtil.getRgb888(Color.WHITE), 1)
 
                         if (result == 0) {
-                            MsgUtil.showMsg("发送成功喵~")
+                            MsgUtil.showMsg(UiText.of("发送成功喵~"))
                             runOnUiThread {
                                 addDanmaku(editText.text.toString(), Color.WHITE)
                                 editText.setText("")
                             }
                         } else
-                            MsgUtil.showMsg("发送失败：" + result)
+                            MsgUtil.showMsg(UiText.fmt(UiText.of("发送失败：%1\$s"), result))
                     } catch (e: Exception) {
                         e.printStackTrace()
                         MsgUtil.err(e)
@@ -2636,16 +2638,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     /** 跳过后给一次反悔机会：屏幕下方留一个「撤回」按钮，点一下回到被跳过的地方。 */
     private fun showSkipUndoSnack(segment: ViewPointSkip.Segment) {
         val isOpening = segment.type == ViewPointSkip.TYPE_OP
-        val action = MsgUtil.Action("撤回", View.OnClickListener {
+        val action = MsgUtil.Action(UiText.of("撤回"), View.OnClickListener {
             // 期间又跳过别的片段、或用户自己拖过进度，这条「撤回」就过期了，别把人拽回去
             if (lastSkippedSegment !== segment) return@OnClickListener
             lastSkippedSegment = null
             // 跳回片段起点；此时该片段已在 skipHandled 里，不会再被自动跳过
             seekToPosition((segment.fromSec * 1000.0).toLong())
-            MsgUtil.showMsg(if (isOpening) "已回到片头" else "已回到片尾")
+            MsgUtil.showMsg(if (isOpening) UiText.of("已回到片头") else UiText.of("已回到片尾"))
         })
         val anchor = findViewById<View>(android.R.id.content) ?: return
-        MsgUtil.createSnack(anchor, if (isOpening) "已跳过片头" else "已跳过片尾", Snackbar.LENGTH_LONG, action).show()
+        MsgUtil.createSnack(anchor, if (isOpening) UiText.of("已跳过片头") else UiText.of("已跳过片尾"), Snackbar.LENGTH_LONG, action).show()
     }
 
     /**
@@ -2683,7 +2685,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val action = MsgUtil.Action(SkipOpEdPrefs.guideActionText(enabled), View.OnClickListener {
             if (!enabled) {
                 SharedPreferencesUtil.putBoolean(SettingsKeys.PLAYER_SKIP_OP_ED, true)
-                MsgUtil.showMsg("已开启自动跳过片头片尾")
+                MsgUtil.showMsg(UiText.of("已开启自动跳过片头片尾"))
             }
         })
         val anchor = findViewById<View>(android.R.id.content) ?: return
@@ -2802,7 +2804,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
             LocalAudioTrackPolicy.Selection.UNKNOWN -> {
                 Logu.e("AudioTrack", "主文件音轨未知，已阻止启动第二路音频")
-                MsgUtil.showMsg("无法确认本地音轨，暂未启用外部音频")
+                MsgUtil.showMsg(UiText.of("无法确认本地音轨，暂未启用外部音频"))
                 return
             }
             LocalAudioTrackPolicy.Selection.EXTERNAL -> Unit
@@ -2815,7 +2817,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (audioPlayer === failedPlayer) {
                     Logu.e("AudioTrack", "外部音频播放失败：$what/$extra")
                     releaseAudioTrack()
-                    if (!destroyed) MsgUtil.showMsg("本地音频播放失败，请重新载入")
+                    if (!destroyed) MsgUtil.showMsg(UiText.of("本地音频播放失败，请重新载入"))
                 }
                 true
             }
@@ -2843,7 +2845,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             val currentPosition = video_now.toLong()
             val wasPlaying = isPlaying
 
-            MsgUtil.showMsg(if (isAudioOnlyMode) "正在切换到听视频模式..." else "正在切换到普通模式...")
+            MsgUtil.showMsg(if (isAudioOnlyMode) UiText.of("正在切换到听视频模式...") else UiText.of("正在切换到普通模式..."))
 
             CenterThreadPool.run {
                 try {
@@ -2864,7 +2866,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                         loading_info.visibility = View.VISIBLE
                         anim_loading!!.start()
-                        loading_text0.text = if (isAudioOnlyMode) "切换到听视频模式" else "切换到普通模式"
+                        loading_text0.text = if (isAudioOnlyMode) UiText.of("切换到听视频模式") else UiText.of("切换到普通模式")
 
                         updateAudioOnlyButton()
                         updateAudioOnlyUI()
@@ -2883,7 +2885,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
-                        MsgUtil.showMsg("切换失败，请重试")
+                        MsgUtil.showMsg(UiText.of("切换失败，请重试"))
                         isAudioOnlyMode = oldMode
                         // 切换失败就不该污染「沿用上次」的记录
                         SharedPreferencesUtil.putBoolean(SettingsKeys.PLAYER_LAST_AUDIO_ONLY, oldMode)
@@ -2897,7 +2899,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         } else {
             updateAudioOnlyButton()
             updateAudioOnlyUI()
-            MsgUtil.showMsg(if (isAudioOnlyMode) "已切换到听视频模式" else "已切换到普通模式")
+            MsgUtil.showMsg(if (isAudioOnlyMode) UiText.of("已切换到听视频模式") else UiText.of("已切换到普通模式"))
         }
     }
 
@@ -2916,7 +2918,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 mDanmakuView?.setVisibility(View.GONE)
                 if (text_audio_title != null) {
                     val title = text_title!!.text.toString()
-                    text_audio_title.text = if (title.isEmpty()) "听视频模式" else title
+                    text_audio_title.text = if (title.isEmpty()) UiText.of("听视频模式") else title
                 }
             } else {
                 text_speed.visibility = View.VISIBLE
@@ -3021,8 +3023,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 multiPageAid != 0L ->
                     "分P · ${multiPageTitle ?: ""}（${currentPageIndex + 1}/$size）"
                 isVirtualCollectionMode ->
-                    "${rootTitle ?: videoTitle ?: "收藏夹连播"}（${currentPageIndex + 1}/$size）"
-                else -> "选择分P"
+                    "${rootTitle ?: videoTitle ?: UiText.of("收藏夹连播")}（${currentPageIndex + 1}/$size）"
+                else -> UiText.of("选择分P")
             }
 
             // 嵌套层的进出入口，两个方向互斥：
@@ -3060,12 +3062,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         // 切P之前先把"当前这一P"的进度报出去，否则这一P的尾部进度只有 15 秒周期上报兜底，
         // 切走时的最后十几秒会丢；必须在 currentPageIndex 被改写之前调用（aid/cid 还指向旧P）
-        reportProgressNow(true, "切P前")
+        reportProgressNow(true, UiText.of("切P前"))
 
         currentPageIndex = pageIndex
         val newTitle = pagenames!![pageIndex]
 
-        MsgUtil.showMsg("切换到 P" + (pageIndex + 1))
+        MsgUtil.showMsg(UiText.fmt(UiText.of("切换到 P%1\$s"), pageIndex + 1))
 
         if (isOnlineVideo) {
             switchToOnlinePage(pageIndex, newTitle)
@@ -3134,7 +3136,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             } catch (e: Exception) {
                 runOnUiThread {
                     MsgUtil.err(e)
-                    MsgUtil.showMsg("切换失败")
+                    MsgUtil.showMsg(UiText.of("切换失败"))
                 }
             }
         }
@@ -3258,7 +3260,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val resume = (back.currentPageIndex + if (advance) 1 else 0)
             .coerceIn(0, backPages.size - 1)
 
-        reportProgressNow(true, "返回主合集前")
+        reportProgressNow(true, UiText.of("返回主合集前"))
 
         // 返回栈里存的就是根目录层那条列表，它的 title 就是收藏夹名——拿它当根层标题，
         // 否则卡片会退化成"当前条目名"（见 rootTitle 的注释）
@@ -3276,9 +3278,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         MsgUtil.showMsg(
             when {
-                !advance -> "返回主合集"
-                leavingCollection -> "合集播放完毕，继续收藏夹"
-                else -> "分P播放完毕，继续收藏夹"
+                !advance -> UiText.of("返回主合集")
+                leavingCollection -> UiText.of("合集播放完毕，继续收藏夹")
+                else -> UiText.of("分P播放完毕，继续收藏夹")
             }
         )
         switchToOnlinePage(resume, backPages[resume])
@@ -3321,7 +3323,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         loading_info.visibility = View.VISIBLE
         anim_loading!!.start()
-        loading_text0.text = "加载P" + (pageIndex + 1)
+        loading_text0.text = UiText.fmt(UiText.of("加载P%1\$s"), pageIndex + 1)
         isPrepared = false
         isPlaying = false
         finishWatching = false
@@ -3354,7 +3356,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (destroyed) return@run
 
                 runOnUiThread {
-                    loading_text0.text = "装填弹幕中"
+                    loading_text0.text = UiText.of("装填弹幕中")
                     loading_text1.text = "(≧∇≦)"
                 }
 
@@ -3388,7 +3390,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         updateAutoNextButton()
         // 「播放默认值 → 自动连播 = 沿用上次」的记录位
         SharedPreferencesUtil.putBoolean(SettingsKeys.PLAYER_LAST_AUTONEXT, auto_next_enabled)
-        MsgUtil.showMsg(if (auto_next_enabled) "已开启自动连播" else "已关闭自动连播")
+        MsgUtil.showMsg(if (auto_next_enabled) UiText.of("已开启自动连播") else UiText.of("已关闭自动连播"))
     }
 
     private fun updateAutoNextButton() {
@@ -3397,7 +3399,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     private fun showQualitySelectorCard() {
         if (qnStrList == null || qnValueList == null || qnStrList!!.isEmpty()) {
-            MsgUtil.showMsg("清晰度列表未加载")
+            MsgUtil.showMsg(UiText.of("清晰度列表未加载"))
             return
         }
 
@@ -3422,7 +3424,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun switchQuality(newQuality: Int) {
         if (!isOnlineVideo || newQuality == currentQuality) return
 
-        MsgUtil.showMsg("正在切换清晰度...")
+        MsgUtil.showMsg(UiText.of("正在切换清晰度..."))
 
         CenterThreadPool.run {
             try {
@@ -3461,7 +3463,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                     loading_info.visibility = View.VISIBLE
                     anim_loading!!.start()
-                    loading_text0.text = "切换清晰度中"
+                    loading_text0.text = UiText.of("切换清晰度中")
                     isPrepared = false
                     isPlaying = false
 
@@ -3473,7 +3475,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             } catch (e: Exception) {
                 runOnUiThread {
                     MsgUtil.err(e)
-                    MsgUtil.showMsg("清晰度切换失败")
+                    MsgUtil.showMsg(UiText.of("清晰度切换失败"))
                 }
             }
         }
@@ -3531,7 +3533,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     if (index >= 0 && index < viewPoints!!.size) {
                         val vp = viewPoints!![index]
                         seekToPosition(vp.from * 1000L)
-                        MsgUtil.showMsg("跳转到: " + vp.content)
+                        MsgUtil.showMsg(UiText.of("跳转到: ") + vp.content)
                     }
                 }
                 viewPointRecycler.layoutManager = CustomLinearManager(this, LinearLayoutManager.HORIZONTAL, false)
@@ -3773,7 +3775,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 val newData = InteractionVideoApi.getEdgeInfo(aid, null, interactionGraphVersion, targetEdgeId)
 
                 if (newData == null) {
-                    runOnUiThread { MsgUtil.showMsg("获取互动视频数据失败") }
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("获取互动视频数据失败")) }
                     return@run
                 }
 
@@ -3847,7 +3849,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                     loading_info.visibility = View.VISIBLE
                     anim_loading!!.start()
-                    loading_text0.text = "加载互动分P"
+                    loading_text0.text = UiText.of("加载互动分P")
                     isPrepared = false
                     isPlaying = false
                     finishWatching = false
@@ -3875,7 +3877,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                             if (destroyed) return@run
 
                             runOnUiThread {
-                                loading_text0.text = "装填弹幕中"
+                                loading_text0.text = UiText.of("装填弹幕中")
                                 loading_text1.text = "(≧∇≦)"
                             }
 
@@ -3993,7 +3995,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     private fun showInteractionDebugDialog() {
         if (interactionData == null || interactionData!!.hiddenVars == null || interactionData!!.hiddenVars!!.isEmpty()) {
-            MsgUtil.showMsg("当前没有互动视频变量")
+            MsgUtil.showMsg(UiText.of("当前没有互动视频变量"))
             return
         }
 
@@ -4110,7 +4112,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 ijkPlayer!!.seekTo(resumeTarget)
                 Logu.d("进度跳转", resumeTarget.toString())
                 // 只有"按历史进度续播"才提示；恢复现场（系统重建）不该再提示一次
-                if (!restoredFromSaveState) runOnUiThread { MsgUtil.showMsg("已从上次的位置播放") }
+                if (!restoredFromSaveState) runOnUiThread { MsgUtil.showMsg(UiText.of("已从上次的位置播放")) }
             }
             // 起播时把弹幕时钟锚到视频位置（0 也要锚）。
             // DFM 的时钟是以 prepare 时刻为基准自走的（DrawHandler.PREPARE 里 mTimeBase = uptimeMillis），
@@ -4167,7 +4169,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         if (isPlaying) playerPause()
         // 退出前把最后进度报一次。返回 true 说明请求确实发出去了，就用 progressReported 标记告诉
         // 调用页（JumpToPlayerActivity）别再报一遍——否则同一进度会被写两次
-        val progressReported = reportProgressNow(true, "退出前")
+        val progressReported = reportProgressNow(true, UiText.of("退出前"))
         if (ijkPlayer != null) {
             val result = Intent()
             result.putExtra("progress", ijkPlayer!!.currentPosition.toInt())

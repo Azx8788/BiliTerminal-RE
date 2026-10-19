@@ -1,4 +1,8 @@
 package com.RobinNotBad.BiliClient.api;
+
+import com.RobinNotBad.BiliClient.R;
+
+import com.RobinNotBad.BiliClient.BiliTerminal;
 
 import android.content.Context;
 import android.text.SpannableStringBuilder;
@@ -399,7 +403,7 @@ public class PrivateMsgApi {
             case -400:
                 return "请求错误，会话可能已不存在";
             default:
-                return "操作失败（错误码 " + code + "）";
+                return ApiErrorText.opFailed(code);
         }
     }
 

@@ -55,20 +55,20 @@ class CaptchaWebViewActivity : BaseActivity() {
         // 这类设备连页面都 inflate 不出来，异常直接冒到 ActivityThread 把应用带崩。
         // 详见 docs/review/fix-progress.md §3.15。
         if (!isWebViewAvailable()) {
-            MsgUtil.showMsgLong("此设备无法显示人机验证（WebView 不可用），请改用扫码登录或 Cookie 登录")
+            MsgUtil.showMsgLong(getString(R.string.msg_long_captchawebviewactivity_001))
             setResult(RESULT_UNAVAILABLE)
             finish()
             return
         }
 
         setContentView(R.layout.activity_captcha_webview)
-        setPageName("人机验证")
+        setPageName(getString(R.string.pagename_captchawebviewactivity_001))
 
         mGt = intent.getStringExtra(EXTRA_GT)
         mChallenge = intent.getStringExtra(EXTRA_CHALLENGE)
 
         if (mGt == null || mChallenge == null) {
-            MsgUtil.showMsg("验证参数错误")
+            MsgUtil.showMsg(getString(R.string.msg_captchawebviewactivity_001))
             setResult(RESULT_CANCELED)
             finish()
             return
@@ -139,7 +139,7 @@ class CaptchaWebViewActivity : BaseActivity() {
             WebView(this)
         } catch (t: Throwable) {
             Logu.e("CaptchaWebView", "WebView 创建失败", t)
-            MsgUtil.showMsgLong("此设备无法显示人机验证（WebView 不可用），请改用扫码登录或 Cookie 登录")
+            MsgUtil.showMsgLong(getString(R.string.msg_long_captchawebviewactivity_001))
             setResult(RESULT_UNAVAILABLE)
             finish()
             return

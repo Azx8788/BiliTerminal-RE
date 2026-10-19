@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.message
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -64,7 +66,7 @@ class PrivateMsgSessionsAdapter(
                         holder.contentText.text = msgContent.content.getString("content")
                     }
                     PrivateMessage.TYPE_PIC -> {
-                        holder.contentText.text = "[图片消息]"
+                        holder.contentText.text = UiText.of("[图片消息]")
                     }
                     PrivateMessage.TYPE_VIDEO, PrivateMessage.TYPE_PIC_CARD, PrivateMessage.TYPE_NOMAL_CARD -> {
                         holder.contentText.text = msgContent.content.getString("title")
@@ -73,7 +75,7 @@ class PrivateMsgSessionsAdapter(
                         holder.contentText.text = msgContent.content.getString("reply_content")
                     }
                     PrivateMessage.TYPE_RETRACT -> {
-                        holder.contentText.text = "[撤回消息]"
+                        holder.contentText.text = UiText.of("[撤回消息]")
                     }
                     else -> {
                         holder.contentText.text = ""
@@ -128,14 +130,14 @@ class PrivateMsgSessionsAdapter(
      */
     private fun showSessionMenu(session: PrivateMsgSession) {
         val actions = arrayOf(
-            if (session.isTop()) "取消置顶" else "置顶会话",
-            "删除会话",
-            "查看用户主页"
+            if (session.isTop()) UiText.of("取消置顶") else UiText.of("置顶会话"),
+            UiText.of("删除会话"),
+            UiText.of("查看用户主页")
         )
         // 第 1 项（删除会话）是破坏性操作，用危险色标出来
         TerminalDialog.menu(
             context = context,
-            title = "会话操作",
+            title = UiText.of("会话操作"),
             items = actions.toList(),
             danger = setOf(1)
         ) { which ->
@@ -150,9 +152,9 @@ class PrivateMsgSessionsAdapter(
     private fun confirmRemoveSession(session: PrivateMsgSession) {
         TerminalDialog.confirm(
             context = context,
-            title = "删除会话",
-            message = "只会把会话从列表里移除，不会删除聊天记录。",
-            confirmText = "删除",
+            title = UiText.of("删除会话"),
+            message = UiText.of("只会把会话从列表里移除，不会删除聊天记录。"),
+            confirmText = UiText.of("删除"),
             onConfirm = { removeSession(session) }
         ).show()
     }
@@ -166,7 +168,7 @@ class PrivateMsgSessionsAdapter(
                 CenterThreadPool.runOnUiThread {
                     val error = PrivateMsgApi.sessionErrorMsg(code)
                     if (error.isEmpty()) {
-                        MsgUtil.showMsg(if (top) "已置顶" else "已取消置顶")
+                        MsgUtil.showMsg(if (top) UiText.of("已置顶") else UiText.of("已取消置顶"))
                         onSessionsChanged?.invoke()
                     } else {
                         MsgUtil.showMsg(error)
@@ -192,7 +194,7 @@ class PrivateMsgSessionsAdapter(
                             sessionsList.removeAt(index)
                             notifyItemRemoved(index)
                         }
-                        MsgUtil.showMsg("已从会话列表移除")
+                        MsgUtil.showMsg(UiText.of("已从会话列表移除"))
                         onSessionsChanged?.invoke()
                     } else {
                         MsgUtil.showMsg(error)

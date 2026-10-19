@@ -36,7 +36,7 @@ class TutorialManagerActivity : BaseActivity() {
         buildTutorialList()
 
         asyncInflate(R.layout.activity_tutorial_manager) { _, _ ->
-            setPageName("教程管理")
+            setPageName(getString(R.string.pagename_tutorial_manager))
 
             val container = findViewById<LinearLayout>(R.id.tutorial_list_container)
 
@@ -191,13 +191,13 @@ class TutorialManagerActivity : BaseActivity() {
         val isCompleted = if (item.isPager) isPagerTutorialCompleted(item.tag) else isTutorialCompleted(item.tag)
 
         if (isCompleted) {
-            statusBadge.text = "已完成"
+            statusBadge.text = getString(R.string.text_tutorial_done)
             statusBadge.setTextColor(Color.parseColor("#ffffff"))
             // View.backgroundTintList 的 setter 是 API 21 才有的，minSdk 19 上要走 ViewCompat；
             // API < 21 时它等价于 no-op（statusBadge 本身没设 background），不会崩。
             ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(Color.parseColor("#27ae60")))
         } else {
-            statusBadge.text = "未完成"
+            statusBadge.text = getString(R.string.text_tutorial_undone)
             statusBadge.setTextColor(Color.parseColor("#ffffff"))
             ViewCompat.setBackgroundTintList(statusBadge, ColorStateList.valueOf(Color.parseColor("#e67e22")))
         }
@@ -229,7 +229,7 @@ class TutorialManagerActivity : BaseActivity() {
         }
 
         if (!item.isPager && hasTutorialHistory(item.tag)) {
-            historyText.text = "历史记录：已完成过（版本 ${getTutorialVersion(item.tag)}）"
+            historyText.text = getString(R.string.text_tutorial_history_done, getTutorialVersion(item.tag))
             historyText.setTextColor(Color.parseColor("#888888"))
             historyText.visibility = View.VISIBLE
         }
@@ -301,7 +301,7 @@ class TutorialManagerActivity : BaseActivity() {
                 SharedPreferencesUtil.putInt("tutorial_ver_${item.tag}", xmlArray.size)
             }
         }
-        MsgUtil.showMsg("「${item.name}」已通过")
+        MsgUtil.showMsg(getString(R.string.msg_tutorial_passed, item.name))
         recreate()
     }
 
@@ -314,7 +314,7 @@ class TutorialManagerActivity : BaseActivity() {
             SharedPreferencesUtil.removeValue("tutorial_ver_${item.tag}")
             SharedPreferencesUtil.removeValue("tutorial_history_${item.tag}")
         }
-        MsgUtil.showMsg("「${item.name}」的进度已清除")
+        MsgUtil.showMsg(getString(R.string.msg_tutorial_progress_cleared, item.name))
         recreate()
     }
 
@@ -332,7 +332,7 @@ class TutorialManagerActivity : BaseActivity() {
                 }
             }
         }
-        MsgUtil.showMsg("所有教程已标记为完成")
+        MsgUtil.showMsg(getString(R.string.msg_tutorialmanageractivity_001))
         recreate()
     }
 
@@ -347,7 +347,7 @@ class TutorialManagerActivity : BaseActivity() {
                 SharedPreferencesUtil.removeValue("tutorial_history_${item.tag}")
             }
         }
-        MsgUtil.showMsg("所有教程进度已清除")
+        MsgUtil.showMsg(getString(R.string.msg_tutorialmanageractivity_002))
         recreate()
     }
 
@@ -361,7 +361,7 @@ class TutorialManagerActivity : BaseActivity() {
         for (key in pagerKeys) {
             SharedPreferencesUtil.removeValue("tutorial_pager_$key")
         }
-        MsgUtil.showMsg("页面引导已重置")
+        MsgUtil.showMsg(getString(R.string.msg_tutorialmanageractivity_003))
         recreate()
     }
 

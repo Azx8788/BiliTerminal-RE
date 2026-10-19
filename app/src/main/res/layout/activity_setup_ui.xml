@@ -117,7 +117,7 @@
                     android:layout_marginTop="2dp"
                     android:background="@drawable/background_edittext_setting"
                     android:ems="10"
-                    android:hint="请输入倍数"
+                    android:hint="@string/hint_activitysetupui_01"
                     android:inputType="numberDecimal"
                     android:minHeight="40dp"
                     android:paddingStart="8dp"

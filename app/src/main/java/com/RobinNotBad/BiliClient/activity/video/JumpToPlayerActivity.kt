@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -79,7 +81,7 @@ class JumpToPlayerActivity : BaseActivity() {
                     HistoryApi.reportHistory(data.aid, cid, progressSec)
                 }
             } catch (e: Exception) {
-                MsgUtil.err("进度上报：", e)
+                MsgUtil.err(UiText.of("进度上报："), e)
             }
         }
     }
@@ -99,7 +101,7 @@ class JumpToPlayerActivity : BaseActivity() {
         // 旧实现直接 playerData!!.title 会 NPE 崩溃。缺数据时只提示并允许点击退出，不再往下走。
         val data = playerData
         if (data == null) {
-            setClickExit("视频信息缺失，无法播放\n（点击返回）")
+            setClickExit(UiText.of("视频信息缺失，无法播放\n（点击返回）"))
             return
         }
 
@@ -122,12 +124,12 @@ class JumpToPlayerActivity : BaseActivity() {
                 Logu.d("history", playerData!!.progress.toString())
                 jump()
             } catch (e: IOException) {
-                setClickExit("网络错误！\n请检查你的网络连接是否正常")
+                setClickExit(UiText.of("网络错误！\n请检查你的网络连接是否正常"))
             } catch (e: JSONException) {
                 setClickExit("视频获取失败！\n可能的原因：\n1.本视频仅大会员可播放\n2.视频获取接口失效\n\n清除应用数据也许可以解决" + e.message)
                 e.printStackTrace()
             } catch (e: ActivityNotFoundException) {
-                setClickExit("跳转失败！\n请安装对应的播放器\n或在设置中选择正确的播放器\n或将哔哩终端和播放器同时更新到最新版本")
+                setClickExit(UiText.of("跳转失败！\n请安装对应的播放器\n或在设置中选择正确的播放器\n或将哔哩终端和播放器同时更新到最新版本"))
                 e.printStackTrace()
             }
         }
@@ -146,7 +148,7 @@ class JumpToPlayerActivity : BaseActivity() {
             intent.putExtra("seasonId", data.seasonId)
             intent.putExtra("seasonType", data.seasonType)
             launcher.launch(intent)
-            setClickExit("等待退出播放后上报进度\n（点击跳过）")
+            setClickExit(UiText.of("等待退出播放后上报进度\n（点击跳过）"))
         } else {
             val intent = Intent()
             intent.setClass(this, DownloadActivity::class.java)

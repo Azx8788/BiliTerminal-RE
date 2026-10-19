@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.LayoutInflater
@@ -67,7 +69,7 @@ class DownloadAdapter(
         if (isDownloading && lastSpeedStr != null && lastSpeedStr!!.isNotEmpty()) {
             holder.speed.visibility = View.VISIBLE
             if (lastSpeedMode) {
-                holder.speed.text = "高速 " + lastSpeedStr
+                holder.speed.text = UiText.of("高速 ") + lastSpeedStr
             } else {
                 holder.speed.text = lastSpeedStr
             }
@@ -109,8 +111,8 @@ class DownloadAdapter(
 
         fun show(section: DownloadSection?, context: Context) {
             if (section == null) {
-                title.text = "没有下载中的项"
-                extra.text = "点击下面继续下载喵？"
+                title.text = UiText.of("没有下载中的项")
+                extra.text = UiText.of("点击下面继续下载喵？")
                 cover.setImageResource(R.mipmap.placeholder)
                 speed.visibility = View.GONE
                 return
@@ -122,13 +124,13 @@ class DownloadAdapter(
             val displayState = progressInfo?.state ?: section.state
 
             when (displayState) {
-                "error" -> extra.text = "下载出错"
-                "none" -> extra.text = "等待下载"
-                "paused" -> extra.text = "已暂停（点击恢复）"
+                "error" -> extra.text = UiText.of("下载出错")
+                "none" -> extra.text = UiText.of("等待下载")
+                "paused" -> extra.text = UiText.of("已暂停（点击恢复）")
                 "downloading" -> if (DownloadService.started)
-                    extra.text = "下载中（点击暂停）"
+                    extra.text = UiText.of("下载中（点击暂停）")
                 else
-                    extra.text = "下载中断"
+                    extra.text = UiText.of("下载中断")
                 else -> extra.text = if (progressInfo != null) displayState else "等待中"
             }
 

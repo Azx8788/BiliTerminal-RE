@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.reply
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
@@ -35,17 +37,17 @@ class WriteReplyActivity : BaseActivity() {
 
     companion object {
         private val msgMap = mapOf(
-            -101 to "没有登录or登录信息有误？",
-            -102 to "账号被封禁！",
-            -509 to "请求过于频繁！",
-            12015 to "需要评论验证码...？",
-            12016 to "包含敏感内容！",
-            12025 to "字数过多啦QAQ",
-            12035 to "被拉黑了...",
-            12051 to "重复评论，请勿刷屏！",
+            -101 to UiText.of("没有登录or登录信息有误？"),
+            -102 to UiText.of("账号被封禁！"),
+            -509 to UiText.of("请求过于频繁！"),
+            12015 to UiText.of("需要评论验证码...？"),
+            12016 to UiText.of("包含敏感内容！"),
+            12025 to UiText.of("字数过多啦QAQ"),
+            12035 to UiText.of("被拉黑了..."),
+            12051 to UiText.of("重复评论，请勿刷屏！"),
             // 12066 是服务端对带图评论的拒绝码，本地快照与上游 collector 都没有收录
             //（上游 action.md 该表末尾写「其他错误码有待补充」），此处只保证不再显示裸数字
-            12066 to "图片信息异常，请重新选图后再试"
+            12066 to UiText.of("图片信息异常，请重新选图后再试")
         )
 
         // 单张图片的绝对上限，超过就不传了（手表上传大文件基本必失败，还容易 OOM）
@@ -77,7 +79,7 @@ class WriteReplyActivity : BaseActivity() {
         val data = result.data
         if (code == RESULT_OK && data != null && data.data != null) {
             if (imageList.size >= 9) {
-                MsgUtil.showMsg("最多只能添加9张图片喵~")
+                MsgUtil.showMsg(UiText.of("最多只能添加9张图片喵~"))
                 return@registerForActivityResult
             }
             addImage(data.data!!)
@@ -109,7 +111,7 @@ class WriteReplyActivity : BaseActivity() {
         setContentView(R.layout.activity_write_reply)
 
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-            MsgUtil.showMsg("还没有登录喵~")
+            MsgUtil.showMsg(UiText.of("还没有登录喵~"))
             finish()
         }
 
@@ -133,7 +135,7 @@ class WriteReplyActivity : BaseActivity() {
         send.setOnClickListener {
             if (SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.cookie_refresh, true)) {
                 if (sending) {
-                    MsgUtil.showMsg("正在发送中")
+                    MsgUtil.showMsg(UiText.of("正在发送中"))
                     return@setOnClickListener
                 }
                 // 图还没传完就发送 = 评论少图且没有任何提示，必须在这里拦住
@@ -146,7 +148,7 @@ class WriteReplyActivity : BaseActivity() {
                     try {
                         val text = editText.text.toString()
                         if (text.isEmpty() && imageList.isEmpty()) {
-                            runOnUiThread { MsgUtil.showMsg("还没输入内容呢~") }
+                            runOnUiThread { MsgUtil.showMsg(UiText.of("还没输入内容呢~")) }
                             return@run
                         }
                         if (checkKy(text) && dontKyPlease) {
@@ -155,7 +157,7 @@ class WriteReplyActivity : BaseActivity() {
                             return@run
                         }
                         // 进后台先给一次反馈：原先这段等待期界面毫无变化，点一下像没反应
-                        runOnUiThread { MsgUtil.showMsg("正在发送…") }
+                        runOnUiThread { MsgUtil.showMsg(UiText.of("正在发送…")) }
                         try {
                             val pictures = buildPictures()
                             val result = ReplyApi.sendReply(oid, rpid, parent, text, replyType, pictures)
@@ -163,9 +165,9 @@ class WriteReplyActivity : BaseActivity() {
                             val resultReply = result.second
 
                             if (resultCode == 0) {
-                                runOnUiThread { MsgUtil.showMsg("发送成功>w<") }
+                                runOnUiThread { MsgUtil.showMsg(UiText.of("发送成功>w<")) }
                                 resultReply.forceDelete = true
-                                resultReply.pubTime = "刚刚"
+                                resultReply.pubTime = UiText.of("刚刚")
                                 synchronized(uploadDataList) {
                                     for (uploadData in uploadDataList) {
                                         resultReply.pictureList.add(uploadData.image_url)
@@ -174,7 +176,7 @@ class WriteReplyActivity : BaseActivity() {
                                 EventBus.getDefault().post(ReplyEvent(1, resultReply, pos, oid))
                                 finish()
                             } else {
-                                val toast_msg = "评论发送失败：\n" + ((msgMap[resultCode] ?: resultCode.toString()))
+                                val toast_msg = UiText.of("评论发送失败：\n") + ((msgMap[resultCode] ?: resultCode.toString()))
                                 runOnUiThread { MsgUtil.showMsg(toast_msg) }
                             }
                         } catch (e: Exception) {
@@ -187,7 +189,7 @@ class WriteReplyActivity : BaseActivity() {
                     }
                 }
             } else
-                MsgUtil.showDialog("无法发送", "上一次的Cookie刷新失败了，\n您可能需要重新登录以进行敏感操作", -1)
+                MsgUtil.showDialog(getString(R.string.text_cannot_send), getString(R.string.msg_cookie_refresh_failed), -1)
         }
 
         findViewById<android.view.View>(R.id.emote).setOnClickListener {
@@ -202,14 +204,14 @@ class WriteReplyActivity : BaseActivity() {
                     runOnUiThread {
                         if (vipInfo.isVip) {
                             if (imageList.size >= 9) {
-                                MsgUtil.showMsg("最多只能添加9张图片喵~")
+                                MsgUtil.showMsg(UiText.of("最多只能添加9张图片喵~"))
                             } else {
                                 val pickIntent = Intent(Intent.ACTION_GET_CONTENT)
                                 pickIntent.type = "image/*"
                                 imageLauncher.launch(pickIntent)
                             }
                         } else {
-                            MsgUtil.showMsg("带图评论仅大会员可用喵~")
+                            MsgUtil.showMsg(UiText.of("带图评论仅大会员可用喵~"))
                         }
                     }
                 } catch (e: Exception) {
@@ -233,7 +235,7 @@ class WriteReplyActivity : BaseActivity() {
                 ).getOrNull()
                 if (data == null) {
                     runOnUiThread {
-                        MsgUtil.showMsg("图片上传失败")
+                        MsgUtil.showMsg(UiText.of("图片上传失败"))
                         imageList.remove(uri.toString())
                     }
                     return@run
@@ -243,7 +245,7 @@ class WriteReplyActivity : BaseActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    MsgUtil.showMsg("图片处理失败")
+                    MsgUtil.showMsg(UiText.of("图片处理失败"))
                     imageList.remove(uri.toString())
                 }
             } finally {
@@ -372,9 +374,9 @@ class WriteReplyActivity : BaseActivity() {
     }
 
     private fun checkKy(str: String): Boolean {
-        if (str.contains("哔哩终端")) return true
-        if (str.contains("终端")) {
-            return str.contains("表") || str.contains("b站") || str.contains("B站") || str.contains("bili") || str.contains("哔")
+        if (str.contains(UiText.of("哔哩终端"))) return true
+        if (str.contains(UiText.of("终端"))) {
+            return str.contains(UiText.of("表")) || str.contains(UiText.of("b站")) || str.contains(UiText.of("B站")) || str.contains("bili") || str.contains(UiText.of("哔"))
         }
         return false
     }

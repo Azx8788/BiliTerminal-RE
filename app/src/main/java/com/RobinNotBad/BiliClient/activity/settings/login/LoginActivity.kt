@@ -16,7 +16,7 @@ class LoginActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_simple_viewpager)
         Log.e("debug", "进入登录页面")
-        setPageName("登录")
+        setPageName(getString(R.string.btn_login_confirm))
 
         val from_setup = intent.getBooleanExtra("from_setup", false)
 
@@ -32,7 +32,7 @@ class LoginActivity : BaseActivity() {
 
         findViewById<View>(R.id.loading).visibility = View.GONE
         if (fragmentList.size > 1 && SharedPreferencesUtil.getBoolean("first_" + LoginActivity::class.java.simpleName, true)) {
-            MsgUtil.showMsgLong("提示：本页面可以左右滑动切换登录方式")
+            MsgUtil.showMsgLong(getString(R.string.msg_long_loginactivity_001))
             SharedPreferencesUtil.putBoolean("first_" + LoginActivity::class.java.simpleName, false)
         }
     }

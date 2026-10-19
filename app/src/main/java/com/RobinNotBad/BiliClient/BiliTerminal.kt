@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
@@ -197,7 +199,7 @@ class BiliTerminal : Application() {
                 } catch (e: Exception) {
                     // 不只 ActivityNotFoundException：该页存在但未导出时抛 SecurityException，处理方式相同
                     Logu.w("overlay-perm", "悬浮窗设置页拉不起来：${e.javaClass.simpleName}")
-                    MsgUtil.showMsgLong("此设备打不开悬浮窗权限设置页，UETool 调试悬浮窗不可用")
+                    MsgUtil.showMsgLong(UiText.of("此设备打不开悬浮窗权限设置页，UETool 调试悬浮窗不可用"))
                     return false
                 }
             }
@@ -488,7 +490,7 @@ class BiliTerminal : Application() {
                                 val lastNewVersion = SharedPreferencesUtil.getInt("update_last_new_version", 0)
                                 if (config.versionCode != lastNewVersion) {
                                     CenterThreadPool.runOnUiThread {
-                                        MsgUtil.showMsg("发现新版本 " + config.versionName)
+                                        MsgUtil.showMsg(UiText.of("发现新版本 ") + config.versionName)
                                     }
                                 }
                             }

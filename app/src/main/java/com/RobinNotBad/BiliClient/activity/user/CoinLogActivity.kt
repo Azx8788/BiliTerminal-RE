@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.view.View
 
@@ -26,7 +28,7 @@ class CoinLogActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_simple_refresh)
 
-        setPageName("硬币变化记录")
+        setPageName(UiText.of("硬币变化记录"))
 
         recyclerView = findViewById(R.id.recyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
@@ -44,7 +46,7 @@ class CoinLogActivity : BaseActivity() {
 
                 runOnUiThread {
                     if (logList.isEmpty()) {
-                        MsgUtil.showMsg("暂无硬币变化记录")
+                        MsgUtil.showMsg(UiText.of("暂无硬币变化记录"))
                         findViewById<View>(R.id.emptyTip).visibility = View.VISIBLE
                     } else {
                         // 硬币流水：收支为负时直接显示负号，不再前置 "+"
@@ -61,7 +63,7 @@ class CoinLogActivity : BaseActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    MsgUtil.showMsg("加载失败：" + e.message)
+                    MsgUtil.showMsg(UiText.fmt("加载失败：%1\$s", e.message))
                     swipeRefreshLayout.isRefreshing = false
                     findViewById<View>(R.id.emptyTip).visibility = View.VISIBLE
                 }

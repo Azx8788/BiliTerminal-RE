@@ -38,7 +38,7 @@ class SetupUIActivity : BaseActivity() {
                 uiPaddingH.setText("5")
                 uiPaddingV.setText("3")
                 SharedPreferencesUtil.putBoolean("player_ui_round", true)
-                MsgUtil.showMsg("界面边距已更改\n可以手动微调喵")
+                MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_003))
             } else {
                 uiPaddingH.setText("0")
                 uiPaddingV.setText("0")
@@ -70,7 +70,7 @@ class SetupUIActivity : BaseActivity() {
             uiPaddingH.setText("0")
             uiPaddingV.setText("0")
             round.isChecked = false
-            MsgUtil.showMsg("恢复完成")
+            MsgUtil.showMsg(getString(R.string.msg_settinggroupactivity_002))
         }
     }
 

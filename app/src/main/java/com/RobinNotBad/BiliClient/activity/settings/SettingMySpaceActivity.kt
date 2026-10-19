@@ -25,7 +25,7 @@ class SettingMySpaceActivity : BaseActivity() {
         setContentView(R.layout.activity_setting_menu)
 
         findViewById<View>(R.id.top).setOnClickListener { finish() }
-        setPageName("我的页面设置")
+        setPageName(getString(R.string.pagename_settingmyspaceactivity_001))
 
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)

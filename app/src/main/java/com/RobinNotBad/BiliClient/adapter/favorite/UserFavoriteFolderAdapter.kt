@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent

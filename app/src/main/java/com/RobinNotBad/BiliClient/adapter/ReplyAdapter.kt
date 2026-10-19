@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -27,6 +29,7 @@ import com.google.android.material.button.MaterialButton
 import com.RobinNotBad.BiliClient.activity.vote.VoteInfoActivity
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.api.ApiErrorText
 import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
 import com.RobinNotBad.BiliClient.activity.reply.ReplyInfoActivity
 import com.RobinNotBad.BiliClient.activity.reply.WriteReplyActivity
@@ -81,7 +84,7 @@ class ReplyAdapter(
     }
 
     // 主评论列表（非详情页）的排序名。0/1 位置写「未知排序」是因为主列表走服务端排序的 2/3 两档
-    private val sortNames = arrayOf("未知排序", "未知排序", "时间排序", "热度排序")
+    private val sortNames = arrayOf(UiText.of("未知排序"), "未知排序", "时间排序", "热度排序")
 
     /**
      * 排序按钮上的文案。
@@ -91,7 +94,7 @@ class ReplyAdapter(
      */
     private fun sortLabel(): String =
         if (isDetail) (if (sort == Reply.SORT_TIME) "时间排序" else "热度排序")
-        else sortNames.getOrElse(sort) { "未知排序" }
+        else sortNames.getOrElse(sort) { UiText.of("未知排序") }
 
     /**
      * 把「点踩/取消点踩」的结果落到本地状态与视图上。
@@ -156,7 +159,7 @@ class ReplyAdapter(
                     listener?.onItemClick(0)
                     writeReply.sort.text = sortLabel()
                 }
-                writeReply.count_label.text = "共" + count + "条评论"
+                writeReply.count_label.text = UiText.fmt(UiText.of("共%1\$s条评论"), count)
             }
         }
         if (holder is ReplyHolder) {
@@ -271,9 +274,9 @@ class ReplyAdapter(
                 replyHolder.childCount.setTextColor(ColorScheme.PRIMARY)
 
                 if (reply.upReplied)
-                    replyHolder.childCount.text = "UP主在内 共" + reply.childCount + "条回复"
+                    replyHolder.childCount.text = UiText.fmt(UiText.of("UP主在内 共%1\$s条回复"), reply.childCount)
                 else
-                    replyHolder.childCount.text = "共" + reply.childCount + "条回复"
+                    replyHolder.childCount.text = UiText.fmt(UiText.of("共%1\$s条回复"), reply.childCount)
 
                 if (reply.childMsgList != null && replyHolder.childReplies != null) {
                     val childCount = reply.childMsgList!!.size
@@ -341,7 +344,7 @@ class ReplyAdapter(
                             .into(replyHolder.imageCard)
                 }
 
-                replyHolder.imageCount.text = "共" + reply.pictureList!!.size + "张图片"
+                replyHolder.imageCount.text = UiText.fmt(UiText.of("共%1\$s张图片"), reply.pictureList!!.size)
                 replyHolder.imageCard.setOnClickListener {
                     val intent = Intent()
                     intent.setClass(context, ImageViewerActivity::class.java)
@@ -374,13 +377,13 @@ class ReplyAdapter(
                 // 客户端去重：同一条评论的点赞请求还没回来之前，后续连点直接忽略，
                 // 否则会连发好几次点赞/取消，服务端只认最后一次，界面状态就和服务端对不上了
                 if (!likingRpids.add(reply.rpid)) {
-                    MsgUtil.showMsg("正在处理中")
+                    MsgUtil.showMsg(UiText.of("正在处理中"))
                     return@setOnClickListener
                 }
                 CenterThreadPool.run {
                     try {
                         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                            (context as Activity).runOnUiThread { MsgUtil.showMsg("还没有登录喵~") }
+                            (context as Activity).runOnUiThread { MsgUtil.showMsg(UiText.of("还没有登录喵~")) }
                             return@run
                         }
                         if (!reply.liked) {
@@ -392,7 +395,7 @@ class ReplyAdapter(
                                     // 点赞会同时消去点踩（服务端语义），本地状态必须一起改
                                     reply.disliked = false
                                     (context as Activity).runOnUiThread {
-                                        MsgUtil.showMsg("点赞成功")
+                                        MsgUtil.showMsg(UiText.of("点赞成功"))
                                         replyHolder.dislikeBtn.clearColorFilter()
                                         replyHolder.likeCount.text = StringUtil.toWan((++reply.likeCount).toLong())
                                         replyHolder.likeCount.setTextColor(ColorScheme.LIKE_COLOR)
@@ -402,7 +405,7 @@ class ReplyAdapter(
                                     }
                                 } else
                                     (context as Activity).runOnUiThread {
-                                        MsgUtil.showMsg(ReplyApi.actionErrorMsg(likeCode).ifEmpty { "点赞失败" })
+                                        MsgUtil.showMsg(ReplyApi.actionErrorMsg(likeCode).ifEmpty { UiText.of("点赞失败") })
                                     }
                             } catch (e: IOException) {
                                 e.printStackTrace()
@@ -415,7 +418,7 @@ class ReplyAdapter(
                                 if (unlikeCode == 0) {
                                     reply.liked = false
                                     (context as Activity).runOnUiThread {
-                                        MsgUtil.showMsg("取消成功")
+                                        MsgUtil.showMsg(UiText.of("取消成功"))
                                         replyHolder.likeCount.text = StringUtil.toWan((--reply.likeCount).toLong())
                                         replyHolder.likeCount.setTextColor(Color.rgb(0xff, 0xff, 0xff))
                                         replyHolder.likeCount.setCompoundDrawablesWithIntrinsicBounds(
@@ -424,7 +427,7 @@ class ReplyAdapter(
                                     }
                                 } else
                                     (context as Activity).runOnUiThread {
-                                        MsgUtil.showMsg(ReplyApi.actionErrorMsg(unlikeCode).ifEmpty { "取消失败" })
+                                        MsgUtil.showMsg(ReplyApi.actionErrorMsg(unlikeCode).ifEmpty { UiText.of("取消失败") })
                                     }
                             } catch (e: IOException) {
                                 e.printStackTrace()
@@ -444,13 +447,13 @@ class ReplyAdapter(
                 // 复用点赞那把锁：赞和踩在服务端互斥，两个请求并发会互相抵消，
                 // 所以「这条评论有反馈请求在飞」时，赞和踩都要一起挡住
                 if (!likingRpids.add(reply.rpid)) {
-                    MsgUtil.showMsg("正在处理中")
+                    MsgUtil.showMsg(UiText.of("正在处理中"))
                     return@setOnClickListener
                 }
                 CenterThreadPool.run {
                     try {
                         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-                            (context as Activity).runOnUiThread { MsgUtil.showMsg("还没有登录喵~") }
+                            (context as Activity).runOnUiThread { MsgUtil.showMsg(UiText.of("还没有登录喵~")) }
                             return@run
                         }
                         val target = !reply.disliked
@@ -459,12 +462,12 @@ class ReplyAdapter(
                             if (hateCode == 0) {
                                 (context as Activity).runOnUiThread {
                                     applyDislikeResult(replyHolder, reply, target)
-                                    MsgUtil.showMsg(if (target) "已点踩" else "已取消")
+                                    MsgUtil.showMsg(if (target) UiText.of("已点踩") else UiText.of("已取消"))
                                 }
                             } else {
                                 val msg = ReplyApi.actionErrorMsg(hateCode)
                                 (context as Activity).runOnUiThread {
-                                    MsgUtil.showMsg(msg.ifEmpty { "操作失败" })
+                                    MsgUtil.showMsg(msg.ifEmpty { UiText.of("操作失败") })
                                 }
                             }
                         } catch (e: IOException) {
@@ -535,17 +538,17 @@ class ReplyAdapter(
         // reply.message 在 Java 侧是 CharSequence，复制界面只收 String，这里统一转一次。
         val content = reply.message?.toString().orEmpty()
         if (LongPressPrefs.shouldOfferCopy(StringUtil.isCopyEnabled(), content))
-            actions.add("复制文字" to { StringUtil.openCopyPage(context, content) })
+            actions.add(UiText.of("复制文字") to { StringUtil.openCopyPage(context, content) })
         if (isManager) {
-            actions.add((if (reply.isTop) "取消置顶" else "置顶评论") to
+            actions.add((if (reply.isTop) UiText.of("取消置顶") else UiText.of("置顶评论")) to
                     { setReplyTop(reply, !reply.isTop) })
         }
         // 「删除评论」的门槛必须在这里再判一次：本方法原来只被管理按钮调用（按钮本身就
         // 只在 canManage 时可见），现在别人的评论长按也会进来，漏判就会给出一个必然失败的删除项。
-        if (canManage(reply)) actions.add("删除评论" to { confirmDeleteReply(reply) })
+        if (canManage(reply)) actions.add(UiText.of("删除评论") to { confirmDeleteReply(reply) })
 
         if (actions.isEmpty()) {
-            MsgUtil.showMsg("没有可操作的项")
+            MsgUtil.showMsg(UiText.of("没有可操作的项"))
             return
         }
 
@@ -558,7 +561,7 @@ class ReplyAdapter(
         }
 
         // 「删除评论」是破坏性操作，用危险色标出来（原实现里它和「置顶评论」同色）
-        val dangerIndex = actions.indexOfFirst { it.first.startsWith("删除") }
+        val dangerIndex = actions.indexOfFirst { it.first.startsWith(UiText.of("删除")) }
         TerminalDialog.menu(
             context = context,
             items = actions.map { it.first },
@@ -584,9 +587,9 @@ class ReplyAdapter(
                         if (top) Reply.clearTopFlags(replyList)
                         reply.setTopFlag(top)
                         notifyItemRangeChanged(0, itemCount)
-                        MsgUtil.showMsg(if (top) "置顶成功~" else "已取消置顶")
+                        MsgUtil.showMsg(if (top) UiText.of("置顶成功~") else UiText.of("已取消置顶"))
                     } else {
-                        MsgUtil.showMsg(ReplyApi.actionErrorMsg(code).ifEmpty { "操作失败（$code）" })
+                        MsgUtil.showMsg(ReplyApi.actionErrorMsg(code).ifEmpty { ApiErrorText.opFailedBrief(code) })
                     }
                 }
             } catch (e: Exception) {
@@ -598,9 +601,9 @@ class ReplyAdapter(
     private fun confirmDeleteReply(reply: Reply) {
         TerminalDialog.confirm(
             context = context,
-            title = "删除评论",
-            message = "删除后无法恢复，确定删除这条评论吗？",
-            confirmText = "删除",
+            title = UiText.of("删除评论"),
+            message = UiText.of("删除后无法恢复，确定删除这条评论吗？"),
+            confirmText = UiText.of("删除"),
             onConfirm = { deleteReply(reply) }
         ).show()
     }
@@ -623,15 +626,15 @@ class ReplyAdapter(
                             notifyItemRemoved(adapterPosition)
                             notifyItemRangeChanged(adapterPosition, replyList.size + 1 - adapterPosition)
                         }
-                        MsgUtil.showMsg("删除成功~")
+                        MsgUtil.showMsg(UiText.of("删除成功~"))
                         if (index == 0 && isDetail) {
                             (context as Activity).finish()
                         }
                     } else {
                         val msg = when (result) {
-                            -404 -> "没有这条评论！"
-                            -403 -> "权限不足！"
-                            else -> "操作失败：$result"
+                            -404 -> UiText.of("没有这条评论！")
+                            -403 -> UiText.of("权限不足！")
+                            else -> ApiErrorText.opFailedWithDetail(result)
                         }
                         MsgUtil.showMsg(msg)
                     }

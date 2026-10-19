@@ -23,7 +23,7 @@
             android:layout_toStartOf="@id/timeText"
             android:layout_toLeftOf="@id/timeText"
             android:lines="1"
-            android:text="编辑个人资料"
+            android:text="@string/uitext_myspacemenu_002"
             android:textStyle="bold"
             app:drawableStartCompat="@drawable/arrow_back" />
 
@@ -74,7 +74,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:layout_weight="1"
-                        android:text="点击上传头像\n支持从相册选择图片，审核通过后生效"
+                        android:text="@string/text_upload_avatar_hint"
                         android:textSize="13sp" />
 
                     <ImageView
@@ -108,7 +108,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:layout_weight="1"
-                        android:text="修改个人描述"
+                        android:text="@string/text_activityeditprofile_02"
                         android:textSize="13sp" />
 
                     <ImageView
@@ -142,7 +142,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:layout_weight="1"
-                        android:text="修改昵称/生日/性别"
+                        android:text="@string/text_activityeditprofile_01"
                         android:textSize="13sp" />
 
                     <ImageView

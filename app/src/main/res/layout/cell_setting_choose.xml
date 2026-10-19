@@ -16,7 +16,7 @@
             android:id="@+id/setting_choose_name"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="单选类设置项"
+            android:text="@string/text_cellsettingchoose_04"
             android:textSize="14sp" />
 
         <RadioGroup
@@ -27,7 +27,7 @@
                 android:id="@+id/setting_choose_chocola"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="巧克力"
+                android:text="@string/text_cellsettingchoose_03"
                 android:textColor="?android:attr/textColorPrimary"
                 android:textSize="12sp" />
 
@@ -35,7 +35,7 @@
                 android:id="@+id/setting_choose_vanilla"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="香草"
+                android:text="@string/text_cellsettingchoose_02"
                 android:textColor="?android:attr/textColorPrimary"
                 android:textSize="12sp" />
         </RadioGroup>
@@ -46,7 +46,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:alpha="0.9"
-            android:text="虽然但是，Robin只喜欢纳西妲嘿嘿嘿"
+            android:text="@string/text_cellsettingchoose_01"
             android:textSize="12sp" />
 
     </LinearLayout>

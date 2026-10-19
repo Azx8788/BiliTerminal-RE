@@ -31,7 +31,7 @@
         <activity
             android:name=".activity.settings.TestActivity"
             android:exported="true"
-            android:label="测试页面"
+            android:label="@string/label_activity_test"
             android:permission="android.permission.DUMP"
             android:screenOrientation="locked" />
 

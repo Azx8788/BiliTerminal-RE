@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.view.View
 
@@ -26,7 +28,7 @@ class ExpLogActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_simple_refresh)
 
-        setPageName("经验变化记录")
+        setPageName(UiText.of("经验变化记录"))
 
         recyclerView = findViewById(R.id.recyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
@@ -44,7 +46,7 @@ class ExpLogActivity : BaseActivity() {
 
                 runOnUiThread {
                     if (logList.isEmpty()) {
-                        MsgUtil.showMsg("暂无经验变化记录")
+                        MsgUtil.showMsg(UiText.of("暂无经验变化记录"))
                         findViewById<View>(R.id.emptyTip).visibility = View.VISIBLE
                     } else {
                         // 经验流水：保持原有行为，恒前置 "+"
@@ -57,7 +59,7 @@ class ExpLogActivity : BaseActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    MsgUtil.showMsg("加载失败：" + e.message)
+                    MsgUtil.showMsg(UiText.fmt("加载失败：%1\$s", e.message))
                     swipeRefreshLayout.isRefreshing = false
                     findViewById<View>(R.id.emptyTip).visibility = View.VISIBLE
                 }

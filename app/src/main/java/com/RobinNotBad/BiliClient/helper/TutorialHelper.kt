@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.helper
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -125,7 +127,7 @@ class TutorialHelper {
         fun show(xml_res_id: Int, context: Context, tutorial_tag: String, tutorial_version: Int) {
             if (SharedPreferencesUtil.getInt("tutorial_ver_$tutorial_tag", -1) < tutorial_version) {
                 if (SharedPreferencesUtil.getInt("tutorial_ver_$tutorial_tag", 0) != 0)
-                    Toast.makeText(context.applicationContext, "教程已更新", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context.applicationContext, UiText.of("教程已更新"), Toast.LENGTH_SHORT).show()
                 val intent = Intent(context, TutorialActivity::class.java)
                 intent.putExtra("xml_id", xml_res_id)
                 intent.putExtra("tag", tutorial_tag)
@@ -144,7 +146,7 @@ class TutorialHelper {
                         show(indentify, context, context.resources.getStringArray(R.array.tutorial_list)[tutorial_key], n--)
                 }
             } catch (e: Exception) {
-                MsgUtil.showMsg("加载教程时遇到问题")
+                MsgUtil.showMsg(UiText.of("加载教程时遇到问题"))
                 e.printStackTrace()
             }
         }

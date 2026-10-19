@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -36,7 +38,7 @@ class TimelineAdapter(
 
         var dateText = dayInfo.date
         if (dayInfo.is_today == 1) {
-            dateText = dateText + " (今天)"
+            dateText = dateText + UiText.of(" (今天)")
         }
         holder.dateText.text = dateText
 

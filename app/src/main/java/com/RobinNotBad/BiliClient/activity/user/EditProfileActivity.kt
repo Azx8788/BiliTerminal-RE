@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -30,7 +32,7 @@ class EditProfileActivity : BaseActivity() {
         setContentView(R.layout.activity_edit_profile)
 
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-            MsgUtil.showMsg("还没有登录喵~")
+            MsgUtil.showMsg(UiText.of("还没有登录喵~"))
             finish()
             return
         }
@@ -66,11 +68,11 @@ class EditProfileActivity : BaseActivity() {
 
     private fun selectImage() {
         if (isUploading) {
-            MsgUtil.showMsg("正在上传中...")
+            MsgUtil.showMsg(UiText.of("正在上传中..."))
             return
         }
         if (!SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.cookie_refresh, true)) {
-            MsgUtil.showDialog("无法上传", "上一次的Cookie刷新失败了，\n您可能需要重新登录以进行敏感操作", -1)
+            MsgUtil.showDialog(getString(R.string.text_cannot_upload), getString(R.string.msg_cookie_refresh_failed), -1)
             return
         }
         val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
@@ -90,7 +92,7 @@ class EditProfileActivity : BaseActivity() {
 
     private fun uploadAvatar(imageUri: Uri) {
         isUploading = true
-        MsgUtil.showMsg("正在上传头像...")
+        MsgUtil.showMsg(UiText.of("正在上传头像..."))
 
         CenterThreadPool.run {
             try {
@@ -98,7 +100,7 @@ class EditProfileActivity : BaseActivity() {
                 if (inputStream == null) {
                     runOnUiThread {
                         isUploading = false
-                        MsgUtil.showMsg("无法读取图片")
+                        MsgUtil.showMsg(UiText.of("无法读取图片"))
                     }
                     return@run
                 }
@@ -108,7 +110,7 @@ class EditProfileActivity : BaseActivity() {
                 if (bitmap == null) {
                     runOnUiThread {
                         isUploading = false
-                        MsgUtil.showMsg("无法解码图片")
+                        MsgUtil.showMsg(UiText.of("无法解码图片"))
                     }
                     return@run
                 }
@@ -126,7 +128,7 @@ class EditProfileActivity : BaseActivity() {
                     runOnUiThread {
                         isUploading = false
                         if (code == 0) {
-                            MsgUtil.showMsg("头像上传成功，等待审核")
+                            MsgUtil.showMsg(UiText.of("头像上传成功，等待审核"))
                             val data = result.optJSONObject("data")
                             if (data != null) {
                                 val faceUrl = data.optString("url", "")
@@ -141,12 +143,12 @@ class EditProfileActivity : BaseActivity() {
                             }
                         } else {
                             val errorMsg = when (code) {
-                                -101 -> "账号未登录"
-                                -102 -> "CSRF校验失败"
-                                -111 -> "图片格式不支持"
-                                -112 -> "图片过大"
-                                -400 -> "请求参数错误"
-                                -403 -> "CSRF验证失败"
+                                -101 -> UiText.of("账号未登录")
+                                -102 -> UiText.of("CSRF校验失败")
+                                -111 -> UiText.of("图片格式不支持")
+                                -112 -> UiText.of("图片过大")
+                                -400 -> UiText.of("请求参数错误")
+                                -403 -> UiText.of("CSRF验证失败")
                                 else -> if (message.isNotEmpty()) message else "上传失败"
                             }
                             MsgUtil.showMsg("$errorMsg (错误码:$code)")
@@ -157,7 +159,7 @@ class EditProfileActivity : BaseActivity() {
                 if (!isDestroyed) {
                     runOnUiThread {
                         isUploading = false
-                        MsgUtil.err("上传头像失败", e)
+                        MsgUtil.err(UiText.of("上传头像失败"), e)
                     }
                 }
             }

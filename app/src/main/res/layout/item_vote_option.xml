@@ -28,7 +28,7 @@
         android:layout_marginStart="10dp"
         android:textColor="?android:attr/textColorPrimary"
         android:textSize="13sp"
-        android:text="选项文字" />
+        android:text="@string/text_itemvoteoption_01" />
 
     <!-- 选中指示器 -->
     <TextView

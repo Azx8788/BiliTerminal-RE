@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.series
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -43,7 +45,7 @@ class SeriesInfoActivity : RefreshListActivity() {
         seriesType = intent.getStringExtra("type") ?: "series"
         seriesMid = intent.getLongExtra("mid", 0)
         seriesId = intent.getIntExtra("sid", 0)
-        seriesName = intent.getStringExtra("name") ?: "系列详情"
+        seriesName = intent.getStringExtra("name") ?: UiText.of("系列详情")
         seriesCover = intent.getStringExtra("cover") ?: ""
         seriesIntro = intent.getStringExtra("intro") ?: ""
         seriesTotal = intent.getStringExtra("total") ?: ""
@@ -140,7 +142,7 @@ class SeriesInfoActivity : RefreshListActivity() {
             } else if (holder is SeriesInfoHolder) {
                 val activity = context as SeriesInfoActivity
                 holder.name.text = activity.seriesName
-                holder.desc.text = activity.seriesIntro.ifEmpty { "这里没有简介哦" }
+                holder.desc.text = activity.seriesIntro.ifEmpty { UiText.of("这里没有简介哦") }
                 holder.playTimes.text = "共${activity.seriesTotal}"
                 Glide.with(context).asDrawable().load(GlideUtil.url_hq(activity.seriesCover))
                     .transition(GlideUtil.getTransitionOptions())

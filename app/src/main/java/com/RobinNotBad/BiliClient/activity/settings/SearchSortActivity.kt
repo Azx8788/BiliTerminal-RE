@@ -40,7 +40,7 @@ class SearchSortActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_simple_list)
 
-        setPageName("搜索类别排序")
+        setPageName(getString(R.string.pagename_setting_search_sort))
 
         val sortConf = SharedPreferencesUtil.getString(SharedPreferencesUtil.SEARCH_CATEGORY_SORT, "")
         // 容忍式解析：只要求保存的每一项都是已知类别，不再要求项数等于类别总数。
@@ -104,13 +104,13 @@ class SearchSortActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
-        MsgUtil.showMsg("长按拖动以排序（视频始终在第一位）")
+        MsgUtil.showMsg(getString(R.string.msg_searchsortactivity_001))
     }
 
     override fun onPause() {
         super.onPause()
         save()
-        MsgUtil.showMsg("排序已保存")
+        MsgUtil.showMsg(getString(R.string.msg_searchsortactivity_002))
     }
 
     private fun loadDefaultOrder() {

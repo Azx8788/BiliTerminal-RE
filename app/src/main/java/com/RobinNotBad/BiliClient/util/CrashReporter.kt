@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.util
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
@@ -129,7 +131,7 @@ object CrashReporter {
             val payload = buildPayload(context, exception, message, thread, stack, trail, ringLog, uptimeSec)
             TerminalApi.uploadCrash(payload)
         } catch (e: Exception) {
-            ApiResult(-4, "崩溃报告生成失败")
+            ApiResult(-4, UiText.of("崩溃报告生成失败"))
         }
     }
 

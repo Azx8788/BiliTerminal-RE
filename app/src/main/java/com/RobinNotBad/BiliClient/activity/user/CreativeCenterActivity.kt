@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
@@ -28,7 +30,7 @@ class CreativeCenterActivity : BaseActivity() {
                     runOnUiThread {
                         try {
                             if (stats == null) {
-                                MsgUtil.showMsg("先去成为UP主吧~")
+                                MsgUtil.showMsg(UiText.of("先去成为UP主吧~"))
                                 finish()
                             } else {
                                 setStatsText(R.id.totalFans_number, stats, "total_fans", "incr_fans")

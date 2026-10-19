@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -21,7 +23,7 @@ class GetIntentActivity : Activity() {
             "video_bv" -> {
                 val bvid = intent.getStringExtra("content")
                 if (bvid != null) BiliTerminal.jumpToVideo(this, bvid)
-                else MsgUtil.showMsgLong("链接无效：缺少视频参数")
+                else MsgUtil.showMsgLong(UiText.of("链接无效：缺少视频参数"))
             }
             "article" -> BiliTerminal.jumpToArticle(this, intent.getLongExtra("content", 0))
             "user" -> BiliTerminal.jumpToUser(this, intent.getLongExtra("content", 0))

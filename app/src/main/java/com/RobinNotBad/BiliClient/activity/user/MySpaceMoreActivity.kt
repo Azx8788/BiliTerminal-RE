@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
@@ -28,7 +30,7 @@ class MySpaceMoreActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         asyncInflate(R.layout.activity_myspace) { _, _ ->
-            setPageName("更多")
+            setPageName(UiText.of("更多"))
             // 更多页没有用户卡片
             findViewById<View>(R.id.myinfo).visibility = View.GONE
             menuContainer = findViewById(R.id.menuContainer)

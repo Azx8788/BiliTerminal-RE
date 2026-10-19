@@ -62,7 +62,7 @@
                     android:layout_height="35dp"
                     android:layout_marginHorizontal="8dp"
                     android:gravity="center_vertical"
-                    android:text="deepseek猫娘请求测试"
+                    android:text="@string/text_activitytest_08"
                     android:textAlignment="textEnd"
                     android:textSize="13sp"
                     app:drawableEndCompat="@drawable/arrow_forward" />
@@ -81,7 +81,7 @@
                     android:layout_height="35dp"
                     android:layout_marginHorizontal="8dp"
                     android:gravity="center_vertical"
-                    android:text="opus请求测试"
+                    android:text="@string/text_activitytest_07"
                     android:textAlignment="textEnd"
                     android:textSize="13sp"
                     app:drawableEndCompat="@drawable/arrow_forward" />
@@ -91,7 +91,7 @@
                 android:id="@+id/desc"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="如果你不是开发者，你不需要知道这个页面是用来干什么的。\n——当然，知道一点也无妨，这是一个简易的网络请求工具。"
+                android:text="@string/text_net_tool_intro"
                 android:textSize="12sp" />
 
             <EditText
@@ -100,7 +100,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:background="@drawable/background_edittext"
-                android:hint="在这里输入请求链接"
+                android:hint="@string/hint_activitytest_06"
                 android:minHeight="40dp"
                 android:padding="8dp"
                 android:text=""
@@ -112,7 +112,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:background="@drawable/background_edittext"
-                android:hint="在这里输入POST数据"
+                android:hint="@string/hint_activitytest_05"
                 android:minHeight="40dp"
                 android:padding="8dp"
                 android:text=""
@@ -124,14 +124,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@android:color/transparent"
-                android:text="启用WBI签名" />
+                android:text="@string/text_activitytest_04" />
 
             <com.google.android.material.switchmaterial.SwitchMaterial
                 android:id="@+id/switch_post"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@android:color/transparent"
-                android:text="使用POST方式" />
+                android:text="@string/text_activitytest_03" />
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/request"
@@ -162,7 +162,7 @@
                     android:layout_height="35dp"
                     android:layout_marginHorizontal="8dp"
                     android:gravity="center_vertical"
-                    android:text="查看Cookies"
+                    android:text="@string/text_activitytest_02"
                     android:textAlignment="textEnd"
                     android:textSize="13sp"
                     android:visibility="visible"
@@ -175,7 +175,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:background="@drawable/background_edittext"
-                android:hint="这里会输出请求结果"
+                android:hint="@string/hint_activitytest_01"
                 android:minHeight="40dp"
                 android:padding="8dp"
                 android:text=""

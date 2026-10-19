@@ -23,7 +23,7 @@
             android:layout_toStartOf="@id/timeText"
             android:layout_toLeftOf="@id/timeText"
             android:lines="1"
-            android:text="笔记"
+            android:text="@string/uitext_noteactivity_001"
             android:textStyle="bold"
             app:drawableStartCompat="@drawable/arrow_back" />
 
@@ -79,7 +79,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
                 android:gravity="center"
-                android:text="这个视频还没有笔记"
+                android:text="@string/uitext_noteactivity_004"
                 android:textSize="13sp"
                 android:visibility="gone" />
 

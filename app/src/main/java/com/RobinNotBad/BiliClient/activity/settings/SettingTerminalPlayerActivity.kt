@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.settings
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -20,7 +22,7 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
     private var settingsAdapter: SettingsAdapter? = null
 
     /** 三态项的显示名与取值，顺序一一对应。 */
-    private val triStateNames = listOf("开", "关", "沿用上次")
+    private val triStateNames = listOf(UiText.of("开"), "关", "沿用上次")
     private val triStateValues = listOf(
         SettingsKeys.PLAYER_DEFAULT_MODE_ON,
         SettingsKeys.PLAYER_DEFAULT_MODE_OFF,
@@ -47,7 +49,7 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("内置播放器设置")
+        setPageName(getString(R.string.pagename_settingterminalplayeractivity_001))
 
         // 「播放默认值」各项的默认模式统一由**旧开关**迁移而来，保证升级后行为不变：
         // 旧开关为 true → 默认「开」，否则「关」。（旧键仍在 SettingsKeys 里，标了 legacy）
@@ -86,17 +88,17 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
             add(listChoose("倍速", SettingsKeys.PLAYER_DEFAULT_SPEED,
                 "开播时的播放速度；「沿用上次」= 上次用过的倍速",
                 "1.0",
-                listOf("0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "1.75x", "2.0x", "3.0x", "沿用上次"),
+                listOf("0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "1.75x", "2.0x", "3.0x", UiText.of("沿用上次")),
                 listOf("0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "3.0", SettingsKeys.PLAYER_DEFAULT_MODE_LAST)))
             add(listChoose("字幕", SettingsKeys.PLAYER_DEFAULT_SUBTITLE,
                 "中文 = 开播自动选中文字幕（优先人工，其次 AI）；自行选择 = 是否弹出选择框由下方「自动弹出字幕选择」决定",
                 SettingsKeys.PLAYER_DEFAULT_SUBTITLE_MANUAL,
-                listOf("中文", "自行选择"),
+                listOf(UiText.of("中文"), "自行选择"),
                 listOf(SettingsKeys.PLAYER_DEFAULT_SUBTITLE_ZH, SettingsKeys.PLAYER_DEFAULT_SUBTITLE_MANUAL)))
             add(listChoose("屏幕方向", SettingsKeys.PLAYER_DEFAULT_ORIENTATION,
                 "播放器的默认屏幕方向；「按视频分辨率选择」= 视频宽大于高则横屏",
                 orientationDefault,
-                listOf("默认横屏", "竖屏", "按视频分辨率选择"),
+                listOf(UiText.of("默认横屏"), "竖屏", "按视频分辨率选择"),
                 listOf(
                     SettingsKeys.PLAYER_DEFAULT_ORIENTATION_LANDSCAPE,
                     SettingsKeys.PLAYER_DEFAULT_ORIENTATION_PORTRAIT,
@@ -123,7 +125,7 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
                 arrayOf("TextureView", "SurfaceView")))
             add(SettingSection("choose", "解码方式", SettingsKeys.PLAYER_CODEC,
                 getString(R.string.desc_videocodec), "true",
-                arrayOf("硬件解码", "软件解码")))
+                arrayOf(UiText.of("硬件解码"), "软件解码")))
             add(SettingSection("choose", "音频输出", SettingsKeys.PLAYER_AUDIO,
                 getString(R.string.desc_audiocodec), "false",
                 arrayOf("OpenSles", "AudioTrack")))

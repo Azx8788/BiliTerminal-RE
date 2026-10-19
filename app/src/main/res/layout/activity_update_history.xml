@@ -21,7 +21,7 @@
             android:layout_toStartOf="@id/timeText"
             android:layout_toLeftOf="@id/timeText"
             android:lines="1"
-            android:text="历史更新日志"
+            android:text="@string/pagename_updatehistoryactivity_001"
             android:textStyle="bold"
             app:drawableStartCompat="@drawable/arrow_back" />
 

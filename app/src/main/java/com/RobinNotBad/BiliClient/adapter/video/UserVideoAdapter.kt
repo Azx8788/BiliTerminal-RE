@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -36,7 +38,7 @@ class UserVideoAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         if (position == 0) {
             val textView = holder.itemView.findViewById<TextView>(R.id.text)
-            textView.text = "视频系列"
+            textView.text = UiText.of("视频系列")
             holder.itemView.setOnClickListener {
                 val intent = Intent(context, UserSeriesActivity::class.java)
                 intent.putExtra("mid", mid)

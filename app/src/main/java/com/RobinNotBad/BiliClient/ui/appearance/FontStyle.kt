@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.ui.appearance
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.graphics.Typeface
 import android.net.Uri
@@ -120,7 +122,7 @@ object FontStyle {
      * @return `null` 表示成功；否则返回中文失败原因，供 UI 直接展示。
      */
     fun install(context: Context, uri: Uri): String? {
-        val header = readHeader(context, uri) ?: return "无法读取该文件"
+        val header = readHeader(context, uri) ?: return UiText.of("无法读取该文件")
         val reject = rejectReason(header)
         if (reject != null) return reject
 
@@ -131,8 +133,8 @@ object FontStyle {
         try {
             val size = context.contentResolver.openInputStream(uri)?.use { input ->
                 temp.outputStream().use { output -> input.copyTo(output) }
-            } ?: return "无法读取该文件"
-            if (size <= 0L) return "文件为空"
+            } ?: return UiText.of("无法读取该文件")
+            if (size <= 0L) return UiText.of("文件为空")
             if (size > MAX_BYTES) return "文件过大（超过 ${MAX_BYTES / 1024 / 1024}MB）"
         } catch (e: Throwable) {
             temp.delete()
@@ -142,11 +144,11 @@ object FontStyle {
         // 换名到目标位置（同一目录内，原子性足够）
         if (target.exists() && !target.delete()) {
             temp.delete()
-            return "无法覆盖旧字体文件"
+            return UiText.of("无法覆盖旧字体文件")
         }
         if (!temp.renameTo(target)) {
             temp.delete()
-            return "无法保存字体文件"
+            return UiText.of("无法保存字体文件")
         }
 
         AppearanceManager.setFontPath(target.absolutePath)
@@ -184,9 +186,9 @@ object FontStyle {
         return when {
             // WOFF/WOFF2 是网页字体，Android 的 Typeface 解析不了——单独给出提示，
             // 这是用户最容易挑错的一类文件。
-            tag == "wOFF" || tag == "wOF2" -> "不支持 WOFF/WOFF2 网页字体，请选 TTF / OTF / TTC"
+            tag == "wOFF" || tag == "wOF2" -> UiText.of("不支持 WOFF/WOFF2 网页字体，请选 TTF / OTF / TTC")
             isSupportedMagic(header) -> null
-            else -> "不是可识别的字体文件（支持 TTF / OTF / TTC）"
+            else -> UiText.of("不是可识别的字体文件（支持 TTF / OTF / TTC）")
         }
     }
 

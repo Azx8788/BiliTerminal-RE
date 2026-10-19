@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.dynamic
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -28,6 +30,7 @@ import com.RobinNotBad.BiliClient.activity.message.PrivateMsgActivity
 import com.RobinNotBad.BiliClient.activity.user.FollowUsersActivity
 import com.RobinNotBad.BiliClient.activity.user.MedalWallActivity
 import com.RobinNotBad.BiliClient.adapter.user.ElectricUserAdapter
+import com.RobinNotBad.BiliClient.api.ApiErrorText
 import com.RobinNotBad.BiliClient.api.ElectricApi
 import com.RobinNotBad.BiliClient.api.UserInfoApi
 import com.RobinNotBad.BiliClient.model.Dynamic
@@ -164,7 +167,7 @@ class UserDynamicAdapter(
                         0x8E
                     )
                 )
-            followBtn.text = if (followed) "已关注" else "关注"
+            followBtn.text = if (followed) UiText.of("已关注") else UiText.of("关注")
         }
 
         @SuppressLint("SetTextI18n")
@@ -176,10 +179,10 @@ class UserDynamicAdapter(
             )
             if (userInfo.vip_role > 0) {
                 val vipTypeMap: LinkedHashMap<Int, String> = linkedMapOf(
-                    1 to "月度大会员",
-                    3 to "年度大会员",
-                    7 to "十年大会员",
-                    15 to "百年大会员"
+                    1 to UiText.of("月度大会员"),
+                    3 to UiText.of("年度大会员"),
+                    7 to UiText.of("十年大会员"),
+                    15 to UiText.of("百年大会员")
                 )
                 lvStr.append("  ").append(vipTypeMap[userInfo.vip_role]).append(" ")
                 lvStr.setSpan(
@@ -202,7 +205,7 @@ class UserDynamicAdapter(
             this.uidTv.text = userInfo.mid.toString()
             StringUtil.setCopy(this.uidTv)
             StringUtil.setLink(this.userDesc, this.userNotice)
-            this.userFans.text = StringUtil.toWan(userInfo.fans.toLong()) + "粉丝"
+            this.userFans.text = StringUtil.toWan(userInfo.fans.toLong()) + UiText.of("粉丝")
             this.userFans.setOnClickListener {
                 it.context.startActivity(
                     Intent(it.context, FollowUsersActivity::class.java)
@@ -217,7 +220,7 @@ class UserDynamicAdapter(
                 )
             }
 
-            this.userFollowings.text = StringUtil.toWan(userInfo.following.toLong()) + "关注"
+            this.userFollowings.text = StringUtil.toWan(userInfo.following.toLong()) + UiText.of("关注")
             this.userFollowings.setOnClickListener {
                 it.context.startActivity(
                     Intent(it.context, FollowUsersActivity::class.java)
@@ -229,8 +232,8 @@ class UserDynamicAdapter(
                 this.officialIcon.visibility = View.VISIBLE
                 this.userOfficial.visibility = View.VISIBLE
                 val official_signs = arrayOf(
-                    "哔哩哔哩不知名UP主", "哔哩哔哩知名UP主", "哔哩哔哩大V达人", "哔哩哔哩企业认证",
-                    "哔哩哔哩组织认证", "哔哩哔哩媒体认证", "哔哩哔哩政府认证", "哔哩哔哩高能主播", "社会不知名人士", "社会知名人士"
+                    UiText.of("哔哩哔哩不知名UP主"), UiText.of("哔哩哔哩知名UP主"), UiText.of("哔哩哔哩大V达人"), UiText.of("哔哩哔哩企业认证"),
+                    UiText.of("哔哩哔哩组织认证"), UiText.of("哔哩哔哩媒体认证"), UiText.of("哔哩哔哩政府认证"), UiText.of("哔哩哔哩高能主播"), UiText.of("社会不知名人士"), UiText.of("社会知名人士")
                 )
                 // 服务端的 official 取值并不保证落在文案表范围内（实测见过 10），
                 // 直接下标会 ArrayIndexOutOfBoundsException；夹到合法区间再取。
@@ -294,13 +297,13 @@ class UserDynamicAdapter(
                         val msg: String
                         if (result == 0) {
                             userInfo.followed = !(userInfo.followed)
-                            msg = "操作成功喵~"
+                            msg = UiText.of("操作成功喵~")
                         } else {
                             CenterThreadPool.runOnUiThread { this.setFollowed(userInfo.followed) }
                             if (result == 22015)
-                                msg = "被B站风控系统拦截了\n（无法解决，详见公告）"
+                                msg = UiText.of("被B站风控系统拦截了\n（无法解决，详见公告）")
                             else
-                                msg = "操作失败（原因未知）：" + result
+                                msg = UiText.of("操作失败（原因未知）：") + result
                         }
                         MsgUtil.showMsg(msg)
                     } catch (e: Exception) {
@@ -333,11 +336,11 @@ class UserDynamicAdapter(
                             val result = UserInfoApi.addContract(userInfo.mid)
                             val msg: String
                             if (result == 0) {
-                                msg = "加入成功"
+                                msg = UiText.of("加入成功")
                             } else if (result == 158001) {
-                                msg = "不满足条件"
+                                msg = UiText.of("不满足条件")
                             } else {
-                                msg = "操作失败：" + result
+                                msg = ApiErrorText.opFailedWithDetail(result)
                             }
                             MsgUtil.showMsg(msg)
                         } catch (e: Exception) {
@@ -386,7 +389,7 @@ class UserDynamicAdapter(
                         CenterThreadPool.runOnUiThread {
                             this.electricPanel.visibility = View.VISIBLE
 
-                            this.electricPanelHeader.text = "充电公示（本月" + panel.count + "人）"
+                            this.electricPanelHeader.text = UiText.fmt(UiText.of("充电公示（本月%1\$s人）"), panel.count)
 
                             this.electricUserList.layoutManager = LinearLayoutManager(context)
                             val adapter = ElectricUserAdapter(context, panel.list)

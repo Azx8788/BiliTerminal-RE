@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.message
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -65,7 +67,7 @@ class MessageActivity : InstanceActivity() {
                 intent.setClass(this, NoticeActivity::class.java)
                 intent.putExtra("type", "reply")
                 startActivity(intent)
-                (findViewById<TextView>(R.id.reply_text)).text = "回复我的"
+                (findViewById<TextView>(R.id.reply_text)).text = UiText.of("回复我的")
             }
 
             val like = findViewById<MaterialCardView>(R.id.like)
@@ -74,7 +76,7 @@ class MessageActivity : InstanceActivity() {
                 intent.setClass(this, NoticeActivity::class.java)
                 intent.putExtra("type", "like")
                 startActivity(intent)
-                (findViewById<TextView>(R.id.like_text)).text = "收到的赞"
+                (findViewById<TextView>(R.id.like_text)).text = UiText.of("收到的赞")
             }
 
             val at = findViewById<MaterialCardView>(R.id.at)
@@ -83,7 +85,7 @@ class MessageActivity : InstanceActivity() {
                 intent.setClass(this, NoticeActivity::class.java)
                 intent.putExtra("type", "at")
                 startActivity(intent)
-                (findViewById<TextView>(R.id.at_text)).text = "@我"
+                (findViewById<TextView>(R.id.at_text)).text = UiText.of("@我")
             }
 
             val system = findViewById<MaterialCardView>(R.id.system)
@@ -139,12 +141,12 @@ class MessageActivity : InstanceActivity() {
                 runOnUiThread {
                     swipeRefreshLayout.isRefreshing = false
                     try {
-                        (findViewById<TextView>(R.id.reply_text)).text = "回复我的" +
-                                (if ((stats.getInt("reply") > 0)) ("(" + stats.getInt("reply") + "未读)") else "")
+                        (findViewById<TextView>(R.id.reply_text)).text = UiText.of("回复我的") +
+                                (if ((stats.getInt("reply") > 0)) ("(" + stats.getInt("reply") + UiText.of("未读)")) else "")
                         (findViewById<TextView>(R.id.like_text)).text =
-                            "收到的赞" + (if ((stats.getInt("like") > 0)) ("(" + stats.getInt("like") + "未读)") else "")
+                            UiText.of("收到的赞") + (if ((stats.getInt("like") > 0)) ("(" + stats.getInt("like") + "未读)") else "")
                         (findViewById<TextView>(R.id.at_text)).text =
-                            "@我" + (if ((stats.getInt("at") > 0)) ("(" + stats.getInt("at") + "未读)") else "")
+                            UiText.of("@我") + (if ((stats.getInt("at") > 0)) ("(" + stats.getInt("at") + "未读)") else "")
                         sessionsView.layoutManager = CustomLinearManager(this)
                         sessionsView.adapter = adapter
                         SharedPreferencesUtil.putInt(SharedPreferencesUtil.MESSAGE_UPDATE_NUM, 0)

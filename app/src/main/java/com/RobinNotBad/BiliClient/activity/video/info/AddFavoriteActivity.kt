@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video.info
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Intent
 import android.os.Bundle
 import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
@@ -23,13 +25,13 @@ class AddFavoriteActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("添加收藏")
+        setPageName(UiText.of("添加收藏"))
 
         val intent = intent
         aid = intent.getLongExtra("aid", 0)
 
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-            MsgUtil.showMsg("还没有登录喵~")
+            MsgUtil.showMsg(UiText.of("还没有登录喵~"))
             finish()
             return
         }
@@ -63,9 +65,9 @@ class AddFavoriteActivity : RefreshListActivity() {
     override fun onDestroy() {
         if (adapter != null) {
             if (SharedPreferencesUtil.getBoolean("fav_notice", true)) {
-                if (adapter!!.added) MsgUtil.showMsg("添加成功")
-                else if (adapter!!.isAllDeleted()) MsgUtil.showMsg("删除成功")
-                else if (adapter!!.changed) MsgUtil.showMsg("更改成功")
+                if (adapter!!.added) MsgUtil.showMsg(UiText.of("添加成功"))
+                else if (adapter!!.isAllDeleted()) MsgUtil.showMsg(UiText.of("删除成功"))
+                else if (adapter!!.changed) MsgUtil.showMsg(UiText.of("更改成功"))
             }
         }
 

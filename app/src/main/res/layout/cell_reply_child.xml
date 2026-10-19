@@ -7,4 +7,4 @@
     android:ellipsize="end"
     android:paddingVertical="2dp"
     android:textSize="12sp"
-    android:text="你干嘛哈哈哎哟" />
+    android:text="@string/text_cellreplychild_01" />

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.live
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -97,7 +99,7 @@ class LiveInfoActivity : BaseActivity() {
 
                     val upList = ArrayList<UserInfo>()
                     if (userInfo != null) {
-                        val displayUserInfo = UserInfo(userInfo.mid, userInfo.name, userInfo.avatar, "主播", 0, 0, 6, false, "", 0, "", 0)
+                        val displayUserInfo = UserInfo(userInfo.mid, userInfo.name, userInfo.avatar, UiText.of("主播"), 0, 0, 6, false, "", 0, "", 0)
                         upList.add(displayUserInfo)
                     }
                     val upListAdapter = UpListAdapter(this, upList)
@@ -105,11 +107,11 @@ class LiveInfoActivity : BaseActivity() {
                     up_recyclerView.layoutManager = CustomLinearManager(this)
                     up_recyclerView.adapter = upListAdapter
 
-                    viewsCount.text = StringUtil.toWan(room!!.online.toLong()) + "人观看"
-                    durationText.text = "直播开始于" + room!!.liveTime
+                    viewsCount.text = StringUtil.toWan(room!!.online.toLong()) + UiText.of("人观看")
+                    durationText.text = UiText.fmt(UiText.of("直播开始于%1\$s"), room!!.liveTime)
 
-                    idText.text = "房间号: $room_id" + (if (room!!.short_id > 0) " (短号: " + room!!.short_id + ")" else "")
-                    tags.text = "标签：" + room!!.tags
+                    idText.text = "房间号: $room_id" + (if (room!!.short_id > 0) UiText.of(" (短号: ") + room!!.short_id + ")" else "")
+                    tags.text = UiText.fmt(UiText.of("标签：%1\$s"), room!!.tags)
 
                     tags.setOnClickListener {
                         if (tags_expand) tags.maxLines = 1
@@ -118,7 +120,7 @@ class LiveInfoActivity : BaseActivity() {
                     }
 
                     areaText.text = "分区: " + (if (room!!.area_parent_name != null) room!!.area_parent_name + " > " else "") + (room!!.area_name ?: "")
-                    attentionText.text = "关注数: " + StringUtil.toWan(room!!.attention.toLong())
+                    attentionText.text = UiText.of("关注数: ") + StringUtil.toWan(room!!.attention.toLong())
 
                     val statusStr: String
                     when (room!!.live_status) {
@@ -147,14 +149,14 @@ class LiveInfoActivity : BaseActivity() {
                                 val primary = routes.getOrNull(selectedHost)
                                     ?: LiveStreamSelector.first(playInfo)
                                 if (primary == null) {
-                                    runOnUiThread { MsgUtil.showMsg("直播已结束") }
+                                    runOnUiThread { MsgUtil.showMsg(UiText.of("直播已结束")) }
                                     return@run
                                 }
                                 val play_url = primary.url
 
                                 val playerData = PlayerData(PlayerData.TYPE_LIVE)
                                 playerData.videoUrl = play_url
-                                playerData.title = "直播·" + room!!.title
+                                playerData.title = UiText.of("直播·") + room!!.title
                                 playerData.aid = room_id
                                 playerData.mid = SharedPreferencesUtil.getLong("mid", 0)
                                 playerData.liveUrlCandidates = ArrayList(
@@ -166,7 +168,7 @@ class LiveInfoActivity : BaseActivity() {
                                         val player = PlayerApi.jumpToPlayer(playerData)
                                         startActivity(player)
                                     } catch (e: ActivityNotFoundException) {
-                                        MsgUtil.showMsg("没有找到播放器，请检查是否安装")
+                                        MsgUtil.showMsg(UiText.of("没有找到播放器，请检查是否安装"))
                                     } catch (e: Exception) {
                                         MsgUtil.err(e)
                                     }
@@ -178,14 +180,14 @@ class LiveInfoActivity : BaseActivity() {
                     }
                     play.setOnLongClickListener {
                         if (SharedPreferencesUtil.getString(SettingsKeys.PLAYER, "null") != "terminalPlayer")
-                            MsgUtil.showMsgLong("若无法播放请更换为内置播放器")
+                            MsgUtil.showMsgLong(UiText.of("若无法播放请更换为内置播放器"))
                         val intent = Intent()
                         intent.setClass(this, SettingPlayerChooseActivity::class.java)
                         startActivity(intent)
                         true
                     }
                     if (LiveStreamSelector.first(playInfo) == null) {
-                        MsgUtil.showMsg("直播已结束")
+                        MsgUtil.showMsg(UiText.of("直播已结束"))
                         play.visibility = View.GONE
                     } else {
                         val qualityAdapter = MediaEpisodeAdapter()
@@ -230,10 +232,10 @@ class LiveInfoActivity : BaseActivity() {
                         }
                     }
                     if (SharedPreferencesUtil.getString(SettingsKeys.PLAYER, "null") != "terminalPlayer")
-                        MsgUtil.showMsgLong("直播可能只有内置播放器可以正常播放")
+                        MsgUtil.showMsgLong(UiText.of("直播可能只有内置播放器可以正常播放"))
 
                 }.onFailure { e ->
-                    runOnUiThread { MsgUtil.showMsg("直播不存在") }
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("直播不存在")) }
                     CenterThreadPool.runOnUIThreadAfter(1, TimeUnit.MINUTES) { MsgUtil.err(e) }
                     finish()
                 }
@@ -249,7 +251,7 @@ class LiveInfoActivity : BaseActivity() {
         for (i in routes.indices) {
             val episode = Bangumi.Episode()
             episode.id = i.toLong()
-            episode.title = "路线" + (i + 1)
+            episode.title = UiText.of("路线") + (i + 1)
             hostList.add(episode)
         }
         hostAdapter!!.setData(hostList)

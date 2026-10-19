@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -34,7 +36,7 @@ class EditSignActivity : BaseActivity() {
         setContentView(R.layout.activity_edit_sign)
 
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
-            MsgUtil.showMsg("还没有登录喵~")
+            MsgUtil.showMsg(UiText.of("还没有登录喵~"))
             finish()
             return
         }
@@ -65,12 +67,12 @@ class EditSignActivity : BaseActivity() {
 
         submit.setOnClickListener {
             if (isSubmitting) {
-                MsgUtil.showMsg("正在提交中...")
+                MsgUtil.showMsg(UiText.of("正在提交中..."))
                 return@setOnClickListener
             }
 
             if (!SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.cookie_refresh, true)) {
-                MsgUtil.showDialog("无法提交", "上一次的Cookie刷新失败了，\n您可能需要重新登录以进行敏感操作", -1)
+                MsgUtil.showDialog(getString(R.string.text_cannot_submit), getString(R.string.msg_cookie_refresh_failed), -1)
                 return@setOnClickListener
             }
 
@@ -90,21 +92,21 @@ class EditSignActivity : BaseActivity() {
                             submit.isEnabled = true
 
                             if (code == 0) {
-                                MsgUtil.showMsg("修改成功，等待审核")
+                                MsgUtil.showMsg(UiText.of("修改成功，等待审核"))
                                 setResult(RESULT_OK)
                                 finish()
                             } else {
-                                var errorMsg = "修改失败"
+                                var errorMsg = UiText.of("修改失败")
                                 if (code == -101) {
-                                    errorMsg = "账号未登录"
+                                    errorMsg = UiText.of("账号未登录")
                                 } else if (code == -111) {
-                                    errorMsg = "CSRF校验失败"
+                                    errorMsg = UiText.of("CSRF校验失败")
                                 } else if (code == 40015) {
-                                    errorMsg = "签名包含敏感词"
+                                    errorMsg = UiText.of("签名包含敏感词")
                                 } else if (code == 40021) {
-                                    errorMsg = "签名不能包含表情图片"
+                                    errorMsg = UiText.of("签名不能包含表情图片")
                                 } else if (code == 40022) {
-                                    errorMsg = "签名过长"
+                                    errorMsg = UiText.of("签名过长")
                                 } else if (message.isNotEmpty()) {
                                     errorMsg = message
                                 }
@@ -118,7 +120,7 @@ class EditSignActivity : BaseActivity() {
                             runOnUiThread {
                                 isSubmitting = false
                                 submit.isEnabled = true
-                                MsgUtil.err("修改个人描述失败", e)
+                                MsgUtil.err(UiText.of("修改个人描述失败"), e)
                             }
                         }
                     }

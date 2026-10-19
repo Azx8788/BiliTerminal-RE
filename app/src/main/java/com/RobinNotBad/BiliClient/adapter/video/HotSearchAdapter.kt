@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -25,7 +27,7 @@ class HotSearchAdapter(
         @JvmStatic
         fun formatHeat(heat: Long): String {
             if (heat < 10000) return heat.toString()
-            return String.format("%.1f万", heat / 10000.0)
+            return String.format(UiText.of("%.1f万"), heat / 10000.0)
         }
     }
 

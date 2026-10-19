@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.dynamic
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Intent
 import android.os.Bundle
 import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
@@ -38,10 +40,10 @@ class DynamicTopicActivity : RefreshListActivity() {
         topicName = intent.getStringExtra("topic_name").orEmpty()
 
         if (isTopicMode()) {
-            setPageName(topicName.ifEmpty { "话题" })
+            setPageName(topicName.ifEmpty { UiText.of("话题") })
             loadTopicDynamics(refresh = true)
         } else {
-            setPageName("话题广场")
+            setPageName(UiText.of("话题广场"))
             loadPlaza()
         }
 
@@ -74,7 +76,7 @@ class DynamicTopicActivity : RefreshListActivity() {
                     // 空态要说清是"服务端没给数据"而不是用户操作错了（26.10.05）。
                     // 旧文案"啥都木有~"会让用户以为是自己网络/操作的问题。
                     // 这里显式覆盖 setOnEmptyRetry 写入的通用文案。
-                    emptyView?.text = "话题广场没有取到数据\n可能是服务端暂时没有下发\n点我重试"
+                    emptyView?.text = UiText.of("话题广场没有取到数据\n可能是服务端暂时没有下发\n点我重试")
                     showEmptyView()
                 } else hideEmptyView()
                 setRefreshing(false)

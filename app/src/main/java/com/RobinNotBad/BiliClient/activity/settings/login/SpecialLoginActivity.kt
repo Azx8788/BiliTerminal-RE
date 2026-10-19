@@ -59,7 +59,7 @@ class SpecialLoginActivity : BaseActivity() {
             pasteLogin.setOnClickListener {
                 val clipText = readClipboardText()
                 if (clipText.isNullOrBlank()) {
-                    MsgUtil.showMsg("剪贴板里没有内容，请先复制登录信息")
+                    MsgUtil.showMsg(getString(R.string.msg_specialloginactivity_001))
                     return@setOnClickListener
                 }
                 loginWith(clipText)
@@ -95,11 +95,11 @@ class SpecialLoginActivity : BaseActivity() {
                         if (input.has("access_key")) {
                             SharedPreferencesUtil.putString(SharedPreferencesUtil.access_key, input.getString("access_key"))
                         }
-                        runOnUiThread { MsgUtil.showMsg("导入成功") }
+                        runOnUiThread { MsgUtil.showMsg(getString(R.string.msg_specialloginactivity_002)) }
 
                         NetWorkUtil.refreshHeaders()
                     } catch (e: JSONException) {
-                        runOnUiThread { MsgUtil.showMsg("请检查输入的内容，不要有多余空格或字符") }
+                        runOnUiThread { MsgUtil.showMsg(getString(R.string.msg_specialloginactivity_003)) }
                     }
                 }
             } else confirm.visibility = View.GONE
@@ -107,7 +107,7 @@ class SpecialLoginActivity : BaseActivity() {
                 val clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clipData = ClipData.newPlainText("label", textInput.text)
                 clipboardManager.setPrimaryClip(clipData)
-                MsgUtil.showMsg("已复制")
+                MsgUtil.showMsg(getString(R.string.msg_specialloginactivity_004))
             }
         }
     }
@@ -125,7 +125,7 @@ class SpecialLoginActivity : BaseActivity() {
                 NetWorkUtil.setCookiesString(result.cookies)
                 SharedPreferencesUtil.putString(SharedPreferencesUtil.refresh_token, result.refreshToken)
                 result.accessKey?.let { SharedPreferencesUtil.putString(SharedPreferencesUtil.access_key, it) }
-                MsgUtil.showMsg("登录成功！")
+                MsgUtil.showMsg(getString(R.string.msg_specialloginactivity_005))
                 SharedPreferencesUtil.putBoolean(SharedPreferencesUtil.setup, true)
 
                 AccountManager.saveCurrentAccount()

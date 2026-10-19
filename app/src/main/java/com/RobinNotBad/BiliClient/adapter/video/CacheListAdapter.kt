@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -171,14 +173,14 @@ class CacheListAdapter(
             }
             TYPE_SECTION_FOLDER_HEADER -> {
                 (holder as SectionHeaderHolder).apply {
-                    sectionTitle.text = "文件夹"
+                    sectionTitle.text = UiText.of("文件夹")
                     sectionCount.text = "${folderList.size}个"
                 }
             }
             TYPE_SECTION_VIDEO_HEADER -> {
                 (holder as SectionHeaderHolder).apply {
                     if (currentFolderName.isEmpty()) {
-                        sectionTitle.text = "未分类视频"
+                        sectionTitle.text = UiText.of("未分类视频")
                         sectionCount.text = "${videoList.count { it.folderName.isNullOrEmpty() }}个"
                     } else {
                         sectionTitle.text = currentFolderName
@@ -193,7 +195,7 @@ class CacheListAdapter(
             }
             TYPE_ACTION_NEW_FOLDER -> {
                 (holder as ActionButtonHolder).apply {
-                    text.text = "新建文件夹"
+                    text.text = UiText.of("新建文件夹")
                     text.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0)
                     text.compoundDrawablePadding = 0
                     itemView.setOnClickListener { onNewFolderClick?.invoke() }
@@ -305,7 +307,7 @@ class CacheListAdapter(
         holder.settingsPanel.visibility = if (isSettingsOpen) View.VISIBLE else View.GONE
 
         val isInFolder = currentFolderName.isNotEmpty()
-        holder.btnMoveVideo.text = if (isInFolder) "移出文件夹" else "添加到文件夹"
+        holder.btnMoveVideo.text = if (isInFolder) UiText.of("移出文件夹") else UiText.of("添加到文件夹")
 
         var startX = 0f
         var startY = 0f
@@ -446,7 +448,7 @@ class CacheListAdapter(
                 }
                 context.startActivity(player)
             } catch (e: ActivityNotFoundException) {
-                MsgUtil.showMsg("跳转失败")
+                MsgUtil.showMsg(UiText.of("跳转失败"))
             }
         } else if (video.videoFileList != null && video.videoFileList!!.size == 2) {
             // DASH双文件：video.mp4 + audio.m4a
@@ -465,7 +467,7 @@ class CacheListAdapter(
                 }
                 context.startActivity(player)
             } catch (e: ActivityNotFoundException) {
-                MsgUtil.showMsg("跳转失败")
+                MsgUtil.showMsg(UiText.of("跳转失败"))
             }
         } else if (video.videoFileList != null && video.videoFileList!!.size > 2) {
             val intent = Intent(context, LocalPageChooseActivity::class.java)
@@ -484,7 +486,7 @@ class CacheListAdapter(
     class GotoHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val textView: TextView = itemView.findViewById(R.id.text)
         fun show(context: Context) {
-            textView.text = "下载列表"
+            textView.text = UiText.of("下载列表")
             itemView.setOnClickListener {
                 context.startActivity(Intent(context, DownloadListActivity::class.java))
             }

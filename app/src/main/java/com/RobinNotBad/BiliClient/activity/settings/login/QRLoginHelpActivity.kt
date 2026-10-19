@@ -12,7 +12,7 @@ class QRLoginHelpActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         asyncInflate(R.layout.activity_qr_login_help) { _, _ ->
-            setPageName("登录方式说明")
+            setPageName(getString(R.string.pagename_qrloginhelpactivity_001))
 
             val contentText = findViewById<TextView>(R.id.content)
             contentText.text = getHelpContent()

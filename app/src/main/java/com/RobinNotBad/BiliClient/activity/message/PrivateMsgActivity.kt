@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.message
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
@@ -79,7 +81,7 @@ class PrivateMsgActivity : BaseActivity() {
         uid = intent.getLongExtra("uid", 114514)
         Log.e("", uid.toString())
 
-        MsgUtil.showMsg("私信有可能被拦截\n尽量不要用终端发私信喵")
+        MsgUtil.showMsg(UiText.of("私信有可能被拦截\n尽量不要用终端发私信喵"))
 
         CenterThreadPool.run {
             try {
@@ -161,13 +163,13 @@ class PrivateMsgActivity : BaseActivity() {
                         runOnUiThread {
                             try {
                                 if (result.getInt("code") == 0) {
-                                    MsgUtil.showMsg("发送成功")
+                                    MsgUtil.showMsg(UiText.of("发送成功"))
                                     refresh()
                                 } else {
                                     if (result.getInt("code") == 21047) {
                                         MsgUtil.showMsg(result.getString("message"))
                                     }
-                                    MsgUtil.showMsg("发送失败")
+                                    MsgUtil.showMsg(UiText.of("发送失败"))
                                 }
                             } catch (e: JSONException) {
                                 MsgUtil.showMsg("发送失败：\n$result")
@@ -175,7 +177,7 @@ class PrivateMsgActivity : BaseActivity() {
                             }
                         }
                     } else {
-                        runOnUiThread { MsgUtil.showMsg("你还木有输入喵~") }
+                        runOnUiThread { MsgUtil.showMsg(UiText.of("你还木有输入喵~")) }
                     }
                 } catch (e: Exception) {
                     runOnUiThread { MsgUtil.err(e) }
@@ -185,7 +187,7 @@ class PrivateMsgActivity : BaseActivity() {
 
         imageBtn.setOnClickListener {
             if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0L) == 0L) {
-                MsgUtil.showMsg("还没有登录喵~")
+                MsgUtil.showMsg(UiText.of("还没有登录喵~"))
             } else {
                 pickImage()
             }
@@ -216,7 +218,7 @@ class PrivateMsgActivity : BaseActivity() {
     private fun sendImage(uri: Uri) {
         CenterThreadPool.run {
             try {
-                runOnUiThread { MsgUtil.showMsg("正在上传图片喵…") }
+                runOnUiThread { MsgUtil.showMsg(UiText.of("正在上传图片喵…")) }
                 val prepared = ImageApi.prepareImage(this, uri)
                 val uploaded = ImageApi.uploadImage(
                     prepared.data,
@@ -243,11 +245,11 @@ class PrivateMsgActivity : BaseActivity() {
                 runOnUiThread {
                     try {
                         if (result.getInt("code") == 0) {
-                            MsgUtil.showMsg("发送成功")
+                            MsgUtil.showMsg(UiText.of("发送成功"))
                             refresh()
                         } else {
                             val message = result.optString("message")
-                            MsgUtil.showMsg(message.ifEmpty { "发送失败" })
+                            MsgUtil.showMsg(message.ifEmpty { UiText.of("发送失败") })
                         }
                     } catch (e: JSONException) {
                         MsgUtil.showMsg("发送失败：\n$result")
@@ -325,7 +327,7 @@ class PrivateMsgActivity : BaseActivity() {
     @SuppressLint("SuspiciousIndentation")
     private fun loadMore() {
         isLoadingMore = true
-        MsgUtil.showMsg("加载更多中...")
+        MsgUtil.showMsg(UiText.of("加载更多中..."))
         CenterThreadPool.run {
             try {
                 if (allMsg.getInt("has_more") == 1) {
@@ -345,14 +347,14 @@ class PrivateMsgActivity : BaseActivity() {
                     Log.e("loadMore", "loadMore")
                     runOnUiThread {
                         adapter!!.addItem(newList)
-                        MsgUtil.showMsg("已加载更多消息！")
+                        MsgUtil.showMsg(UiText.of("已加载更多消息！"))
                     }
                     isLoadingMore = false
                 } else runOnUiThread {
                     // 没有更多消息：必须复位 isLoadingMore，否则它一直为 true，
                     // 之后每次滑到顶都会重复弹这条提示
                     isLoadingMore = false
-                    MsgUtil.showMsg("没有更多消息了")
+                    MsgUtil.showMsg(UiText.of("没有更多消息了"))
                 }
             } catch (e: Exception) {
                 runOnUiThread { MsgUtil.err(e) }

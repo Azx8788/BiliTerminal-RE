@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -25,7 +27,7 @@ class InteractionDebugActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_interaction_debug)
 
-        setPageName("互动视频变量调试")
+        setPageName(UiText.of("互动视频变量调试"))
 
         if (staticInteractionData == null || staticInteractionData!!.hiddenVars == null || staticInteractionData!!.hiddenVars.isEmpty()) {
             finish()

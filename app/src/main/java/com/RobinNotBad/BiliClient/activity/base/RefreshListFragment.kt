@@ -120,7 +120,7 @@ open class RefreshListFragment : BaseFragment() {
 
     fun loadFail() {
         page--
-        MsgUtil.showMsgLong("加载失败")
+        MsgUtil.showMsgLong(getString(R.string.text_load_failed))
         setRefreshing(false)
     }
 

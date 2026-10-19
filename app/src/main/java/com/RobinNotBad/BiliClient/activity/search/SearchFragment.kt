@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.search
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -35,7 +37,7 @@ open class SearchFragment : Fragment() {
             field = value
             if (page == 1) showEmptyView(value)
             else if (value && isAdded) {
-                MsgUtil.showMsg("已经到底啦OwO")
+                MsgUtil.showMsg(UiText.of("已经到底啦OwO"))
             }
         }
     var page = 1
@@ -146,7 +148,7 @@ open class SearchFragment : Fragment() {
 
     fun loadFail() {
         page--
-        MsgUtil.showMsgLong("加载失败")
+        MsgUtil.showMsgLong(getString(R.string.text_load_failed))
         setRefreshing(false)
     }
 

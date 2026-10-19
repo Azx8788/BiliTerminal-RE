@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.text.TextUtils
 import android.view.LayoutInflater
@@ -44,7 +46,7 @@ class LiveCardAdapter(
         if (TextUtils.isEmpty(videoCard.cover) || videoCard.cover == "http:")
             videoCard.cover = room.cover
         videoCard.upName = room.uname
-        videoCard.view = StringUtil.toWan(room.online.toLong()) + "人观看"
+        videoCard.view = StringUtil.toWan(room.online.toLong()) + UiText.of("人观看")
         videoCard.type = "live"
 
         holder.showVideoCard(videoCard, context)

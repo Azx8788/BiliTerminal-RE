@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.dynamic
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
@@ -34,10 +36,10 @@ class DynamicActivity : RefreshMainActivity() {
 
     companion object {
         private val typeNameMap = mapOf(
-            "全部" to "all",
-            "视频投稿" to "video",
-            "追番" to "pgc",
-            "专栏" to "article"
+            UiText.of("全部") to "all",
+            UiText.of("视频投稿") to "video",
+            UiText.of("追番") to "pgc",
+            UiText.of("专栏") to "article"
         )
 
         fun getRelayDynamicLauncher(activity: BaseActivity): ActivityResultLauncher<Intent> {
@@ -46,7 +48,7 @@ class DynamicActivity : RefreshMainActivity() {
                 val data = result.data
                 if (code == RESULT_OK && data != null) {
                     var text = data.getStringExtra("text")
-                    if (TextUtils.isEmpty(text)) text = "转发动态"
+                    if (TextUtils.isEmpty(text)) text = UiText.of("转发动态")
                     val dynamicId = data.getLongExtra("dynamicId", -1)
                     // 转发自动引用所需的信息：DynamicHolder 放进启动 intent，SendDynamicActivity 原样回传
                     val authorName = data.getStringExtra("forwardAuthorName")
@@ -69,9 +71,9 @@ class DynamicActivity : RefreshMainActivity() {
                             val dynId = DynamicApi.relayDynamic(finalText, atUids.ifEmpty { null }, dynamicId,
                                 authorName, authorMid, authorContent, emoteTexts)
                             if (dynId != -1L) {
-                                activity.runOnUiThread { MsgUtil.showMsg("转发成功~") }
+                                activity.runOnUiThread { MsgUtil.showMsg(UiText.of("转发成功~")) }
                             } else {
-                                activity.runOnUiThread { MsgUtil.showMsg("转发失败") }
+                                activity.runOnUiThread { MsgUtil.showMsg(UiText.of("转发失败")) }
                             }
                         } catch (e: Exception) {
                             activity.runOnUiThread { MsgUtil.err(e) }
@@ -109,7 +111,7 @@ class DynamicActivity : RefreshMainActivity() {
             val type = typeNameMap[data.getStringExtra("item")]
             if (type != null) {
                 if (isRefreshing) {
-                    MsgUtil.showMsg("还在加载中OvO")
+                    MsgUtil.showMsg(UiText.of("还在加载中OvO"))
                 } else {
                     this.type = type
                     setRefreshing(true)
@@ -132,7 +134,7 @@ class DynamicActivity : RefreshMainActivity() {
                 try {
                     val pics = if (!picsJson.isNullOrEmpty()) org.json.JSONArray(picsJson) else null
                     if (text.isEmpty() && pics == null) {
-                        runOnUiThread { MsgUtil.showMsg("还没输入内容呢~") }
+                        runOnUiThread { MsgUtil.showMsg(UiText.of("还没输入内容呢~")) }
                     } else {
                         // 如果有投票草稿，先创建投票
                         var voteId: Long = -1
@@ -180,7 +182,7 @@ class DynamicActivity : RefreshMainActivity() {
                             dynId = DynamicApi.publishTextContent(text, atUids.ifEmpty { null }, option, emoteTexts)
                         }
                         if (dynId != -1L) {
-                            runOnUiThread { MsgUtil.showMsg(if (timerSeconds > 0) "已设置定时发布~" else "发送成功~") }
+                            runOnUiThread { MsgUtil.showMsg(if (timerSeconds > 0) UiText.of("已设置定时发布~") else UiText.of("发送成功~")) }
                             // 定时发布的动态此刻还没真正发出去，getDynamic 拿回的状态不对，
                             // 插进列表只会显示一条"将来才发"的动态；跳过本地插入，由下拉刷新兜底
                             if (timerSeconds == 0L) CenterThreadPool.run {
@@ -201,7 +203,7 @@ class DynamicActivity : RefreshMainActivity() {
                                 }
                             }
                         } else {
-                            runOnUiThread { MsgUtil.showMsg("发送失败") }
+                            runOnUiThread { MsgUtil.showMsg(UiText.of("发送失败")) }
                         }
                     }
                 } catch (e: Exception) {
@@ -223,7 +225,7 @@ class DynamicActivity : RefreshMainActivity() {
         // 空数据时可点击重试
         setOnEmptyRetry { refreshDynamic() }
 
-        setPageName("动态")
+        setPageName(UiText.of("动态"))
 
         // 教程改由 BaseActivity 按 Tutorials 注册表集中触发
 

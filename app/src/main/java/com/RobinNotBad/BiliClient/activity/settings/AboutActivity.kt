@@ -83,7 +83,7 @@ class AboutActivity : BaseActivity() {
                 StringUtil.setCopy(updateLogView, currentLog.toString())
 
                 val versionName = packageManager.getPackageInfo(packageName, 0).versionName
-                findViewById<TextView>(R.id.current_update_title).text = "本次更新 ($versionName)"
+                findViewById<TextView>(R.id.current_update_title).text = getString(R.string.text_update_current_version, versionName)
             } catch (e: PackageManager.NameNotFoundException) {
                 e.printStackTrace()
             }
@@ -97,7 +97,7 @@ class AboutActivity : BaseActivity() {
                 eggClickAuthorWords++
                 if (eggClickAuthorWords == 7) {
                     eggClickAuthorWords = 0
-                    MsgUtil.showText("作者的话", getString(R.string.egg_about_author_words))
+                    MsgUtil.showText(SettingText.resolve(this, "作者的话"), getString(R.string.egg_about_author_words))
                 }
             }
 
@@ -105,7 +105,7 @@ class AboutActivity : BaseActivity() {
                 eggClickToUncle++
                 if (eggClickToUncle == 7) {
                     eggClickToUncle = 0
-                    MsgUtil.showText("给叔叔", getString(R.string.egg_about_to_uncle))
+                    MsgUtil.showText(SettingText.resolve(this, "给叔叔"), getString(R.string.egg_about_to_uncle))
                 }
             }
 
@@ -132,13 +132,13 @@ class AboutActivity : BaseActivity() {
             if (!ToolsUtil.isDebugBuild()) findViewById<View>(R.id.debug_tip).visibility = View.GONE
             findViewById<View>(R.id.version_code_card).setOnClickListener {
                 if (SharedPreferencesUtil.getBoolean("developer", false)) {
-                    MsgUtil.showMsg("已关闭开发者模式！")
+                    MsgUtil.showMsg(SettingText.resolve(this, "已关闭开发者模式！"))
                     SharedPreferencesUtil.putBoolean("developer", false)
                 } else {
                     eggClickDev++
                     if (eggClickDev == 7) {
                         SharedPreferencesUtil.putBoolean("developer", true)
-                        MsgUtil.showMsg("已启用开发者模式！")
+                        MsgUtil.showMsg(SettingText.resolve(this, "已启用开发者模式！"))
                         eggClickDev = 0
                     }
                 }

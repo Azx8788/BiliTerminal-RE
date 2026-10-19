@@ -17,7 +17,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="输入类设置项"
+            android:text="@string/text_cellsettinginput_02"
             android:textSize="14sp"
             android:id="@+id/setting_input_name" />
 
@@ -34,7 +34,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:alpha="0.9"
-            android:text="如花 如火 如诗 如梦"
+            android:text="@string/text_cellsettinginput_01"
             android:textSize="12sp" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

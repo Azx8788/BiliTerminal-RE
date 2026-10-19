@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -34,7 +36,7 @@ class ListChooseActivity : BaseActivity() {
         if (intent.getStringExtra("title") != null) {
             (findViewById<TextView>(R.id.pageName)).text = intent.getStringExtra("title")
         } else {
-            (findViewById<TextView>(R.id.pageName)).text = "请选择"
+            (findViewById<TextView>(R.id.pageName)).text = UiText.of("请选择")
         }
         if (intent.getSerializableExtra("items") == null) {
             finish()

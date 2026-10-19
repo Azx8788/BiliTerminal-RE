@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.graphics.Color
 import android.view.LayoutInflater
@@ -36,11 +38,11 @@ class MedalListAdapter(
 
         var levelText = "Lv." + medal.level
         if (medal.wearing_status == 1) {
-            levelText += " (佩戴中)"
+            levelText += UiText.of(" (佩戴中)")
         }
         holder.level.text = levelText
 
-        var intimacyText = "亲密度: " + medal.intimacy
+        var intimacyText = UiText.of("亲密度: ") + medal.intimacy
         if (medal.next_intimacy > 0) {
             intimacyText += " / " + medal.next_intimacy
         }

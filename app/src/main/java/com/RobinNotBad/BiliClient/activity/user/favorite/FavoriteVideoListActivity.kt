@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
@@ -24,7 +26,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
     private var mid: Long = 0
     private var fid: Long = 0
     private var mediaId: Long = 0
-    private var folderName: String = "收藏夹"
+    private var folderName: String = UiText.of("收藏夹")
 
     /** 别人的收藏夹：不能复制/移动/删除 */
     private var readOnly: Boolean = false
@@ -63,7 +65,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         mid = intent.getLongExtra("mid", 0)
         fid = intent.getLongExtra("fid", 0)
         mediaId = intent.getLongExtra("mediaId", 0)
-        folderName = intent.getStringExtra("name") ?: "收藏夹"
+        folderName = intent.getStringExtra("name") ?: UiText.of("收藏夹")
 
         setPageName(folderName)
 
@@ -99,7 +101,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         // 点亮是无条件的、资源也进了包，需要一行日志确认运行时状态。
         // 真机排查：adb logcat -s "debug-收藏夹排序"（应看到 visibility=0 VISIBLE）。
         Log.e(
-            "debug-收藏夹排序",
+            UiText.of("debug-收藏夹排序"),
             "sortBar.visibility=${findViewById<View>(R.id.sortBar).visibility} mediaId=$mediaId fid=$fid readOnly=$readOnly"
         )
     }
@@ -153,7 +155,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
             it.notifyDataSetChanged()
         }
         updateManageBar()
-        MsgUtil.showMsg("点条目勾选，再点「删除」")
+        MsgUtil.showMsg(UiText.of("点条目勾选，再点「删除」"))
     }
 
     private fun exitSelectionMode() {
@@ -175,9 +177,9 @@ class FavoriteVideoListActivity : RefreshListActivity() {
 
     private fun updateManageBar() {
         findViewById<View>(R.id.manageBar).visibility = if (selectionMode) View.VISIBLE else View.GONE
-        manageToggle?.text = if (selectionMode) "退出多选" else "多选"
+        manageToggle?.text = if (selectionMode) UiText.of("退出多选") else UiText.of("多选")
         manageToggle?.setTextColor(if (selectionMode) ColorScheme.PRIMARY else unselectedColor)
-        manageDelete?.text = if (selectedAids.isEmpty()) "删除" else "删除(${selectedAids.size})"
+        manageDelete?.text = if (selectedAids.isEmpty()) UiText.of("删除") else "删除(${selectedAids.size})"
         // 没选东西时把「删除」压暗，点了给提示而不是弹一个空确认框
         manageDelete?.alpha = if (selectedAids.isEmpty()) 0.5f else 1f
         manageDelete?.setTextColor(if (selectedAids.isEmpty()) unselectedColor else ColorScheme.PRIMARY)
@@ -185,19 +187,19 @@ class FavoriteVideoListActivity : RefreshListActivity() {
 
     private fun confirmBatchDelete() {
         if (selectedAids.isEmpty()) {
-            MsgUtil.showMsg("先选几条吧~")
+            MsgUtil.showMsg(UiText.of("先选几条吧~"))
             return
         }
         val targets = videoList.filter { selectedAids.contains(it.aid) }
         if (targets.isEmpty()) {
-            MsgUtil.showMsg("先选几条吧~")
+            MsgUtil.showMsg(UiText.of("先选几条吧~"))
             return
         }
         TerminalDialog.confirm(
             context = this,
-            title = "删除收藏内容",
+            title = UiText.of("删除收藏内容"),
             message = "确定把选中的 ${targets.size} 条从收藏夹里移除吗？",
-            confirmText = "删除"
+            confirmText = UiText.of("删除")
         ) {
             CenterThreadPool.run {
                 try {
@@ -302,7 +304,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                         val delResult = FavoriteApi.deleteFavorite(videoList[position].aid, fid)
                         longClickPosition = -1
                         if (delResult == 0) runOnUiThread {
-                            MsgUtil.showMsg("删除成功")
+                            MsgUtil.showMsg(UiText.of("删除成功"))
                             videoList.removeAt(position)
                             videoCardAdapter!!.notifyItemRemoved(position)
                             videoCardAdapter!!.notifyItemRangeChanged(position, videoList.size - position)
@@ -316,7 +318,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
             } else {
                 longClickPosition = position
                 longClickTimestamp = timestamp
-                MsgUtil.showMsg("再次长按管理")
+                MsgUtil.showMsg(UiText.of("再次长按管理"))
             }
             return true
         }
@@ -329,7 +331,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         TerminalDialog.menu(
             context = this,
             title = card.title,
-            items = listOf("视频详情")
+            items = listOf(UiText.of("视频详情"))
         ) {
             TerminalContext.getInstance().enterVideoDetailPage(this, card.aid, card.bvid, "video")
         }.show()
@@ -341,15 +343,15 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         // 默认点击在虚拟合档下是「整个收藏夹连播」，用户想去某一条的详情页时没有入口，
         // 只能关掉虚拟合集开关——所以这里补一个直达详情页的项。
         // 放第一位：它是唯一「看信息」而非「改收藏夹结构」的动作。
-        actions.add("视频详情" to {
+        actions.add(UiText.of("视频详情") to {
             TerminalContext.getInstance().enterVideoDetailPage(this, card.aid, card.bvid, "video")
         })
-        actions.add("复制到…" to { showTargetFolderPicker(card, false) })
-        actions.add("移动到…" to { showTargetFolderPicker(card, true) })
+        actions.add(UiText.of("复制到…") to { showTargetFolderPicker(card, false) })
+        actions.add(UiText.of("移动到…") to { showTargetFolderPicker(card, true) })
         // 多选的入口。原来靠列表顶上一整行常亮的「多选」按钮，用户反馈那一行平时白占地方，
         // 所以把入口收进长按菜单、并把那一行改成只在多选态出现（见 setupManageBar）。
-        if (writable) actions.add("多选" to { enterSelectionMode() })
-        actions.add("取消收藏" to { confirmRemoveFavorite(card) })
+        if (writable) actions.add(UiText.of("多选") to { enterSelectionMode() })
+        actions.add(UiText.of("取消收藏") to { confirmRemoveFavorite(card) })
         // 「取消收藏」是破坏性操作，用危险色标出来。
         // 用 indexOfFirst 而不是写死下标：上面每加一项都要记得改下标，早晚会标错行。
         TerminalDialog.menu(
@@ -367,12 +369,12 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                 val targets = FavoriteApi.getFavoriteFolders(mid).filter { it.mediaId > 0 && it.mediaId != mediaId }
                 runOnUiThread {
                     if (targets.isEmpty()) {
-                        MsgUtil.showMsg("没有别的收藏夹可以放喵~")
+                        MsgUtil.showMsg(UiText.of("没有别的收藏夹可以放喵~"))
                         return@runOnUiThread
                     }
                     TerminalDialog.menu(
                         context = this@FavoriteVideoListActivity,
-                        title = if (move) "移动到…" else "复制到…",
+                        title = if (move) UiText.of("移动到…") else UiText.of("复制到…"),
                         items = targets.map { it.name }
                     ) { which -> transfer(card, targets[which].mediaId, move) }.show()
                 }
@@ -389,7 +391,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                 else FavoriteApi.copyResources(mediaId, targetMediaId, listOf(card))
                 runOnUiThread {
                     if (code == 0) {
-                        MsgUtil.showMsg(if (move) "已移动" else "已复制")
+                        MsgUtil.showMsg(if (move) UiText.of("已移动") else UiText.of("已复制"))
                         if (move) removeItem(card)
                     } else {
                         MsgUtil.showMsg(FavoriteApi.resourceErrorMsg(code))
@@ -404,16 +406,16 @@ class FavoriteVideoListActivity : RefreshListActivity() {
     private fun confirmRemoveFavorite(card: VideoCard) {
         TerminalDialog.confirm(
             context = this,
-            title = "取消收藏",
+            title = UiText.of("取消收藏"),
             message = "确定把《${card.title}》从收藏夹里去掉吗？",
-            confirmText = "确定"
+            confirmText = UiText.of("确定")
         ) {
             CenterThreadPool.run {
                 try {
                     val code = FavoriteApi.deleteFavorite(card.aid, fid)
                     runOnUiThread {
                         if (code == 0) {
-                            MsgUtil.showMsg("已取消收藏")
+                            MsgUtil.showMsg(UiText.of("已取消收藏"))
                             removeItem(card)
                         } else {
                             MsgUtil.showMsg("取消失败，错误码：$code")
@@ -466,7 +468,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
      */
     private fun playFavoriteVirtualCollection(startPosition: Int, startAid: Long, folderId: Long, folderName: String) {
         if (videoList.isEmpty()) {
-            MsgUtil.showMsg("收藏夹为空")
+            MsgUtil.showMsg(UiText.of("收藏夹为空"))
             return
         }
 
@@ -495,7 +497,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                 }
 
                 if (firstCid <= 0) {
-                    runOnUiThread { MsgUtil.showMsg("获取视频信息失败") }
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("获取视频信息失败")) }
                     return@run
                 }
 

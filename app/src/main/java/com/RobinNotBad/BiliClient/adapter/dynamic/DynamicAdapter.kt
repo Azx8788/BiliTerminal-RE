@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.dynamic
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -72,8 +74,8 @@ class DynamicAdapter(
             writeDynamic.type.setOnClickListener {
                 dynamicActivity.selectTypeLauncher
                     .launch(
-                        Intent().setClass(context, ListChooseActivity::class.java).putExtra("title", "选择类型")
-                            .putExtra("items", java.util.ArrayList(listOf("全部", "视频投稿", "追番", "专栏")))
+                        Intent().setClass(context, ListChooseActivity::class.java).putExtra("title", UiText.of("选择类型"))
+                            .putExtra("items", java.util.ArrayList(listOf(UiText.of("全部"), "视频投稿", "追番", "专栏")))
                     )
             }
             writeDynamic.live.setOnClickListener {

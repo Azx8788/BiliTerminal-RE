@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
@@ -38,7 +40,7 @@ class RankingActivity : InstanceActivity() {
         swipeRefreshLayout.setOnRefreshListener { loadRanking() }
 
         val title = findViewById<TextView>(R.id.pageName)
-        title.text = "全站排行榜"
+        title.text = UiText.of("全站排行榜")
 
         loadRanking()
     }

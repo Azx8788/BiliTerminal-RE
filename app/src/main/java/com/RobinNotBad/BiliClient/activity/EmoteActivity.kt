@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
@@ -94,7 +96,7 @@ class EmoteActivity : BaseActivity() {
                                     .submit().get()
                                 runOnUiThread { tabLayout.getTabAt(finalI)!!.setIcon(drawable) }
                             } catch (e: java.util.concurrent.ExecutionException) {
-                                MsgUtil.err("加载表情列表图标时出现错误：", e)
+                                MsgUtil.err(UiText.of("加载表情列表图标时出现错误："), e)
                                 e.printStackTrace()
                             } catch (e: InterruptedException) {
                                 e.printStackTrace()

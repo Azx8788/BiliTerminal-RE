@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
@@ -31,7 +33,7 @@ class MultiPageActivity : BaseActivity() {
         findViewById<View>(R.id.top).setOnClickListener { finish() }
 
         val textView = findViewById<TextView>(R.id.pageName)
-        textView.text = "请选择分页"
+        textView.text = UiText.of("请选择分页")
 
         val intent = intent
         playerData = intent.getParcelableExtra("data")
@@ -47,7 +49,7 @@ class MultiPageActivity : BaseActivity() {
                         val downPath = File(rootPath, FileUtil.stringToFile(videoInfo.pagenames[position]))
                         if (downPath.exists()) {
                             val fileSign = File(downPath, ".DOWNLOADING")
-                            MsgUtil.showMsg(if (fileSign.exists()) "已在下载队列" else "已下载完成")
+                            MsgUtil.showMsg(if (fileSign.exists()) UiText.of("已在下载队列") else UiText.of("已下载完成"))
                         } else {
                             startActivity(
                                 Intent()

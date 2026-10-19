@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -36,7 +38,7 @@ import java.io.IOException
 class SplashActivity : Activity() {
 
     private lateinit var splashTextView: TextView
-    private var splashText: String = "欢迎使用\nRE:哔哩终端"
+    private var splashText: String = UiText.of("欢迎使用\nRE:哔哩终端")
 
     /** F4：本次启动是否需要自动展示当版更新日志（只在"版本升级"时为 true）。 */
     private var pendingUpdateLog = false
@@ -135,7 +137,7 @@ class SplashActivity : Activity() {
             val refreshCsrf = CookieRefreshApi.getRefreshCsrf(correspondPath)
             Log.e("RefreshCsrf", refreshCsrf)
             if (CookieRefreshApi.refreshCookie(refreshCsrf)) {
-                MsgUtil.showMsg("Cookies已刷新")
+                MsgUtil.showMsg(UiText.of("Cookies已刷新"))
                 AccountManager.saveCurrentAccount()
                 return
             }
@@ -152,7 +154,7 @@ class SplashActivity : Activity() {
         // 只有本地连 SESSDATA 都没有了，才是明确意义上的"未登录/凭证失效"，
         // 这时才需要提示并清空登录态引导用户重新登录。
         if (!hasLocalSession()) {
-            MsgUtil.showMsgLong("登录信息过期，请重新登录！")
+            MsgUtil.showMsgLong(UiText.of("登录信息过期，请重新登录！"))
             resetLogin()
         }
     }
@@ -271,7 +273,7 @@ class SplashActivity : Activity() {
                 try {
                     android.widget.Toast.makeText(
                         this,
-                        "未授予悬浮窗权限，UETool 调试悬浮窗不会显示",
+                        UiText.of("未授予悬浮窗权限，UETool 调试悬浮窗不会显示"),
                         android.widget.Toast.LENGTH_LONG
                     ).show()
                 } catch (_: Throwable) {

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.favorite
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -88,7 +90,7 @@ class FavoriteFolderAdapter(
         } else if (holder is FavoriteHolder) {
             val favoriteHolder = holder
             if (position == folderList.size + 1) {
-                favoriteHolder.name.text = "图文收藏夹"
+                favoriteHolder.name.text = UiText.of("图文收藏夹")
                 favoriteHolder.count.text = ""
                 Glide.with(BiliTerminal.context!!).asDrawable()
                     .load(StringUtil.getDrawable(context, R.drawable.article_fav_cover))
@@ -128,7 +130,7 @@ class FavoriteFolderAdapter(
                     if (onLongClickListener != null && !folder.isDefault) {
                         onLongClickListener!!.onLongClick(position - 1)
                     } else if (folder.isDefault) {
-                        com.RobinNotBad.BiliClient.util.MsgUtil.showMsg("默认收藏夹不能编辑")
+                        com.RobinNotBad.BiliClient.util.MsgUtil.showMsg(UiText.of("默认收藏夹不能编辑"))
                     }
                     true
                 }

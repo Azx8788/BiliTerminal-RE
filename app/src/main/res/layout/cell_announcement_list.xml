@@ -26,7 +26,7 @@
             android:marqueeRepeatLimit="marquee_forever"
             android:singleLine="true"
             android:textSize="13sp"
-            android:text="新春快乐！"
+            android:text="@string/text_cellannouncementlist_01"
             android:textStyle="bold" />
 
         <TextView
@@ -36,7 +36,7 @@
             android:alpha="0.95"
             android:ellipsize="end"
             android:maxLines="3"
-            android:text="春来早，瑞兽登高，祥风抬首云中道。\n似野鹤，彩鸢入霄，溪回谷转隐瑛瑶。"
+            android:text="@string/text_announcement_poem_placeholder"
             android:textSize="12sp" />
 
         <TextView

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import com.RobinNotBad.BiliClient.activity.base.RefreshMainActivity
@@ -17,7 +19,7 @@ class HotSearchActivity : RefreshMainActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setPageName("热搜")
+        setPageName(UiText.of("热搜"))
         setMenuClick()
         setOnRefreshListener { loadHotSearch() }
         // 空数据时可点击重试
@@ -36,14 +38,14 @@ class HotSearchActivity : RefreshMainActivity() {
                 } else {
                     runOnUiThread {
                         swipeRefreshLayout.isRefreshing = false
-                        MsgUtil.showMsgLong("获取热搜失败，请稍后重试")
+                        MsgUtil.showMsgLong(UiText.of("获取热搜失败，请稍后重试"))
                     }
                 }
             } catch (e: Exception) {
                 report(e)
                 runOnUiThread {
                     swipeRefreshLayout.isRefreshing = false
-                    MsgUtil.showMsgLong("网络异常，请稍后重试")
+                    MsgUtil.showMsgLong(UiText.of("网络异常，请稍后重试"))
                 }
             }
         }

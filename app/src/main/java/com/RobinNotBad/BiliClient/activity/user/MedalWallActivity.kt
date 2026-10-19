@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 
 import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
@@ -30,7 +32,7 @@ class MedalWallActivity : RefreshListActivity() {
             return
         }
 
-        setPageName("粉丝勋章")
+        setPageName(UiText.of("粉丝勋章"))
 
         recyclerView.setHasFixedSize(true)
         medalList = ArrayList()

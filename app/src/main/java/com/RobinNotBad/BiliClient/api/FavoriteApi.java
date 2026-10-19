@@ -1,4 +1,8 @@
 package com.RobinNotBad.BiliClient.api;
+
+import com.RobinNotBad.BiliClient.R;
+
+import com.RobinNotBad.BiliClient.BiliTerminal;
 
 import android.util.Log;
 import android.util.Pair;
@@ -498,7 +502,7 @@ public class FavoriteApi {
             case 11010:
                 return "内容不存在，可能已经被删除了";
             default:
-                return "操作失败（错误码 " + code + "）";
+                return ApiErrorText.opFailed(code);
         }
     }
 

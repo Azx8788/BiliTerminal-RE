@@ -35,7 +35,7 @@
                 android:textSize="14sp"
                 android:id="@+id/content"
                 android:layout_margin="6dp"
-                android:text="内容" />
+                android:text="@string/text_activityconfirmdialog_01" />
         </com.google.android.material.card.MaterialCardView>
 
         <LinearLayout
@@ -47,7 +47,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_cancel"
-                android:text="取消"
+                android:text="@string/btn_cancel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:alpha="0.65"
@@ -55,7 +55,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_confirm"
-                android:text="确定"
+                android:text="@string/uitext_favoritevideolistactivity_016"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"

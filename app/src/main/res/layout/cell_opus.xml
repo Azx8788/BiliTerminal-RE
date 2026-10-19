@@ -82,7 +82,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             android:maxLines="2"
             android:id="@+id/text_title"
-            android:text="标题标题标题标题标题标题标题标题标题标题标题标题" />
+            android:text="@string/text_cellarticlelist_01" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.video
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 import android.view.View
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -26,7 +28,7 @@ class TimelineActivity : InstanceActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_simple_refresh)
 
-        setPageName("时间线")
+        setPageName(UiText.of("时间线"))
         setMenuClick()
         findViewById<View>(R.id.pageName).setOnClickListener { menuClick.run() }
 
@@ -73,7 +75,7 @@ class TimelineActivity : InstanceActivity() {
                 runOnUiThread {
                     swipeRefreshLayout.setRefreshing(false)
                     report(e)
-                    MsgUtil.showMsgLong("加载失败")
+                    MsgUtil.showMsgLong(getString(R.string.text_load_failed))
                 }
             }
         }

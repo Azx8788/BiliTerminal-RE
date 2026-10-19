@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.os.Bundle
 
 import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
@@ -22,7 +24,7 @@ class HistoryActivity : RefreshListActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        setPageName("历史记录")
+        setPageName(UiText.of("历史记录"))
 
         recyclerView.setHasFixedSize(true)
 
@@ -45,7 +47,7 @@ class HistoryActivity : RefreshListActivity() {
                                     longClickPosition = -1
                                     if (delResult == 0) {
                                         runOnUiThread {
-                                            MsgUtil.showMsg("删除成功")
+                                            MsgUtil.showMsg(UiText.of("删除成功"))
                                             videoList.removeAt(position)
                                             videoCardAdapter!!.updateList(videoList)
                                         }
@@ -59,7 +61,7 @@ class HistoryActivity : RefreshListActivity() {
                         } else {
                             longClickPosition = position
                             longClickTimestamp = timestamp
-                            MsgUtil.showMsg("再次长按删除")
+                            MsgUtil.showMsg(UiText.of("再次长按删除"))
                         }
                     }
 

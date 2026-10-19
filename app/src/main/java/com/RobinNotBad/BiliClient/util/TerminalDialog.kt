@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.util
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -97,7 +99,7 @@ object TerminalDialog {
             }
         }
 
-        sheet.setHint("点空白处取消")
+        sheet.setHint(UiText.of("点空白处取消"))
         return sheet.dialog
     }
 
@@ -126,7 +128,7 @@ object TerminalDialog {
             row.root.setOnClickListener { onPick(sheet, index) }
         }
         sheet.paintSelection(checked.coerceIn(0, (items.size - 1).coerceAtLeast(0)))
-        sheet.setHint("点空白处取消")
+        sheet.setHint(UiText.of("点空白处取消"))
         return sheet.dialog
     }
 
@@ -145,8 +147,8 @@ object TerminalDialog {
         context: Context,
         title: String? = null,
         message: CharSequence,
-        confirmText: String = "确定",
-        cancelText: String = "取消",
+        confirmText: String = UiText.of("确定"),
+        cancelText: String = UiText.of("取消"),
         confirmIsDanger: Boolean = true,
         onConfirm: () -> Unit
     ): AlertDialog {
@@ -229,8 +231,8 @@ object TerminalDialog {
         hint: String? = null,
         initialText: String = "",
         maxLength: Int = 0,
-        confirmText: String = "发送",
-        cancelText: String = "取消",
+        confirmText: String = UiText.of("发送"),
+        cancelText: String = UiText.of("取消"),
         onConfirm: (String) -> Unit
     ): AlertDialog {
         val sheet = Sheet(context, title, bottomButtonBar = true)
@@ -256,7 +258,7 @@ object TerminalDialog {
         context: Context,
         title: String? = null,
         message: CharSequence,
-        buttonText: String = "知道了"
+        buttonText: String = UiText.of("知道了")
     ): AlertDialog = confirm(
         context = context,
         title = title,

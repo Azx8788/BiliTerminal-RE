@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.player
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 
 /**
@@ -61,7 +63,7 @@ object PlayerDefaults {
      */
     fun isChineseLang(lang: String?): Boolean {
         if (lang.isNullOrBlank()) return false
-        return lang.lowercase().contains("zh") || lang.contains("中文")
+        return lang.lowercase().contains("zh") || lang.contains(UiText.of("中文"))
     }
 
     /**

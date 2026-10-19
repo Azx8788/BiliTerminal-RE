@@ -17,7 +17,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="变量名"
+            android:text="@string/text_cellinteractiondebugvar_01"
             android:textSize="14sp"
             android:id="@+id/debug_var_name" />
 

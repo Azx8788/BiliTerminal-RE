@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.player
 
+import com.RobinNotBad.BiliClient.util.UiText
+
 import android.content.Context
 import android.media.AudioManager
 import android.view.GestureDetector
@@ -47,7 +49,7 @@ class PlayerControlDelegate(
     private val _availableQualities = MutableStateFlow(emptyList<QualityOption>())
     val availableQualities: StateFlow<List<QualityOption>> = _availableQualities.asStateFlow()
 
-    private val _currentQuality = MutableStateFlow(QualityOption("自动", 0))
+    private val _currentQuality = MutableStateFlow(QualityOption(UiText.of("自动"), 0))
     val currentQuality: StateFlow<QualityOption> = _currentQuality.asStateFlow()
 
     private var autoHideJob: Job? = null
