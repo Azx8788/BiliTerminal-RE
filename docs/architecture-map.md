@@ -674,6 +674,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 **26.10.12 双击与旋转解耦**：`PlayerActivity.clickUI()` 与双击快进手势的中间区域统一走 `handleDoubleTapAction()`，判据抽在 `activity/player/PlayerDoubleTapPolicy.kt`（纯 JVM 单测）。只读取 `layout_video.scaleX/scaleY` 的实际比例，**方向不参与判定，复位分支只还原缩放与居中位置，不能写 `screen_landscape` / `requestedOrientation` 或调用 `softwareRotate()`**。`PLAYER_DOUBLETAP_RESTORE_SCREEN` 保留旧存储键，但语义改为“有缩放时，双击优先恢复缩放”；关闭时双击播放/暂停。`ViewScaleGestureListener.can_reset` 已删除，不再维护易过期的复位标志。左右两侧双击快退/快进与直播不暂停的既有行为保留。
 
+**26.10.20 左右滑动调进度的缩放判据**：`PlayerActivity.handleSwipeSeekTouch()` 的「未缩放视频才生效」不能读 `gesture_scaled`——那个标志只表示「本轮触摸里捏合过」，ACTION_UP 一到就复位，捏合放大后松手会把调进度重新放行（26.10.20 修的正是这个 bug）。判据抽在 `activity/player/PlayerGesturePolicies.kt`：`PlayerZoomPolicy.isZoomed(scaleX, scaleY)`（ε=0.001f）是「画面是否仍缩放」的唯一判据；`PlayerSwipeSeekPolicy.isSeekAllowed(...)` 汇总「设置开 + 已准备 + 非直播 + 播放器就绪 + 未缩放」；`PlayerDoubleTapPolicy` 也复用 `PlayerZoomPolicy`。`PlayerActivity.isVideoZoomed()` 读 `layout_video.scaleX/scaleY` 的实际比例，单指拖动闸门同样按实际缩放与 `SettingsKeys.PLAYER_DOUBLEMOVE` 判定。`gesture_scaled` 只剩「吞掉手势结束那次点击」一个用途，别给它加语义。
+
 **26.10.11 起的网络韧性与状态恢复（§四十四，明细见 `docs/review/fix-progress.md` §3.4）**：
 
 - `PlayerActivity.setDisplay()` 的在线流选项现在含 `rw_timeout=10s` / `addrinfo_timeout=5s` / `reconnect_streamed=1` / `reconnect_delay_max=5s`（点播另开 `enable-accurate-seek=1`）。**别把 `rw_timeout` 当可选项删掉**：默认 0 = 读操作可永久阻塞且永不回 `onError`，弱网黑屏的直接原因就是它；`reconnect=1` 单独对 chunked 直播无效（ffmpeg `http.c` 有 `is_streamed && !reconnect_streamed` 就 break 的判定）。
@@ -1401,6 +1403,18 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 > **为什么必须新增 `choice()` 而不是复用 `confirm()`**：`confirm()` 的取消按钮写死 `dismiss()`（无回调），
 > 且内部是**先 `dismiss()` 再 `onConfirm()`**，`setOnDismissListener` 触发时还拿不到「用户点的其实是确定」，
 > 两条路都会走一遍。
+
+> **两个必踩的坑（26.10.20 缓存页长按菜单踩到，改 `TerminalDialog` / 新写弹窗时先看）**：
+> 1. **`menu/confirm/alert/choice` 返回 `AlertDialog`，但不会自己 `show()`**。调用方写成
+>    `TerminalDialog.menu(context, ...) { which -> ... }` 就是「点了完全没反应」——不崩、logcat 也没异常，
+>    只能靠加日志才发现回调已执行、弹窗已建好却没显示。正确写法是链上 `.show()`，参考
+>    `adapter/reply/ReplyAdapter.kt`（`TerminalDialog.menu(...) { ... }.show()`）。
+> 2. **窗口默认整屏宽且不带 `WATCH_OUTSIDE_TOUCH`**，所以底部提示「点空白处取消」根本收不到点击。
+>    `Sheet.init` 现在统一 `dialog.window?.addFlags(FLAG_WATCH_OUTSIDE_TOUCH)`（配合既有的
+>    `setCanceledOnTouchOutside(true)`）并把菜单容器宽度限到约 90%，表盘两侧才真的存在「窗口外」空白
+>    （380×380 上左右各约 24px）。另：`menu` 的提示行本身也接 `dismiss()`，别指望用户去找那 24px。
+> 3. **小屏高度预算**：380×380 上标题 12 字截断（`menuTitle()`）、`confirm` 正文压到一行语义即可，
+>    否则按钮行被挤出屏幕（`confirm` 的按钮跟正文一起滚，只有 `choice` 有固定底栏）。
 
 > **教训（判断「某属性全工程缺失」的正确姿势）**：必须**同时 grep 相邻属性做对照组**。
 > 本次最初的错误结论是「弹窗层从未接入主题系统」——被「7 族主题都声明了 `colorSurface`」

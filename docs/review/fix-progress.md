@@ -37,6 +37,10 @@
 
 ### 2.1 真机未验证（无设备 / 无登录态）
 
+- [ ] **缓存页空态行的真机观感（§3.34）**：只在 380×380 表盘模拟器上跑过，未在真手表上确认「未分类视频 0 个 + 啥都木有~」两行的字号/间距是否合适。
+
+- [ ] **缓存页长按菜单的真机手感（§3.35）**：模拟器上长按 400ms 即触发；真手表需确认「长按播放/进文件夹」不会与长按误触冲突、5 项菜单在 45% 滚动区里滑动是否顺手、两侧约 24px 空白点不点得到。
+
 - [ ] **本地音轨防重（§3.13）**：含内嵌音轨 MP4 + 残留 M4A 只播主音轨；纯视频 DASH + M4A 有声；纯音频不重复；反复切听视频/重试不叠声；暂停/恢复/拖进度正常；退出后静音；错误音频不崩。需用 Debug 包观察 `AudioTrack` 日志确认 IJK 轨道列表，UNKNOWN 应提示。下载双文件替换与音频专用模式残留问题仍待修，不能当本次已闭环。
 
 - [ ] **详情页中央加载遮罩收起时机（§3.11）待真机弱网复测**：用弱网（限速/弱信号）打开视频详情页并立即切到评论栏，评论出现后遮罩必须已消失且不挡触摸；再验番剧详情页的"敬请期待"番（无可用季/集）不再永久停在加载图。纯 UI 时序，JVM 单测覆盖不到。
@@ -90,6 +94,10 @@
   - 风险最高的一条：个别精简 ROM 的 `adb shell` 可能不持有 `DUMP` 权限，那样导出组件会被 AMS 拒绝，调试桥整体不可用。兜底方案见手册 §6（`adb root`，或 `run-as <包名> am broadcast`——同 uid 不受导出限制）。
 
 - [ ] **番剧界面补齐（§3.8）未真机验证**：季切 tab、两行选集卡片、追番按钮、全量选集弹窗、历史卡片一键续播、番剧心跳 5 秒 + 看完上报 -1 全部只过了编译 + JVM 单测。真机要看的：① 多季番能切到第二季/剧场版并出集；② 从别的季切回来回到这一季上次看的那一集；③ 一集播完后重进/从历史进来是接下一集而不是停在本集末尾；④ 历史里的番剧卡片点一下直接起播且位置对；⑤ 未登录点追番要提示，不能静默失败。
+
+- [ ] **缩放后左右滑动调进度（§3.32）待真机确认**：开启「左右滑动控制进度」+「视频可缩放」→ 捏合放大 → 松手 → 单指横滑，应完全不出现进度浮层、不动进度条；双指缩回 1 倍后横滑恢复；再验关掉「缩放时可移动」时放大后单指拖动不再移位。判据单测覆盖不到 ACTION_UP 之后的手势分发。
+
+- [ ] **长按顶栏三模式（§3.33）待真机确认**：①「不响应」下普通页面与视频详情页长按都无动作（OPPO 系手表长按顶部本意是系统控制中心，应用侧至少不能自己再动）；②「仅视频详情页」下普通页面无动作、视频详情页仍关闭所有详情页；③「全部页面」= 旧行为；④ 切档后不用退出页面即时生效；⑤ 26.10.19 显式关过旧开关的老用户，升级后设置页显示「仅视频详情页」（不是「不响应」）。
 
 ### 2.2 功能与工程待办
 
@@ -814,6 +822,59 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **修法**（与 B 站网页行为一致：话题链接本来就指向搜索）：`LinkUrlUtil` 新增纯函数 `parseTopicSearchKeyword(jumpUrl)`（要求含 `search.bilibili.com`，从 `keyword=` 取值后 `URLDecoder` 解成中文，取不到返回空串）；`StringUtil.setSingleTopic` 改三段——有 `topic_id` 仍进 `DynamicTopicActivity`；只有搜索链接则用新内部类 `TopicSearchClickableSpan` 进 `SearchActivity`（`putExtra("keyword", …)` + `putExtra("auto_search", true)`）；两者都没有才只上色。`model/TopicNode` 补 `getSearchKeyword()`，`isClickable()` 改为「有 topic_id 或有搜索关键词」。`SearchActivity` 只在 `auto_search=true` 时**进入即搜**，其余只传 `keyword` 的调用方行为不变（原来只预填输入框、用户还得再点一次放大镜）。
 - **单测**：`LinkUrlUtilTest` 补 4 例（协议相对的真实跳转能解码、https + 额外参数、非搜索链接 / 无 keyword / 空值返回空、topic-detail 链接不误判为搜索）；`DynamicApiTest` 补 1 例（搜索链接话题 `topicId=0` 但 `isClickable=true`）。
 - **验证**：`:app:assembleDebug --offline` + 两个 flavor 的单测全 `BUILD SUCCESSFUL`；真机 `emulator-5554`（coexist debug 包）点正文话题 → 进站内搜索页。
+
+### 3.32 缩放视频后左右滑动仍在调进度（26.10.20）
+
+- **现象**：开启「左右滑动控制进度」+「视频可缩放」后，捏合放大画面 → 松手 → 单指左右滑动，仍会弹出进度浮层并拖改进度条。设置项文案写的是「在视频区域左右滑动快进/快退（未缩放视频时生效）」。
+- **根因（读码确证）**：`activity/player/PlayerActivity.kt` 的 `handleSwipeSeekTouch()` 用 `gesture_scaled` 挡缩放，但那个标志只表示「**本轮触摸里**捏合过」——捏合时置位、`ACTION_UP` 一到就复位，随后只剩「吞掉手势结束那次点击」一个用途。于是「放大 → 松手（标志复位）→ 再横滑」时事件又被 seek 分支 `return true` 消费。同一缺陷还波及 MOVE 分支的单指拖动闸门（`!(gesture_scaled && !doublemove_enabled)`）：关掉「缩放时可移动」后，放大画面仍能被单指拖走。
+- **修法**：
+  - 新增 `activity/player/PlayerGesturePolicies.kt`：`PlayerZoomPolicy.isZoomed(scaleX, scaleY)` 只读画面实际比例（ε=0.001f，缩放状态唯一判据）；`PlayerSwipeSeekPolicy.isSeekAllowed(swipeSeekEnabled, prepared, isLive, playerReady, scaleX, scaleY)` 汇总调进度全部前置条件。`PlayerDoubleTapPolicy` 改为复用前者，删掉重复的 ε 定义（原 10 例单测不动仍绿）。
+  - `PlayerActivity`：新增 `isVideoZoomed()`（读 `layout_video.scaleX/scaleY`）；`handleSwipeSeekTouch()` 改走 `PlayerSwipeSeekPolicy`；单指拖动闸门改为 `(!isVideoZoomed() || doublemove_enabled)`；`gesture_scaled` 保留但注释写明「只用于点击抑制」；顺带把 `"player_scale"` / `"player_doublemove"` 字面量换成 `SettingsKeys.PLAYER_SCALE` / `SettingsKeys.PLAYER_DOUBLEMOVE`。
+  - 顺带堵掉一个相邻的残留：横滑已弹出进度浮层后再捏合缩放，最终 `ACTION_UP` 会被门闸提前挡掉，`swipeSeekActive` 分支的清理永远执行不到，而缩放期间又进不来 ⇒ 浮层一直挂在画面上（修复前下次横滑会自愈）。门闸失败时改调 `cancelSwipeSeekIfActive()` 收掉（仅当浮层可见或 active 时碰 UI）。
+- **单测**：新增 `app/src/test/java/com/RobinNotBad/BiliClient/player/PlayerGesturePoliciesTest.kt`（9 例）：未缩放放行、双轴/单轴缩放一律否决、缩放复位后恢复、浮点噪声不算缩放、其余开关各自仍生效。
+- **验证**：`:app:assembleDebug`（standard + coexist 各 4 ABI debug 包）`BUILD SUCCESSFUL`；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 各 **64 suites / 649 testcases / 0 failures / 0 errors**（较 §3.30 的 62/629 增加 2 套 20 例，其中本次新增 1 套 9 例）。命令带 `--offline --no-configuration-cache`，无 res 文件集合变化故未 clean。
+- **未覆盖 / 残留**：① **无真机**（本机 `adb devices` 为空），判据单测锁的是「读实际 scaleX」这条契约，**覆盖不到 ACTION_UP 之后的手势分发**，复测条目见 §2.1；② 关掉「缩放时可移动」时，放大后的单指拖动现在完全不动画面，松手仍可能被当成一次点击把控制栏收起/唤出——与「未开启滑动调进度」时的既有行为一致，本轮不改。
+
+
+
+### 3.33 长按顶栏改成三模式，让「不响应」真正罩住视频详情页（26.10.20）
+
+- **来源**：反馈 #9（OPPO 系手表：长按屏幕顶部是系统控制中心）。26.10.19 的布尔开关（`8857b48`）只拦住普通页面那条「长按顶栏 → 打开菜单列表」；视频详情页的长按走自己的监听器（`activity/video/info/VideoInfoActivity.setupLongPressToRoot` →「关闭所有详情页」），读都不读这个开关。所以用户关掉开关后在视频详情页长按，仍会关掉所有详情页、页面直接消失，观感就是「长按和单击一样」，于是要求三档：不响应 / 仅视频详情页 / 全部页面。
+- **语义（刻意沿用各页原有动作，不新增动作）**：「生效」= 该页原本的长按行为发生——普通页面打开菜单列表，视频详情页关闭所有详情页。「全部页面」就是 26.10.19 的现状；这样模式③不会等于删掉 `docs/FEATURES.md` 承诺的「长按顶栏返回首页」。
+- **修法**：
+  - `util/TopbarLongPressPrefs` 由布尔开关改为三态字符串：`all`（默认）/ `video_only` / `off`，新键 `SettingsKeys.TOPBAR_LONG_PRESS_MODE`。读不到新键时按旧布尔键懒迁移（`true` → `all`、`false` → `video_only`）——**旧「关」映射成「仅视频详情页」而不是「不响应」**，升级后行为与升级前完全一致，不会突然把用户已有的视频详情页手势也一起关掉。判据只留两个出口：`isEnabledForNormalPages()`（= `all`）、`isEnabledForVideoPages()`（≠ `off`）。
+  - 两个监听器都是「装一次、按下时读模式」：普通页（`activity/base/BaseActivity.setupTopbarLongPressToHome`）只在 `all` 下打开菜单；视频详情页只在非 `off` 下关闭所有详情页。其余情况**返回 true 把手势吞掉**——返回 false 时 Android 会在抬手时把它回落成一次单击，而顶栏单击是「退出当前页」，等于换了一种误触。
+  - `BaseActivity` 新增 `protected open fun handlesTopbarLongPress()`：视频详情页返回 true，基类不再安装通用监听器。此前只靠 `ViewCapabilityProbe.probeBoolean(topBar, "hasOnLongClickListeners")` 判断「子类是否已装」，探测失败（裁掉该方法的杂牌手表，返回 null）时基类会覆盖子类监听器，把视频详情页的「关闭所有详情页」变成「打开菜单」——这类设备恰恰最需要正确行为。顺带把基类 doc 注释里「子类若已自定义…此处不覆盖」的空头承诺落实。
+  - 设置项从 `switch` 换成 `list_choose`（`ListChooseActivity` 三选一）：`activity/settings/SettingPrefActivity` 的 `sections` 提成字段并补 `onActivityResult`（本页此前没有 list_choose，不接回写就是「点了没反应」），默认值取 `TopbarLongPressPrefs.mode()`，保证迁移后的老用户看到的档位就是实际生效的档位。菜单列表页（`MenuActivity`）本来就不装长按监听，三档都管不到它，刻意不改。
+  - 文案：「长按顶部打开菜单」→「长按顶部标题栏」（选项里已不止「打开菜单」，旧名会误导），三选项「不响应 / 仅视频详情页 / 全部页面」，说明 `desc_topbar_long_press_mode`；新增 `settingtext_settingprefactivity_029~032` 并在 `activity/settings/SettingText` 登记（`resolve()` 未登记会原样返回，list_choose 的当前值会显示空白），`SettingsIndex` 的通用偏好搜索名同步改成「长按顶部标题栏」（跨文件按名字匹配）。
+- **单测**：`app/src/test/…/util/TopbarLongPressPrefsTest.kt` 重写为 11 例（默认 `all`、三模式各自放行视频详情页/普通页面、旧开关 `true`/`false` 的迁移、新键优先于旧键、新键脏值回退默认、两个键名稳定、不与长按操作面板共用键）。
+- **验证**：`:app:assembleDebug --offline --no-configuration-cache` `BUILD SUCCESSFUL`（standard + coexist 各 4 ABI debug 包）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 各 **64 suites / 654 testcases / 0 failures / 0 errors**（较 §3.32 的 64/649 增加本次 5 例，套数不变）；`strings.xml` 仅 5 增 2 删、无新增资源文件，故未 clean。
+- **未覆盖 / 残留**：① **无真机验证**（手边没有 OPPO 系手表），复测条目见 §2.1；② `MenuActivity` 长按仍回落成单击=退出菜单，属既有行为，三档不覆盖；③ `asyncInflate` 路径（`BaseActivity.asyncInflate`）原本就不装长按监听，未改。
+
+### 3.34 缓存页空态压住「新建文件夹」（26.10.20）
+
+- **现象**：缓存页没有视频时，`啥都木有~` 正好压住「新建文件夹」按钮（用户截图）。
+- **根因**：`activity_simple_main_refresh.xml` 末尾的 `emptyTip` 是 `match_parent` 的**覆盖层兄弟节点**，`LocalListActivity.checkEmpty()` 在 `videoList`/`folderList` 都空时点亮它，而此时列表里仍有「下载列表 / 新建文件夹 / 未分类视频 0 个」三项，文字必然叠在按钮上。
+- **修法**：空态改成**列表内一行**——`CacheListAdapter` 新增 `TYPE_EMPTY_TIP`（新布局 `app/src/main/res/layout/cell_empty_tip.xml`，文字 `@string/text_list_empty`），`rebuildFlatList()` 在「未分类视频」标题之后、该分区 0 个视频时插入；进文件夹后该文件夹 0 个视频同样显示。`LocalListActivity` 删掉 `emptyTip` 字段、`checkEmpty()` 及两处调用（共享布局里的 `emptyTip` 保留给其它页）。
+- **不在本次范围**：「下载列表」「新建文件夹」仍是 `CacheListAdapter` 的 `TYPE_GOTO_DOWNLOAD` / `TYPE_ACTION_NEW_FOLDER` 列表项，随列表滚走、回到顶部自然回位。26.10.20 曾把它们改成列表上方的固定条 + `AutoHideBars` 滚动折叠，**用户要求回退**，相关代码与文档已撤销，不要再按「固定条」实现。
+- **构建 / 单测**：新增资源文件，按 AGENTS.md 先 `:app:clean --offline --no-configuration-cache`，再 `:app:assembleDebug --offline --no-build-cache --no-configuration-cache`；两个 flavor 的 JVM 单测见下方验证行。
+- **验证（模拟器实测，非真手表）**：`127.0.0.1:16384`（MuMu，380×380 表盘模拟器）装 coexist debug 包，用 `debug/DebugBridge` 的 `start` 命令直接拉起 `LocalListActivity`：零视频时「啥都木有~」排在「未分类视频 0 个」下方，**不再压住按钮**；进文件夹后同样显示在该文件夹标题下。
+- **未覆盖 / 残留**：「有文件夹、但未分类区为空」时显示「未分类视频 0 个 + 啥都木有~」两行，属有意保留（提示未分类区确实是空的）。
+
+### 3.35 缓存页右滑设置面板改成「长按一次弹窗」（26.10.20）
+
+- **需求（用户原话）**：「对了，按钮向右滑动不是会有功能列表吗，我希望你把他改成长按一次后弹窗（沿用应用已有弹窗组件），长按两次删除也并入弹窗改为一个功能」。
+- **改动**：
+  - `adapter/video/CacheListAdapter.kt`：删掉自写的右滑手势（`dispatchTouchEvent`/`OnItemTouchListener` 那段、`openVideoSettingsIdx`/`openFolderSettingsIdx`/`waitingSecondLongPressIdx`/`justDeletedIdx` 及面板显隐/`scrollToOpenSettings`），改为 `itemView.setOnClickListener`（点＝播放/进文件夹）+ `setOnLongClickListener`（长按回调 `onVideoMenu(index)` / `onFolderMenu(index)`）；`VideoItemHolder`/`FolderItemHolder` 里的面板字段一并删除。
+  - `activity/video/local/LocalListActivity.kt`：新增 `showVideoMenu()` / `showFolderMenu()`（走 `util/TerminalDialog.kt` 的 `menu`）；菜单项按 `isInFolder` 在「添加到文件夹 / 移出文件夹」间切换；**删掉「长按两次免确认删除」**，删除前统一 `TerminalDialog.confirm`；「拆散文件夹」也改成 `confirm`。
+  - 布局清理：`res/layout/cell_video_local.xml` 删 `videoSettingsPanel`、`res/layout/cell_video_folder.xml` 删 `folderSettingsPanel`，`git rm res/layout/panel_video_settings.xml`（已无引用）。`cell_video_local` 仍被 `DownloadAdapter` 使用（下载列表页已回归验证）。
+- **弹窗组件的坑（已修，判据见 `docs/architecture-map.md` §8.7.0）**：
+  - `TerminalDialog.menu/confirm/alert/choice` 返回 `AlertDialog` 但**不会自己 `show()`**，调用方必须 `}.show()`（漏了就是「点了没反应」，logcat 里连异常都没有，本次排查耗时最久）。
+  - 弹窗默认窗口是整屏宽且不带 `WATCH_OUTSIDE_TOUCH`，导致「点空白处取消」根本收不到点击；现在 `TerminalDialog` 统一加 `FLAG_WATCH_OUTSIDE_TOUCH` 并把菜单宽度限到约 90%，表盘两侧才有真正可点的空白（约 24px）。提示行本身也做成可点，避免用户找空白。
+  - 表盘 380×380：`menu` 标题按 12 字截断（`menuTitle()`），`confirm` 正文压到一行语义（「此操作不可恢复。」「视频会移回未分类区域。」），否则按钮行被挤出屏幕——`confirm` 的按钮跟正文走，不像 `choice` 那样固定底栏。
+- **验证（模拟器实测，非真手表）**：`127.0.0.1:16384`（MuMu 380×380）coexist debug 包；长按文件夹卡 →「重命名 / 拆散文件夹」；长按视频卡 → 5 项菜单（末项「删除视频」红字，弹窗内可滚动）→ 点删除 → 确认框「取消 / 删除」全在屏内 → 取消后视频仍在；点提示行、点两侧空白均可关闭；`input tap`（点按）不受影响。
+- **构建 / 单测**：删了资源文件，按 AGENTS.md 先 `:app:clean` 再 `:app:assembleDebug`（两 flavor 均 `BUILD SUCCESSFUL`）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` `BUILD SUCCESSFUL`（64 suites / 662 tests，0 失败；本次改动无 JVM 单测覆盖，靠回归）。
+- **不在本次范围**：下载列表页（`DownloadListActivity`）自身的「长按两次删除」未动，仍是旧交互。
 
 ## 4. 历史章节索引
 
