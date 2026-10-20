@@ -42,7 +42,14 @@
 - 页面级排序/分区配置沿两个既有范式：`MenuConfig`（启用/未启用）与 `MySpaceConfig`（主列表/更多列表）——都是纯 Kotlin 单一数据源 + JVM 单测 + 复用 `MenuSettingAdapter` 式双分区拖拽写法。
 - 请求与解析分离，纯解析抽成 `static`/`object` 函数并补 JVM 单测（参考 `HotSearchApi.parseHotSearch`；需要 SharedPreferences 时注入 `SharedPreferencesUtil.sharedPreferences = FakeSharedPreferences()`——该假实现是共享助手 `app/src/test/…/util/FakeSharedPreferences.kt`，**别再抄一份**）。
 - **小步提交**：把改动切成小步，每步都能独立验证（`assembleDebug` + 单测通过）并说清楚改了什么，再进入下一步；不要一次性堆大量改动。
-- **做完就提交并推送**（26.10.20 起）：一次改动完成后**自己写 commit message、自己 commit、自己 push 到 `origin/main`**，不要等用户催；只有改动没验证过（构建/单测没跑通）才停下来问。惯例：中文、`type(scope): 摘要`（`fix` / `feat` / `docs` / `chore` / `refactor` / `test`），一次提交只装一个关注点，末尾带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`。
+- **做完就提交并推送，且按改动类型落到不同分支**（26.10.20 起）：一次改动完成后**自己写 commit message、自己 commit、自己 push**，不要等用户催；只有改动没验证过（构建/单测没跑通）才停下来问。惯例：中文、`type(scope): 摘要`（`fix` / `feat` / `docs` / `chore` / `refactor` / `test`），一次提交只装一个关注点，末尾带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`。**不开 PR**（自己的仓库不需要），一个改动做完后把该分支 merge 回 `main` 并 push，保证 `main` 始终是最新可发布状态。
+- **分支映射**（三条都是长期类型分支，2026-10-20 已全部同步到最新 `main`，此后各自往上叠；分支名是历史名字，**不要改名**，它们现在承担的是类型桶的角色）：
+
+  | 改动类型 | 推到哪个分支 |
+  | --- | --- |
+  | `feat/*`（新功能、新能力） | `feat/gitee-release` |
+  | `fix/*`（修 bug、行为纠正） | `fix/issue-1-swipe-seek-back` |
+  | `docs/*` / `chore/*` / `refactor/*` / `test/*` | `main`（直接提交） |
 - **用户可见文案一律进 `app/src/main/res/values/strings.xml`**（26.10.19 起从「只有设置页用」改为全仓迁移，台账与规范见 `docs/copy-inventory/STRINGS-MIGRATION.md`）。命名沿用既有前缀：`pagename_` 页面标题 / `btn_` 按钮 / `text_` 界面文本 / `desc_` 设置说明 / `msg_` 一次性提示。**新代码不要再硬编码中文**；迁移未覆盖的老代码可以留着，但改到哪块顺手迁哪块，别新增第二份。写法：Kotlin `getString(R.string.x)`；`companion object` / `object` 里用 `BiliTerminal.context!!.getString(...)`；Java 用 `BiliTerminal.context.getString(...)`（别忘了 import `R` 与 `BiliTerminal`）。
 
   **唯一例外：会被 JVM 单测直接调用的纯函数不要读资源**。本仓库不用 Robolectric，单测里没有 Context，`getString` 必然空指针（26.10.19 B6 一次挂掉 6 个用例）。这类「服务端错误码 → 人话」的映射统一放 `api/ApiErrorText.kt`（`object` + `@JvmStatic`，同包 Java 直接调），要改那几句改它一处。
