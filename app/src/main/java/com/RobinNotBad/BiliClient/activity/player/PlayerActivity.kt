@@ -252,6 +252,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var previousX: Float = 0f
     private var previousY: Float = 0f
     private var gesture_moved: Boolean = false
+    // 只表示「这一轮触摸里捏合过」，仅用于吞掉手势结束时的那次点击（ACTION_UP 一到就复位）。
+    // 判断「画面现在是否仍缩放」一律走 isVideoZoomed()，别再用这个标志。
     private var gesture_scaled: Boolean = false
     private var gesture_click_disabled: Boolean = false
     private var video_origX: Float = 0f
@@ -818,11 +820,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             })
         }
 
-        if (SharedPreferencesUtil.getBoolean("player_scale", true)) {
+        if (SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SCALE, true)) {
             scaleGestureListener = ViewScaleGestureListener(layout_video)
             scaleGestureDetector = ScaleGestureDetector(this, scaleGestureListener!!)
 
-            val doublemove_enabled = SharedPreferencesUtil.getBoolean("player_doublemove", true)
+            val doublemove_enabled = SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_DOUBLEMOVE, true)
 
             layout_control.setOnTouchListener { v, event ->
                 if (doubleTapSeekEnabled && doubleTapGestureDetector != null) {
@@ -843,7 +845,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         if (singleTouch) {
                             if (gesture_scaling) {
                                 videoMoveBy(0f, 0f)
-                            } else if (!handleSwipeSeekTouch(event) && !(gesture_scaled && !doublemove_enabled)) {
+                            } else if (!handleSwipeSeekTouch(event) &&
+                                (!isVideoZoomed() || doublemove_enabled)
+                            ) {
+                                // 单指拖动只为查看放大后的画面：未缩放时 videoMoveBy 会被夹回原位，
+                                // 缩放后则取决于「缩放时可移动」。以前这里判 gesture_scaled，
+                                // 那个标志松手就复位，导致关掉「缩放时可移动」后仍能拖动。
                                 val currentX = event.getX(0)
                                 val currentY = event.getY(0)
                                 val deltaX = currentX - previousX
@@ -2097,6 +2104,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         changeVideoSize()
     }
 
+    /** 画面当前是否处于缩放状态。判据在 [PlayerZoomPolicy]，不要改读手势标志。 */
+    private fun isVideoZoomed(): Boolean =
+        PlayerZoomPolicy.isZoomed(layout_video.scaleX, layout_video.scaleY)
+
     private fun videoMoveBy(dx: Float, dy: Float) {
         var x = dx + layout_video.x
         var y = dy + layout_video.y
@@ -2771,8 +2782,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 仅在开启设置、未缩放视频、非直播且已准备就绪时生效。
      */
     private fun handleSwipeSeekTouch(event: MotionEvent): Boolean {
-        if (!swipeSeekEnabled || !isPrepared || isLiveMode || ijkPlayer == null) return false
-        if (gesture_scaled) return false   // 已缩放视频时保留单指拖动
+        // 缩放状态取画面的实际比例，不读 gesture_scaled（那个标志在 ACTION_UP 就复位，
+        // 捏合放大松手后会把调进度重新放行——26.10.20 修的正是这个）。
+        val seekAllowed = PlayerSwipeSeekPolicy.isSeekAllowed(
+            swipeSeekEnabled, isPrepared, isLiveMode, ijkPlayer != null,
+            layout_video.scaleX, layout_video.scaleY
+        )
+        if (!seekAllowed) {
+            // 门闸关闭时顺手收掉可能残留的浮层：横滑激活浮层后再捏合缩放，最终 ACTION_UP 会走到
+            // 这里提前返回，ACTIVE 分支的清理永远执行不到；而缩放期间又进不来，浮层就会一直挂着。
+            cancelSwipeSeekIfActive()
+            return false
+        }
         if (event.pointerCount != 1) return false
 
         when (event.actionMasked) {
@@ -2819,6 +2840,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
         }
         return false
+    }
+
+    /** 收掉可能残留的滑动进度浮层；浮层与标志都不存在时不动 UI。 */
+    private fun cancelSwipeSeekIfActive() {
+        if (!swipeSeekActive && swipe_seek_overlay.visibility != View.VISIBLE) return
+        swipeSeekActive = false
+        swipe_seek_overlay.visibility = View.GONE
     }
 
     @SuppressLint("SetTextI18n")
