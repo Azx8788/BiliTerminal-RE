@@ -219,7 +219,7 @@
 ### 三.1 清单内部：94 组、涉及 222 条
 
 | 次数 | 文案 | 涉及编号 |
-|---:|---|---|
+| ---: | --- | --- |
 | 5 | `登录` | A-073 / S-105 / U-057 / U-100 / U-205 |
 | 5 | `教程管理` | T-023 / T-038 / S-352 / U-033 / U-092 |
 | 4 | `反馈与建议` | A-047 / A-048 / S-356 / U-094 |
@@ -328,7 +328,7 @@
 这一条纠正了 `六、已知未覆盖` 里留下的担心——`strings.xml` 内部**几乎没有重复**，只有这 3 组（值相同、键不同）：
 
 | 文案 | 重复的键 |
-|---|---|
+| --- | --- |
 | `反馈与建议` | `pagename_feedback` · `feedback_entry_title` |
 | `复制` | `pagename_copy` · `btn_login_copy` |
 | `表情` | `btn_emote` · `pagename_emote` |
@@ -340,7 +340,7 @@
 真正的重复大头在这里。代码里带中文的字符串字面量共 **2991 条**，其中 **43 条**与 `strings.xml` 里的某个值逐字相同——也就是同一句话既有资源键、又在代码里硬编码。改资源键**不会**改到硬编码那份，反之亦然。
 
 | 代码处数 | 文案 | 资源键 | 代码位置（前几处） |
-|---:|---|---|---|
+| ---: | --- | --- | --- |
 | 5 | `下载完成` | `text_update_download_complete` | UpdateActivity.kt:170<br>DownloadActivity.kt:170<br>DownloadNotifier.kt:63<br>DownloadService.kt:667 |
 | 5 | `登录` | `btn_login_confirm` | LoginActivity.kt:19<br>SettingGroupActivity.kt:194<br>SettingsIndex.kt:48<br>SettingsIndex.kt:48 |
 | 3 | `创作中心` | `pagename_creative_center` | SettingPrefActivity.kt:30<br>SettingsIndex.kt:153<br>MySpaceMenu.kt:25 |
@@ -394,6 +394,7 @@
 ### 三.4 一句话建议
 
 改任何一条**短文案**（尤其 2~4 字的按钮名、页面名、设置项名）之前，先在 `三.1` 的表里搜一下这个词：只要有 ≥2 个编号，就按「全部一起改」对待，别只改清单里那一条——那些编号往往就是其他写法的所在。
+
 ## 四、刻意允许的重复（别去合并）
 
 | 现象 | 为什么不合并 |
@@ -434,6 +435,5 @@ grep -rn "操作失败（错误码" app/src/main/java
 - 代码里 2991 条中文字面量中，**只在代码内部重复、且不与 `strings.xml` 撞车**的那些未纳入（量大，与「改一次文案」关系较弱）。
 
 如需刷新第三节，按 `五、怎么自己复查` 重跑脚本即可。
-
 
 **发现新的重复组，直接在本文件追加一节，编号接着 `DUP-17` 往下排。**

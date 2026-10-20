@@ -20,7 +20,7 @@
 > 以下接口均已用 curl 实测：接口存在、返回结构正常；标注「需登录」的接口在无 Cookie 时返回 `-101 账号未登录`（说明接口有效，登录后可用）。
 
 | 接口 | 地址 | 鉴权 | 验证结果 |
-|------|------|------|---------|
+| --- | --- | --- | --- |
 | 大会员签到 | `POST /pgc/activity/score/task/sign` | 需登录 | ✅ 文档确认 |
 | 漫画签到 | `POST manga.bilibili.com/twirp/activity.v1.Activity/ClockIn` | 需登录 | ✅ 文档确认 |
 | 漫画签到状态 | `POST .../GetClockInInfo` | 需登录 | ✅ 文档确认 |
@@ -36,6 +36,7 @@
 | 历史删除 | `POST /x/v2/history/delete` | 需登录 | ✅ 实测 `-101`（已实现） |
 
 **已实测确认项目缺失、可直接新增的功能**（见下节第 1~4 项）：
+
 1. 直播每日签到（全新）
 2. 粉丝勋章佩戴/取消佩戴（现有查看，无操作）
 3. 大会员每日签到（现有信息页，无签到）
@@ -46,6 +47,7 @@
 ## 二、高优先级（轻量、接口齐全、见效快）
 
 ### 1. 大会员每日签到（大积分）
+
 - **文档**：`docs/vip/clockin.md`
 - **接口**：`POST https://api.bilibili.com/pgc/activity/score/task/sign`
   - 参数：`csrf`（Cookie 中 bili_jct）；`Referer` 需在 `*.bilibili.com` 下；SESSDATA 需 URL 编码（`,`→`%2C`）
@@ -54,6 +56,7 @@
 - **工作量**：小（约半天）
 
 ### 2. 漫画签到（含补签）
+
 - **文档**：`docs/manga/ClockIn.md`
 - **接口**：
   - 签到：`POST https://manga.bilibili.com/twirp/activity.v1.Activity/ClockIn`（参数 `platform=android`）
@@ -63,6 +66,7 @@
 - **工作量**：小~中
 
 ### 3. 直播每日签到
+
 - **文档**：`docs/live/user.md`（签到部分）
 - **接口**（已实测 `-101 需登录`，接口有效）：
   - 签到：`GET https://api.live.bilibili.com/xlive/web-ucenter/v1/sign/DoSign`
@@ -72,6 +76,7 @@
 - **工作量**：小
 
 ### 4. 粉丝勋章佩戴 / 取消佩戴
+
 - **文档**：`docs/live/user.md`（佩戴勋章部分）
 - **接口**（已实测 `-101 需登录`，接口有效）：
   - 佩戴：`POST https://api.live.bilibili.com/xlive/web-room/v1/fansMedal/wear`（`medal_id` + `csrf`）
@@ -85,6 +90,7 @@
 ## 三、中优先级（功能完整、体验提升）
 
 ### 5. 视频笔记（观看笔记）
+
 - **文档**：`docs/note/`（list / info / action）
 - **接口**：笔记列表、详情、操作；富文本正文（节点序列格式）
 - **实现**：视频页加"笔记"入口，支持新建私有笔记 + 查看笔记列表
@@ -92,6 +98,7 @@
 - **工作量**：中
 
 ### 6. 图文/图片动态发布（含图片上传）
+
 - **文档**：`docs/dynamic/publish.md`
   - 图片上传：`POST https://api.bilibili.com/x/dynamic/feed/draw/upload_bfs`（multipart，`file_up` + `csrf`）
   - 发布图文动态：`POST https://api.bilibili.com/x/dynamic/feed/create/dyn`（`scene=2`，`pics[]` 最多 9 张）
@@ -100,6 +107,7 @@
 - **工作量**：中
 
 ### 7. 直播发弹幕
+
 - **文档**：`docs/live/danmaku.md`
 - **现状**：`LiveApi` 仅观看相关（推荐/关注/房间/播放），**无发送弹幕**
 - **实现**：直播观看页补"发弹幕"（HTTP 方式）
@@ -107,6 +115,7 @@
 - **工作量**：中
 
 ### 8. 充电（给 UP 主/自己充电）
+
 - **文档**：`docs/electric/`（Bcoin / charge_list / charge_msg / monthly）
 - **实现**：视频页/UP 主页加"充电"入口
 - **注意**：**涉及实际扣费**，需谨慎 + 确认风控后再上
@@ -117,24 +126,28 @@
 ## 四、低优先级（复杂/依赖外部条件）
 
 ### 9. 直播管理后台（房管功能）
+
 - **文档**：`docs/live/manage.md`、`silent_user_manage.md`、`guard.md`
 - **内容**：禁言、设房管、舰长管理等（主播向）
 - **注意**：依赖登录账号为主播，受众窄
 - **工作量**：大
 
 ### 10. 漫画客户端
+
 - **文档**：`docs/manga/` 全目录（Comic/Season/Download/点券）
 - **内容**：漫画浏览 / 阅读 / 下载
 - **注意**：需图片阅读器、章节管理，建议独立规划
 - **工作量**：大
 
 ### 11. 互动视频 / 创作中心增强
+
 - **文档**：`docs/video/interact_video.md`、`docs/creativecenter/`
 - **现状**：已有 InteractionVideo + CreativeCenter
 - **改进**：补齐创作数据统计、稿件管理等
 - **工作量**：中
 
 ### 12. 青少年模式 / 风控应对
+
 - **文档**：`docs/teenager/teenager_mode.md`
 - **价值**：合规需求
 - **工作量**：中
@@ -144,7 +157,7 @@
 ## 五、建议落地路线
 
 | 阶段 | 功能 | 理由 |
-|------|------|------|
+| --- | --- | --- |
 | 第一期 | 大会员签到、漫画签到、**直播签到** | 最小成本、立即可用、接口已验证 |
 | 第一期 | **粉丝勋章佩戴** | 现有勋章页补一个操作即可 |
 | 第二期 | 视频笔记、图文动态发布 | 功能完整、体验提升 |
@@ -168,7 +181,7 @@
 > 「现状」列均为 2026-10-10 在本仓库 `app/src/main/java` / `app/build.gradle` 上 grep 实测的结果，未实测的一律不标 ✅。
 
 | 优先级 | 事项 | 依据 / 位置 | 现状 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | P0 | 去掉 `x86` ABI | 调研 §7.1（`app/build.gradle:140-146`） | **仍未做**：`app/build.gradle:144` 仍是 `include 'armeabi-v7a', 'arm64-v8a', 'x86'`，`app/libs/x86/` 下 5 个 `.so` 仍在。⚠️ 调研 §12 前提写「**x86 ABI 保留，不进本轮**」，`universalApk` 取舍单列 B10 已裁决 |
 | P0 | 弹幕点击菜单（点赞/复制/举报/屏蔽） | 调研 §7.2（PiliPlus） | **仍未做**：全库无 `OnDanmakuClickListener` / `setOnDanmakuClickListener`（grep 无命中），点弹幕无任何响应 |
 | P1 | 评论举报 | 调研 §7.2（`x/v2/reply/report`，需 csrf） | **仍未做**：grep `reply/report`、`reportReply` 无命中。**删除/置顶已落地**（`api/ReplyApi.java:492 deleteReply` / `:536 topReply`，接线于 `adapter/ReplyAdapter.kt:581,611`），故本行只留举报 |

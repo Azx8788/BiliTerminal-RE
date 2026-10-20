@@ -252,7 +252,7 @@ MsgUtil.showDialog("无法发送", "上一次的Cookie刷新失败了，\n您可
 
 B6 最初是照 B1~B5 的老样子，把这三句加进 `strings.xml`，用例里用 `BiliTerminal.context.getString(...)`。结果 **6 个 JVM 单测直接挂**：
 
-```
+```text
 DynamicApiTest > topErrorMsg_unknownCodeStillShowsTheCode FAILED
 FavoriteApiTest > resourceErrorMsg_mapsKnownCodes FAILED
 FollowApiMoveUsersTest > 未知码兜底带上错误码本身 FAILED
@@ -386,7 +386,6 @@ UiText.fmt("共%1\$s张图片", count)            // 带占位符：原先是 "�
 **有意不迁**：`res/xml/tutorial_*.xml`（旧教程链路，正文已在 `Tutorials.kt`，见 §4）、`res/drawable/*.xml` 里 `<path>` 附近的注释、所有 `tools:text`（设计占位符）。
 
 ## 6. 每批的标准动作（照做即可）
-
 
 1. **挑一批**：从上表的表里选，范围控制在「一个屏幕 / 一个模块」，改动文件 ≤ 8 个。
 2. **先查重**：拿句子去 `DUPLICATES.md` 搜一遍，有同义的就复用键，别新开。

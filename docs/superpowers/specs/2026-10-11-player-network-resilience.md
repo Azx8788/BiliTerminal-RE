@@ -38,13 +38,14 @@
 透传链（源码级）：`IjkMediaPlayer.setOption(OPT_CATEGORY_FORMAT, …)` → `ff_ffplay.c:4043-4047`（`case FFP_OPT_CATEGORY_FORMAT: return &ffp->format_opts;`）→ `ff_ffplay.c:3122` `avformat_open_input(&ic, is->filename, is->iformat, &ffp->format_opts)` → `utils.c:555-574`（`av_dict_copy` + `av_opt_set_dict(s,&tmp)` 只吃掉 AVFormatContext 的键，剩下的继续下传）→ `utils.c:438` `s->io_open(...options)` → `avio.c:320/323`（URLContext 类 → 协议私有类）→ `http.c:246-248` `ffurl_open_whitelist(..., options, ...)` → 内层 `tcp`/`tls`。**所以 FORMAT 类选项对一个普通 `https://` 地址同样落地，无需 `ijkio:`。** [官方源码]
 
 另外两条必须记住的边界：
+
 - **rtmp/rtsp 会被删掉 `timeout`**：`ff_ffplay.c:3105-3109`（`:4268-4270` 重复一次）注释 `There is total different meaning for 'timeout' option in rtmp` 后 `av_dict_set(&ffp->format_opts, "timeout", NULL, 0);`。[官方源码]（[二手印证] issue #837：必须先注释掉这行才能用 timeout）
 - **ijk 的 `ijkio:`/httphook 链（秒开、缓存、`httphookReconnect()`）对不改写 URL 的普通 https 地址完全不参与**：`IjkMediaPlayer.java:405-409` 的 `setDataSource(String)` 只调 `_setDataSource(path,null,null)`，不改写 URL；`:421-432` 仅在 headers 非空时追加 `headers`+`protocol_whitelist`（白名单里没有 `ijkio`）；`:953-959` 的 `httphookReconnect()` 置 `FFP_PROP_INT64_IMMEDIATE_RECONNECT=20211`，只被 ijkio/httphook 的读循环（`ijkiourlhook.c:321-362`、`ijkiomanager.c:360-366`）读取。[官方源码]
 
 ### 2.2 表
 
 | 选项 | 类别 | 默认值 | 语义 | 弱网 / 直播该怎么配 | 来源 |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `timeout` | FORMAT（tcp 私有；`OFFSET(rw_timeout)`） | `-1`（不限），单位**微秒** | socket I/O 超时 | **rtmp/rtsp 下会被 ijk 删掉**，故不推荐依赖；http(s) 下可用（如 5–30s） | [官方源码] `tcp.c:71`；`ff_ffplay.c:3105-3109` |
 | `rw_timeout` | FORMAT（URLContext，**任意协议可见**） | `0`（不限），单位**微秒** | 网络读写等待超时 | **弱网核心项**。直播建议 `5_000_000`（5s）或 `10_000_000`；没有它，"半死连接"永远不返回错误 | [官方源码] `avio.c:59`、`avio.c:386-389`；[官方文档] `doc/protocols.texi` |
 | `addrinfo_timeout` | FORMAT（tcp，**B站 fork 新增**） | `-1`，微秒 | `getaddrinfo()` 超时 | DNS 卡死场景建议 `5_000_000`（本项目短视频播放器已这么设） | [官方源码] `tcp.c:80`、`tcp.c:416` |
@@ -84,7 +85,7 @@
 > 本节直接回答 §5.A.1 / §5.A.7 那个"若 `.so` 与 fork tag 不一致则结论要重核"的疑问：实测对象是**仓库里真正打进 APK 的二进制**。凡下表"不存在"的选项，本工程设了也不会报错，但**完全是空转**。（裸 `timeout` / `reconnect` 这类短串会被 `rw_timeout`/`addrinfo_timeout`/`reconnect_at_eof` 命中，故只对完整选项名下结论。）
 
 | 层 | 实测命中（= 真实存在） | 实测缺失（= 空转） |
-|---|---|---|
+| --- | --- | --- |
 | PLAYER 层（`libijkplayer.so`） | `infbuf`、`packet-buffering`、`max-buffer-size`、`min-frames`、`framedrop`、`max-fps`、`enable-accurate-seek`、`accurate-seek-timeout`、`seek-at-start`、`start-on-prepared`、`soundtouch`、`async-init-decoder`、`mediacodec-sync`、`render-wait-start`、`first/next/last-high-water-mark-ms`、`find_stream_info`、`user_agent`、`probesize`、`analyzeduration`、`dns_cache_clear`、`seekable` | **`max_cached_duration`** |
 | FORMAT / URLContext 层（`libijkffmpeg.so`） | `rw_timeout`、`addrinfo_timeout`、`reconnect_delay_max`、`reconnect_at_eof`、`reconnect_streamed`、`multiple_requests`、`tcp_nodelay`、`fflags`、`max_analyze_duration`、`skip_loop_filter`、`skip_frame`、`user_agent`、`probesize`、`analyzeduration`、`dns_cache_clear`、`seekable` | **`reconnect_on_network_error`**、**`http-detect-range-support`**（连字符与下划线两种写法都试过） |
 
@@ -101,7 +102,7 @@
 ### 3.1 问题一：ijkplayer 的弱网/直播参数怎么配
 
 | 议题 | 本仓库现状 | 业界/官方做法 | 依据来源 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 读超时 | **主播放器（含直播）完全没设** `timeout`/`rw_timeout`/`addrinfo_timeout`；短视频播放器设了 `timeout=10s`、`addrinfo_timeout=5s` | 官方示例给的是 FORMAT `timeout=30s`；FFmpeg 官方文档要求"设 `rw_timeout` 或用 interrupt callback"，否则读可以永久阻塞 | 现状：`PlayerActivity.kt:875-899`（无该类项）、`ShortVideoPlayerActivity.kt:1006-1007`；[官方源码] `IJKFFOptions.m:37-55`；[官方文档] `doc/protocols.texi` |
 | 重连 | 只设了 `reconnect=1`（`:894`）：**对 chunked 直播不够**（缺 `reconnect_streamed=1`），且无读超时 ⇒ 触发不了 | 直播要 `reconnect=1` + `reconnect_streamed=1`（+ `reconnect_at_eof=1`）；`reconnect_delay_max` 默认 120s 需压低 | [官方源码] `http.c:1501`、`:1504-1505`、`:1508` |
 | 内存与缓冲 | `packet-buffering=1` + `max-buffer-size=15MB`，**没设 `min-frames`**（=默认 5 万帧） | `infbuf` 官方描述"useful with realtime streams"但会取消内存上限；控制内存应保持 `infbuf=0` 并调小 `min-frames`/`max-buffer-size` | [官方源码] `ff_ffplay_options.h:79-80`、`:124-127`、`ff_ffplay.c:3466-3474` |
@@ -114,7 +115,7 @@
 **（a）协议行为差异（一手依据）**
 
 | 维度 | HLS（fMP4/CMAF） | HLS（MPEG-TS） | HTTP-FLV |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 有规范吗 | 有：RFC 8216，及已并入规范的 LL-HLS | 同左 | **没有任何 RFC/IETF 规范**：Adobe FLV 规范只定义容器且官方 PDF 抓取失败（403），IANA media-types 无 `video/x-flv` 条目 ⇒ **事实约定（de-facto）** |
 | 恢复检查点 | 每个 segment（LL-HLS 为每个 part，`PART-TARGET=0.33334`） | 每个 segment | **无**（整条是一个永不结束的 chunked 响应） |
 | 失败检测上界 | ≈ 一个 target duration（LL-HLS ≈ 0.33s + `PART-HOLD-BACK=1.0`） | 同左 | 只能靠应用层读超时；TCP keepalive **默认关闭、默认间隔 ≥2 小时**，且规范**禁止**把单次探测无响应当作死连接 |
@@ -136,7 +137,7 @@
 **（c）`getRoomPlayInfo` 参数与 `stream_ttl`**
 
 | 项 | 事实 | 来源 |
-|---|---|---|
+| --- | --- | --- |
 | 接口 | `https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo` | [一手接口文档快照] `bilibili-API/docs/live/info.md:798-1103`；[一手开源代码] `bililive-go/src/live/bilibili.go:26` |
 | `protocol` | `0`=http_stream(FLV)，`1`=http_hls；可逗号多选 | 快照 `:811` |
 | `format` | `0`=flv，`1`=ts，`2`=fmp4；可逗号多选 | 快照 `:812` |
@@ -147,7 +148,7 @@
 **（d）第三方开源客户端的具体做法（一手开源代码）**
 
 | 项目 | 机制 | 关键行 |
-|---|---|---|
+| --- | --- | --- |
 | **biliup**（Rust，最系统） | CDN 线路故障切换；**FLV 空闲看门狗 30s**；指数退避重试 | `live/bilibili.rs:551-573`（`:562-563` 可关；`:565-572` 先 `check_url_healthy`，失败则遍历同画质组所有 CDN；`:573` 全挂报错）；**`httpflv.rs:368` `match timeout(Duration::from_secs(30), self.resp.chunk()).await? {`**；`client.rs:28` `ExponentialBackoff::builder().build_with_max_retries(5)`、`:25` `connect_timeout(60s)`、`:24` 全局超时**故意注释掉**（直播是长连接）；`hls.rs:24-30` `playlist_poll_interval = max(target_duration, MIN_PLAYLIST_POLL_INTERVAL)`、`playlist_should_refresh = !end_list` |
 | **bililive-go**（Go） | **看门狗 = ffmpeg `-rw_timeout`**；失败退避分级；协议/线路可回退 | `ffmpeg.go:356-359` `-rw_timeout <timeoutInUs> -i <url>`；默认 **60s**（`config.go:1130` `TimeoutInUs: 60000000`）；`recorder.go:1154-1166` `shift := min(consecutiveFastFailures-1, 4)` / `interval := minRecordRetryInterval << shift` / `return min(interval, maxInterval)`；常量 `recorder.go:54-64`：`fastFailThreshold=5s`、`minRecordRetryInterval=5s`、`maxRecordRetryIntervalNeverHeld=60s`、`maxRecordRetryIntervalAfterHold=15s`（**从没拉到流→最慢 60s；拉到过流→只拉长到 15s，优先保内容连续性**）；`bilibili.go:162` 一次请求同时要 `protocol=0,1&format=0,1,2&codec=0,1`，`:307-311` 选 `stream.1.format.1.codec.1`（hevc m3u8）或 `stream.0.format.0.codec.0`（avc flv） |
 | **BilibiliLiveRecorder**（Java） | 流下载读超时 120s；主机解析失败重试 10 次；HLS 并发下分片 | `HttpRequestUtil.java:85-86` connect/read 20s（接口），`:179-180` connect 20s + **read 120s（流下载）**，`:235` 置 FAIL；`:334-348` `connectWithHostKnown` 递归（`hostUnknownCnt<=10`，sleep 1s）；`ThRecord.java:53` `while(true)`、`:85-87` 失败计数、`:67-68` `retryAfterMinutes` 等待；`M3u8Downloader.java:21` 3 线程、`:87-88` 失败计数；`FlvChecker.java` FLV 完整性校验 |
@@ -157,7 +158,7 @@
 **（e）本仓库现状对照**
 
 | 现状 | 位置 | 问题 |
-|---|---|---|
+| --- | --- | --- |
 | 请求 `protocol="0,1"`、`format="0,1,2"`、`codec="0,1,2"`（**候选拿得很全**） | `LiveApi.java:107-109` | 解析没问题，问题在消费端 |
 | 硬取 `stream[0].format[0].codec[0]` | `LiveInfoActivity.kt:142-143`、`:180-181`、`:240-241` | **永远走 FLV 单长连接**，HLS/fMP4 那几路拿回来不用，没有 FLV→HLS 兜底 |
 | 默认取 `url_info[0]`，只能手点"路线N" | `LiveInfoActivity.kt:148-149`、`:244-247` | `url_info[]` 多条 CDN 线路已解析在手，**但没有自动 failover** |
@@ -185,7 +186,7 @@
 **（c）Media3/ExoPlayer 的弱网与直播策略（业界标准对照，默认值均为实读源码）** [官方源码]（`androidx/media` `release` 分支）
 
 | 项 | 默认值 / 行为 |
-|---|---|
+| --- | --- |
 | `DefaultLoadControl` | `DEFAULT_MIN_BUFFER_MS = 50_000`；`DEFAULT_MAX_BUFFER_MS = 50_000`；`DEFAULT_BUFFER_FOR_PLAYBACK_MS = 1000`；`DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 2000`；`DEFAULT_TARGET_BUFFER_BYTES = C.LENGTH_UNSET`；`DEFAULT_PRIORITIZE_TIME_OVER_SIZE_THRESHOLDS = false`；`DEFAULT_BACK_BUFFER_DURATION_MS = 0` |
 | `DefaultLivePlaybackSpeedControl` | `DEFAULT_FALLBACK_MIN_PLAYBACK_SPEED = 0.97f`；`DEFAULT_FALLBACK_MAX_PLAYBACK_SPEED = 1.03f`；`DEFAULT_MIN_UPDATE_INTERVAL_MS = 1_000`；`DEFAULT_PROPORTIONAL_CONTROL_FACTOR = 0.1f`；`DEFAULT_TARGET_LIVE_OFFSET_INCREMENT_ON_REBUFFER_MS = 500`；`setLiveConfiguration`（`:310-327`）会把 targetOffsetMs/minOffsetMs/maxOffsetMs 与 min/maxPlaybackSpeed 映射进来，**若 min/max 速度都被设成 1f 则 targetOffset 被强制为 `TIME_UNSET`**；`notifyRebuffer`（`:336-344`）每次重缓冲把 target offset 加大 `…RebufferDeltaUs`，上限为 maxTargetLiveOffset |
 | `MediaItem.LiveConfiguration` | `MediaItem.java:1322`；builder（`:1325`）的默认是 `targetOffsetMs/minOffsetMs/maxOffsetMs = C.TIME_UNSET`、`minPlaybackSpeed/maxPlaybackSpeed = C.RATE_UNSET`（**该类里没有 `DEFAULT_TARGET_OFFSET_MS` 这类常量**） |

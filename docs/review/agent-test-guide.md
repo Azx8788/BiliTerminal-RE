@@ -65,12 +65,13 @@ adb shell am broadcast -n $BRIDGE $T --es cmd ping
 > （报 `appops: inaccessible or not found`），必须走 `cmd` 包一层。
 >
 > **`cmd appops` 的效果有系统日志为证**（Android 12 实测）：
-> ```
+>
+> ```text
 > W ActivityTaskManager: Background activity start for com.RobinNotBad.BiliClient.coexist
 >    allowed because SYSTEM_ALERT_WINDOW permission is granted.
 > ```
+>
 > 不做这一步，`start` 会被静默丢弃——不报错、页面就是不出来。
-
 
 ### 2.3 如果广播没有回显
 
@@ -87,7 +88,6 @@ adb pull $LOG/bridge-last.txt ./bridge-last.txt        # 拷到本地（实测�
 > **别用 `run-as` 读这几个文件**：实测 `adb shell run-as <包名> cat /storage/emulated/0/...` 报
 > `Permission denied`。`run-as` 只进得了应用的**内部**数据目录，外部 `Android/data/.../files/`
 > 不在它的挂载命名空间里。上面两条（`adb shell cat` / `adb pull`）在 Android 12 上都能用。
-
 
 ---
 
@@ -270,9 +270,11 @@ adb shell am broadcast -n <包名>/com.RobinNotBad.BiliClient.debug.DebugBridge 
 
 **追踪能直接暴露风控**——这是它最实用的地方。实测抓到的真实一条：
 
-```
+```text
 GET https://api.bilibili.com/x/...&dm_img_list=…&dm_img_inter=…&dm_cover_img_str=… -> 412 (43ms)
+
   | res=<!DOCTYPE html> … <title>出错啦! - bilibili.com</title>
+
 ```
 
 改造前「风控返回 HTML」「`code=-412`」「请求根本没发出去」在日志里长得一模一样，只能靠猜；
@@ -280,7 +282,6 @@ GET https://api.bilibili.com/x/...&dm_img_list=…&dm_img_inter=…&dm_cover_img
 
 > **未登录 + 模拟器环境下接口会被风控**（上面那条就是）。依赖真实接口的用例要么先在应用里登录，
 > 要么把「返回 `-412` / doctype HTML」当作预期结果来断言，别误判成应用缺陷。
-
 
 ---
 
