@@ -11,22 +11,36 @@ import androidx.recyclerview.widget.RecyclerView
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.util.MenuConfig
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.checkbox.MaterialCheckBox
 
 /**
- * 菜单设置页适配器：上下两个分区（已启用/未启用）+ 底部说明。
+ * 菜单设置页适配器：顶部使用说明 + 上下两个分区（已启用/未启用）。
  *
  * 交互：
+ * - 已启用项短按 = 选中为「启动页」（单选，整行像按钮一样点一下即生效，带水波纹反馈）；
  * - 已启用项长按一次开始拖拽，在已启用区内调整顺序；
  * - 拖拽到未启用区域（未启用标题或未启用项）将其移入未启用区（固定项提示不可隐藏）；
- * - 点击未启用项追加到已启用列表末尾。
+ * - 拖入未启用区的若是当前启动页，离手时自动改选默认启动页并回调写回；
+ * - 点击未启用项追加到已启用列表末尾；
+ * - 使用说明点按展开/收起，长按两次隐藏（第一次长按只提示）。
  */
 class MenuSettingAdapter(
     enabledList: List<String>,
+    startKey: String,
+    helpHidden: Boolean,
     private val titleOf: (String) -> String
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     interface Listener {
+        /** 已启用列表变化（顺序或成员），需要持久化。 */
         fun onChanged(enabled: List<String>)
+
+        /** 启动页被用户改选（或失效回退），需要持久化。 */
+        fun onStartChanged(key: String)
+
+        /** 使用说明的显隐被用户切换，需要持久化。 */
+        fun onHelpHiddenChanged(hidden: Boolean)
     }
 
     var listener: Listener? = null
@@ -35,24 +49,37 @@ class MenuSettingAdapter(
     private val enabled = ArrayList(enabledList)
     private val disabled = ArrayList(MenuConfig.disabledFrom(enabledList))
 
+    /** 当前选中的启动页 key（始终指向已启用列表内的一项）。 */
+    private var startKey: String = startKey
+
+    /** 使用说明是否已被长按隐藏。 */
+    private var helpHidden: Boolean = helpHidden
+
+    /** 使用说明当前是否展开（纯界面状态，不持久化）。 */
+    private var helpExpanded: Boolean = false
+
     /** 固定项移入未启用区的提示去重时间戳。 */
     private var lastFixedHintTime: Long = 0
 
+    /** 首次长按说明后，允许「再长按一次即隐藏」的截止时刻。 */
+    private var hideHintDeadline: Long = 0
+
     companion object {
-        private const val TYPE_HEADER_ENABLED = 0
-        private const val TYPE_ITEM_ENABLED = 1
-        private const val TYPE_HEADER_DISABLED = 2
-        private const val TYPE_ITEM_DISABLED = 3
-        private const val TYPE_FOOTER = 4
+        private const val TYPE_HELP = 0
+        private const val TYPE_HELP_RESTORE = 1
+        private const val TYPE_HEADER_ENABLED = 2
+        private const val TYPE_ITEM_ENABLED = 3
+        private const val TYPE_HEADER_DISABLED = 4
+        private const val TYPE_ITEM_DISABLED = 5
         private const val FIXED_HINT_INTERVAL_MS = 800L
+        private const val HIDE_HINT_WINDOW_MS = 2000L
     }
 
-    // ---- 行号 <-> 数据映射（两个分区标题与底部说明始终渲染，行结构稳定）----
-    // 0: 已启用标题；1..enabled.size: 已启用项；enabled.size+1: 未启用标题；
-    // enabled.size+2 .. enabled.size+1+disabled.size: 未启用项；最后一行: 底部说明。
-    private fun enabledStart() = 1
-    private fun disabledHeader() = enabled.size + 1
-    private fun disabledStart() = enabled.size + 2
+    // ---- 行号 <-> 数据映射（说明行 + 两个分区标题始终渲染，行结构稳定）----
+    // 0: 使用说明（或隐藏后的「显示说明」）；1: 已启用标题；2..n+1: 已启用项；
+    // n+2: 未启用标题；n+3 .. n+2+d: 未启用项。
+    private fun enabledStart() = 2
+    private fun disabledStart() = enabled.size + 3
 
     override fun getItemCount(): Int = enabled.size + disabled.size + 3
 
@@ -60,46 +87,110 @@ class MenuSettingAdapter(
         val n = enabled.size
         val d = disabled.size
         return when (position) {
-            0 -> TYPE_HEADER_ENABLED
-            in 1..n -> TYPE_ITEM_ENABLED
-            n + 1 -> TYPE_HEADER_DISABLED
-            in n + 2..n + 1 + d -> TYPE_ITEM_DISABLED
-            else -> TYPE_FOOTER
+            0 -> if (helpHidden) TYPE_HELP_RESTORE else TYPE_HELP
+            1 -> TYPE_HEADER_ENABLED
+            in 2..n + 1 -> TYPE_ITEM_ENABLED
+            n + 2 -> TYPE_HEADER_DISABLED
+            in n + 3..n + 2 + d -> TYPE_ITEM_DISABLED
+            else -> TYPE_HEADER_DISABLED
         }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
+            TYPE_HELP ->
+                HelpHolder(inflater.inflate(R.layout.item_menu_setting_help, parent, false))
+            TYPE_HELP_RESTORE ->
+                RestoreHolder(inflater.inflate(R.layout.item_menu_setting_help_restore, parent, false))
             TYPE_HEADER_ENABLED, TYPE_HEADER_DISABLED ->
                 HeaderHolder(inflater.inflate(R.layout.item_menu_setting_header, parent, false))
             TYPE_ITEM_ENABLED, TYPE_ITEM_DISABLED ->
                 ItemHolder(inflater.inflate(R.layout.item_menu_setting, parent, false))
             else ->
-                FooterHolder(inflater.inflate(R.layout.item_menu_setting_footer, parent, false))
+                HelpHolder(inflater.inflate(R.layout.item_menu_setting_help, parent, false))
         }
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (holder) {
+            is HelpHolder -> bindHelp(holder)
+            is RestoreHolder -> bindRestore(holder)
             is HeaderHolder -> holder.title.setText(
-                if (position == 0) R.string.desc_menu_enabled else R.string.desc_menu_disabled
+                if (position == 1) R.string.desc_menu_enabled else R.string.desc_menu_disabled
             )
             is ItemHolder -> {
                 if (getItemViewType(position) == TYPE_ITEM_ENABLED) bindEnabled(holder, position)
                 else bindDisabled(holder, position)
             }
-            is FooterHolder -> holder.text.setText(R.string.desc_menu_footer)
         }
     }
+
+    // ---- 顶部使用说明 ----
+
+    private fun bindHelp(holder: HelpHolder) {
+        holder.button.setText(
+            if (helpExpanded) R.string.desc_menu_help_body else R.string.desc_menu_help_title
+        )
+        holder.button.setOnClickListener {
+            helpExpanded = !helpExpanded
+            notifyItemChanged(0)
+        }
+        holder.button.setOnLongClickListener {
+            handleHelpLongPress(holder.itemView)
+            true
+        }
+    }
+
+    private fun bindRestore(holder: RestoreHolder) {
+        holder.text.setOnClickListener {
+            helpHidden = false
+            helpExpanded = false
+            notifyItemChanged(0)
+            listener?.onHelpHiddenChanged(false)
+        }
+    }
+
+    /** 长按说明：第一次只提示，2 秒内再长按一次才真正隐藏。 */
+    private fun handleHelpLongPress(view: View) {
+        val now = SystemClock.uptimeMillis()
+        if (now <= hideHintDeadline) {
+            hideHintDeadline = 0
+            helpHidden = true
+            helpExpanded = false
+            notifyItemChanged(0)
+            listener?.onHelpHiddenChanged(true)
+            MsgUtil.showMsg(view.context.getString(R.string.msg_menu_help_hidden))
+        } else {
+            hideHintDeadline = now + HIDE_HINT_WINDOW_MS
+            MsgUtil.showMsg(view.context.getString(R.string.msg_menu_help_hide_hint))
+        }
+    }
+
+    // ---- 菜单项 ----
 
     private fun bindEnabled(holder: ItemHolder, position: Int) {
         val key = enabled[position - enabledStart()]
         holder.name.text = titleOf(key)
         holder.fixed.visibility = if (key in MenuConfig.FIXED_ITEMS) View.VISIBLE else View.GONE
         holder.name.alpha = 1f
-        holder.itemView.setOnClickListener(null)
+        holder.check.visibility = View.VISIBLE
+        holder.check.isChecked = key == startKey
+        holder.itemView.setOnClickListener {
+            // 拖拽后 holder 的绑定位置可能已变，按当前实际位置取 key，别用 bind 时捕获的 position
+            val cur = holder.bindingAdapterPosition
+            if (cur < 0 || getItemViewType(cur) != TYPE_ITEM_ENABLED) return@setOnClickListener
+            val curIndex = cur - enabledStart()
+            if (curIndex !in enabled.indices) return@setOnClickListener
+            val curKey = enabled[curIndex]
+            if (startKey == curKey) return@setOnClickListener
+            val oldIndex = enabled.indexOf(startKey)
+            startKey = curKey
+            if (oldIndex >= 0) notifyItemChanged(oldIndex + enabledStart())
+            notifyItemChanged(cur)
+            listener?.onStartChanged(curKey)
+        }
         holder.itemView.setOnLongClickListener {
             touchHelper?.startDrag(holder)
             true
@@ -111,6 +202,7 @@ class MenuSettingAdapter(
         holder.name.text = titleOf(key)
         holder.fixed.visibility = View.GONE
         holder.name.alpha = 0.5f
+        holder.check.visibility = View.GONE
         holder.itemView.setOnLongClickListener(null)
         holder.itemView.setOnClickListener {
             disabled.remove(key)
@@ -120,6 +212,19 @@ class MenuSettingAdapter(
         }
     }
 
+    /**
+     * 拖拽离手时校正启动页：选中项被拖入未启用区后自动改选默认启动页并回调写回。
+     * 放在 clearView 而非 onMove，避免拖拽过程中 notifyItemChanged 打断 ItemTouchHelper 的手势。
+     */
+    private fun ensureStartValid() {
+        if (startKey in enabled) return
+        val resolved = MenuConfig.resolveStart(enabled, startKey)
+        startKey = resolved
+        val index = enabled.indexOf(resolved)
+        if (index >= 0) notifyItemChanged(index + enabledStart())
+        listener?.onStartChanged(resolved)
+    }
+
     val dragCallback: ItemTouchHelper.Callback = object : ItemTouchHelper.Callback() {
         override fun isLongPressDragEnabled() = false
 
@@ -127,7 +232,8 @@ class MenuSettingAdapter(
             recyclerView: RecyclerView,
             viewHolder: RecyclerView.ViewHolder
         ): Int {
-            if (getItemViewType(viewHolder.bindingAdapterPosition) != TYPE_ITEM_ENABLED) return 0
+            val pos = viewHolder.bindingAdapterPosition
+            if (pos < 0 || getItemViewType(pos) != TYPE_ITEM_ENABLED) return 0
             return makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0)
         }
 
@@ -138,6 +244,7 @@ class MenuSettingAdapter(
         ): Boolean {
             val from = viewHolder.bindingAdapterPosition
             val to = target.bindingAdapterPosition
+            if (from < 0 || to < 0) return false
             if (getItemViewType(from) != TYPE_ITEM_ENABLED) return false
 
             val fromIndex = from - enabledStart()
@@ -185,7 +292,23 @@ class MenuSettingAdapter(
             }
         }
 
+        override fun clearView(
+            recyclerView: RecyclerView,
+            viewHolder: RecyclerView.ViewHolder
+        ) {
+            super.clearView(recyclerView, viewHolder)
+            ensureStartValid()
+        }
+
         override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+    }
+
+    class HelpHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val button: MaterialButton = view.findViewById(R.id.help_button)
+    }
+
+    class RestoreHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val text: TextView = view.findViewById(R.id.help_restore_text)
     }
 
     class HeaderHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -195,9 +318,6 @@ class MenuSettingAdapter(
     class ItemHolder(view: View) : RecyclerView.ViewHolder(view) {
         val name: TextView = view.findViewById(R.id.item_name)
         val fixed: TextView = view.findViewById(R.id.item_fixed)
-    }
-
-    class FooterHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val text: TextView = view.findViewById(R.id.footer_text)
+        val check: MaterialCheckBox = view.findViewById(R.id.item_check)
     }
 }

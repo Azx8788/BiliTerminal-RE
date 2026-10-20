@@ -330,12 +330,17 @@ open class BaseActivity : AppCompatActivity() {
      *
      * readme 与 `docs/FEATURES.md` 一直承诺了这个手势，但代码里此前只有视频详情页实现了类似行为
      * （见 `VideoInfoActivity.setupLongPressToRoot`），这里补齐通用实现。
-     * 子类若已自定义顶栏长按（如视频详情页），此处不覆盖。
+     * 子类若自己接管了顶栏长按（视频详情页），[handlesTopbarLongPress] 返回 true，此处不再安装。
      *
-     * 手势本身受 `SettingsKeys.TOPBAR_LONG_PRESS_MENU_ENABLE`（`util/TopbarLongPressPrefs`）控制：
-     * 关掉后监听器**仍然安装**，只是在按下的回调里返回 true 把手势吞掉。
+     * 手势本身受 `SettingsKeys.TOPBAR_LONG_PRESS_MODE`（`util/TopbarLongPressPrefs`）控制：
+     * 只有「全部页面」模式下普通页面才打开菜单列表；其余模式监听器**仍然安装**，
+     * 只是在按下的回调里返回 true 把手势吞掉。
      */
     private fun setupTopbarLongPressToHome() {
+        // 子类自己接管顶栏长按（视频详情页的「关闭所有详情页」）时，基类不安装通用监听器。
+        // 不能只靠 hasOnLongClickListeners() 探测：部分手表框架没有这个方法，探测失败（返回 null）
+        // 时这里会覆盖掉子类刚装好的监听器，视频详情页的长按就会莫名变成「打开菜单」。
+        if (handlesTopbarLongPress()) return
         val topBar = findViewById<View>(R.id.top) ?: return
         // 同上：这个 hasOnLongClickListeners() 就是在手表上抛 NoSuchMethodError 的那个方法
         val installed = ViewCapabilityProbe.probeBoolean(topBar, "hasOnLongClickListeners") { name, e ->
@@ -345,17 +350,29 @@ open class BaseActivity : AppCompatActivity() {
         if (this is MenuActivity) return
         topbarLongPressInstalled = true
         topBar.setOnLongClickListener {
-            // 开关在按下这一刻才读：用户可能在别的页面改完设置再回来，监听器不必重装。
-            // 关掉时必须返回 true 把手势吃掉，不能返回 false——长按回调返回 false 时 Android
-            // 会在抬手时把它回落成一次单击，而顶栏单击是「退出当前页 / 打开菜单」，等于把用户
-            // 想关掉的手势换成了另一种误触。
-            if (!TopbarLongPressPrefs.isEnabled()) return@setOnLongClickListener true
+            // 模式在按下这一刻才读：用户可能在别的页面改完设置再回来，监听器不必重装。
+            // 「不响应」与「仅视频详情页」两种模式下本页都必须返回 true 把手势吃掉，不能返回 false——
+            // 长按回调返回 false 时 Android 会在抬手时把它回落成一次单击，而顶栏单击是
+            // 「退出当前页 / 打开菜单」，等于把用户想关掉的手势换成了另一种误触。
+            if (!TopbarLongPressPrefs.isEnabledForNormalPages()) return@setOnLongClickListener true
             val intent = Intent(this, MenuActivity::class.java)
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             startActivity(intent)
             true
         }
     }
+
+    /**
+     * 子类是否自己接管了顶栏（`R.id.top`）长按。
+     *
+     * 视频详情页长按顶栏是「关闭所有详情页」（见 `VideoInfoActivity.setupLongPressToRoot`），
+     * 与普通页面的「打开菜单列表」不是同一件事，所以它在 `onCreate` 里自己装监听器、
+     * 并让本方法返回 true，基类就不再安装通用监听器。
+     *
+     * **不要**再靠 `hasOnLongClickListeners()` 探测来避免覆盖：那套探测在裁掉该方法的杂牌手表上
+     * 返回 null，基类照样会覆盖子类监听器（视频详情页长按变成打开菜单）。
+     */
+    protected open fun handlesTopbarLongPress(): Boolean = false
 
     /**
      * 集中式教程触发：按当前页面类名去 [Tutorials] 注册表里找未读教程。

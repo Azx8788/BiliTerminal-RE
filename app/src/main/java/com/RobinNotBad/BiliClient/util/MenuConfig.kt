@@ -99,4 +99,40 @@ object MenuConfig {
     fun saveEnabled(enabled: List<String>, writeString: (String, String) -> Unit) {
         writeString(SharedPreferencesUtil.MENU_ENABLED, serialize(enabled))
     }
+
+    /** 默认启动页：推荐（固定项，正常情况下必然在已启用列表里）。 */
+    const val DEFAULT_START = "recommend"
+
+    /**
+     * 解析启动页 key：已存值仍在已启用列表里就沿用，否则退回 [DEFAULT_START]。
+     * 极端情况下（启用列表里连推荐都没有）才退回列表首项，最后兜底 [DEFAULT_START]。
+     */
+    fun resolveStart(enabled: List<String>, stored: String?): String = when {
+        stored != null && stored in enabled -> stored
+        DEFAULT_START in enabled -> DEFAULT_START
+        else -> enabled.firstOrNull() ?: DEFAULT_START
+    }
+
+    /**
+     * 读取启动页配置：
+     * - 从未设置过（null/空白）：返回默认值，**不写盘**（缺省语义，与旧行为解耦）；
+     * - 已设置但目标已被移入「未启用」：立即改回默认值并写回（不允许指向不可达页面）。
+     */
+    fun loadStart(
+        enabled: List<String>,
+        readString: (String) -> String?,
+        writeString: (String, String) -> Unit
+    ): String {
+        val stored = readString(SharedPreferencesUtil.MENU_START)?.takeIf { it.isNotBlank() }
+        val resolved = resolveStart(enabled, stored)
+        if (stored != null && stored !in enabled) {
+            writeString(SharedPreferencesUtil.MENU_START, resolved)
+        }
+        return resolved
+    }
+
+    /** 保存启动页配置。 */
+    fun saveStart(key: String, writeString: (String, String) -> Unit) {
+        writeString(SharedPreferencesUtil.MENU_START, key)
+    }
 }
