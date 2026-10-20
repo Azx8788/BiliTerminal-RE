@@ -7,7 +7,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -35,10 +34,10 @@ import java.util.Locale
  * 统一缓存列表适配器，管理以下项目类型：
  * - 下载列表入口
  * - 文件夹区域标题
- * - 文件夹项（带滑动设置）
+ * - 文件夹项（点击进入、长按弹功能菜单）
  * - 新建文件夹按钮
  * - 未分类视频区域标题
- * - 视频项（带滑动设置面板）
+ * - 视频项（点击播放、长按弹功能菜单）
  * - 空态提示行（某个分区一个视频都没有时占位，替代盖住整页的居中空态）
  * - 多选按钮（底部）
  */
@@ -62,11 +61,6 @@ class CacheListAdapter(
 
     var currentFolderName: String = ""
 
-    private var openVideoSettingsIdx: Int = -1
-    private var openFolderSettingsIdx: Int = -1
-    private var waitingSecondLongPressIdx: Int = -1
-    private var justDeletedIdx: Int = -1
-
     /**
      * 获取所有items的扁平化列表类型
      */
@@ -80,18 +74,14 @@ class CacheListAdapter(
 
     var onFolderClick: ((Int) -> Unit)? = null
     var onNewFolderClick: (() -> Unit)? = null
-    var onFolderRename: ((Int) -> Unit)? = null
-    var onFolderDisband: ((Int) -> Unit)? = null
-    var onVideoUpdateDanmaku: ((Int) -> Unit)? = null
-    var onVideoSwitchQuality: ((Int) -> Unit)? = null
-    var onVideoDelete: ((Int) -> Unit)? = null
-    var onVideoMoveToFolder: ((Int) -> Unit)? = null
-    var onVideoRemoveFromFolder: ((Int) -> Unit)? = null
-    var onVideoLongClick: ((Int) -> Unit)? = null
-    var onVideoViewDetail: ((Int) -> Unit)? = null
     var onBackFromFolder: (() -> Unit)? = null
     var onVideoPlayInVirtualCollection: ((String, Int) -> Unit)? = null
-    var isRecyclerViewScrolling: (() -> Boolean)? = null
+
+    /** 长按文件夹：由 Activity 弹功能菜单（重命名 / 拆散）。 */
+    var onFolderMenu: ((Int) -> Unit)? = null
+
+    /** 长按视频：由 Activity 弹功能菜单（更新弹幕 / 切换分辨率 / 移动文件夹 / 详情 / 删除）。 */
+    var onVideoMenu: ((Int) -> Unit)? = null
 
     fun setData(folders: ArrayList<VideoFolder>, videos: ArrayList<LocalVideo>, currentFolder: String = "") {
         folderList = folders
@@ -176,7 +166,6 @@ class CacheListAdapter(
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         if (position >= flatItems.size) return
         val item = flatItems[position]
@@ -205,7 +194,7 @@ class CacheListAdapter(
                 }
             }
             TYPE_FOLDER_ITEM -> {
-                bindFolderItem(holder as FolderItemHolder, position, item.folderIndex)
+                bindFolderItem(holder as FolderItemHolder, item.folderIndex)
             }
             TYPE_ACTION_NEW_FOLDER -> {
                 (holder as ActionButtonHolder).apply {
@@ -216,228 +205,35 @@ class CacheListAdapter(
                 }
             }
             TYPE_VIDEO_ITEM -> {
-                bindVideoItem(holder as VideoItemHolder, position, item.videoIndex)
+                bindVideoItem(holder as VideoItemHolder, item.videoIndex)
             }
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun bindFolderItem(holder: FolderItemHolder, adapterPos: Int, folderIndex: Int) {
+    private fun bindFolderItem(holder: FolderItemHolder, folderIndex: Int) {
         if (folderIndex < 0 || folderIndex >= folderList.size) return
         val folder = folderList[folderIndex]
 
         holder.folderName.text = folder.name
         holder.folderCount.text = "${folder.getVideoCount()}个视频"
 
-        val isSettingsOpen = folderIndex == openFolderSettingsIdx
-        holder.folderContent.visibility = if (isSettingsOpen) View.INVISIBLE else View.VISIBLE
-        holder.folderSettingsPanel.visibility = if (isSettingsOpen) View.VISIBLE else View.GONE
-
-        var startX = 0f
-        var startY = 0f
-        var isSwiping = false
-        var hasMoved = false
-        val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
-
-        holder.itemView.setOnTouchListener { view, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = event.x; startY = event.y
-                    isSwiping = false; hasMoved = false
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val deltaX = startX - event.x
-                    val deltaY = Math.abs(startY - event.y)
-
-                    // 任意方向移动超过touchSlop即标记为"已移动"，防止触发点击
-                    if (!hasMoved && (Math.abs(deltaX) > touchSlop || deltaY > touchSlop)) {
-                        hasMoved = true
-                    }
-
-                    // 水平滑动打开设置面板
-                    if (deltaX > 30f && deltaY < 50f && !isSwiping) isSwiping = true
-                    if (isSwiping) {
-                        val newIdx = if (deltaX > 80f) folderIndex else -1
-                        if (newIdx != openFolderSettingsIdx) {
-                            val old = openFolderSettingsIdx
-                            openFolderSettingsIdx = newIdx
-                            notifyItemChanged(adapterPos)
-                            if (old >= 0) {
-                                val oldPos = flatItems.indexOfFirst { it.type == TYPE_FOLDER_ITEM && it.folderIndex == old }
-                                if (oldPos >= 0) notifyItemChanged(oldPos)
-                            }
-                        }
-                    }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    // RecyclerView拦截了触摸（正在滚动中），不触发点击
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    // 检查RecyclerView是否正在滚动，避免滑动时误触文件夹
-                    val isScrolling = isRecyclerViewScrolling?.invoke() == true
-
-                    if (!isSwiping && !hasMoved && !isScrolling) {
-                        if (isSettingsOpen) {
-                            openFolderSettingsIdx = -1
-                            notifyItemChanged(adapterPos)
-                        } else {
-                            onFolderClick?.invoke(folderIndex)
-                        }
-                    }
-                    view.performClick()
-                    true
-                }
-                else -> false
-            }
-        }
-
-        holder.btnRename.setOnClickListener {
-            openFolderSettingsIdx = -1
-            notifyItemChanged(adapterPos)
-            onFolderRename?.invoke(folderIndex)
-        }
-        holder.btnDisband.setOnClickListener {
-            openFolderSettingsIdx = -1
-            notifyItemChanged(adapterPos)
-            onFolderDisband?.invoke(folderIndex)
-        }
-        holder.btnCancel.setOnClickListener {
-            openFolderSettingsIdx = -1
-            notifyItemChanged(adapterPos)
+        holder.itemView.setOnClickListener { onFolderClick?.invoke(folderIndex) }
+        holder.itemView.setOnLongClickListener {
+            onFolderMenu?.invoke(folderIndex)
+            true
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun bindVideoItem(holder: VideoItemHolder, adapterPos: Int, videoIndex: Int) {
+    private fun bindVideoItem(holder: VideoItemHolder, videoIndex: Int) {
         if (videoIndex < 0 || videoIndex >= videoList.size) return
         val video = videoList[videoIndex]
 
         holder.showVideo(video)
 
-        val isSettingsOpen = videoIndex == openVideoSettingsIdx
-        holder.settingsPanel.visibility = if (isSettingsOpen) View.VISIBLE else View.GONE
-
-        val isInFolder = currentFolderName.isNotEmpty()
-        holder.btnMoveVideo.text = if (isInFolder) UiText.of("移出文件夹") else UiText.of("添加到文件夹")
-
-        var startX = 0f
-        var startY = 0f
-        var isSwiping = false
-        var swipeThreshold = 80f
-        var longPressRunnable: Runnable? = null
-        var longPressFiredThisTouch = false
-
-        holder.itemView.setOnTouchListener { view, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = event.x
-                    startY = event.y
-                    isSwiping = false
-                    longPressFiredThisTouch = false
-                    justDeletedIdx = -1
-
-                    longPressRunnable = Runnable {
-                        if (!isSwiping) {
-                            longPressFiredThisTouch = true
-                            if (waitingSecondLongPressIdx == videoIndex) {
-                                onVideoDelete?.invoke(videoIndex)
-                                waitingSecondLongPressIdx = -1
-                                justDeletedIdx = videoIndex
-                            } else {
-                                waitingSecondLongPressIdx = videoIndex
-                                onVideoLongClick?.invoke(videoIndex)
-                            }
-                        }
-                    }
-                    view.postDelayed(longPressRunnable, 200)
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val deltaX = startX - event.x
-                    val deltaY = Math.abs(startY - event.y)
-
-                    // 检测是否开始滑动
-                    if (deltaX > 20f && deltaY < 50f && !isSwiping) {
-                        isSwiping = true
-                        // 滑动开始时取消长按任务
-                        longPressRunnable?.let { view.removeCallbacks(it) }
-                        longPressRunnable = null
-                        // 滑动时重置二次删除状态
-                        waitingSecondLongPressIdx = -1
-                    }
-
-                    if (isSwiping) {
-                        val newIdx = if (deltaX > swipeThreshold) videoIndex else -1
-                        if (newIdx != openVideoSettingsIdx) {
-                            val old = openVideoSettingsIdx
-                            openVideoSettingsIdx = newIdx
-                            notifyItemChanged(adapterPos)
-                            if (old >= 0) {
-                                val oldPos = flatItems.indexOfFirst { it.type == TYPE_VIDEO_ITEM && it.videoIndex == old }
-                                if (oldPos >= 0) notifyItemChanged(oldPos)
-                            }
-                        }
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    // 取消长按任务
-                    longPressRunnable?.let { view.removeCallbacks(it) }
-                    longPressRunnable = null
-
-                    // 如果RecyclerView正在滚动，不触发播放
-                    val isScrolling = isRecyclerViewScrolling?.invoke() == true
-
-                    if (!isSwiping && !isScrolling) {
-                        if (isSettingsOpen) {
-                            openVideoSettingsIdx = -1
-                            notifyItemChanged(adapterPos)
-                        } else if (!longPressFiredThisTouch && waitingSecondLongPressIdx == videoIndex) {
-                            // 用户短按取消二次删除等待状态
-                            waitingSecondLongPressIdx = -1
-                        } else if (justDeletedIdx == videoIndex) {
-                            // 刚触发删除，不播放视频
-                        } else if (waitingSecondLongPressIdx != videoIndex) {
-                            // 正常点击，播放视频
-                            playVideo(video)
-                        }
-                        // 如果处于等待状态且是长按触发的，不做任何操作
-                    } else {
-                        if (isSettingsOpen && Math.abs(startX - event.x) < swipeThreshold / 2) {
-                            openVideoSettingsIdx = -1
-                            notifyItemChanged(adapterPos)
-                        }
-                    }
-                    view.performClick()
-                    true
-                }
-                else -> false
-            }
-        }
-
-        // 设置面板按钮
-        holder.btnUpdateDanmaku.setOnClickListener {
-            openVideoSettingsIdx = -1; notifyItemChanged(adapterPos)
-            onVideoUpdateDanmaku?.invoke(videoIndex)
-        }
-        holder.layoutQuality.setOnClickListener {
-            openVideoSettingsIdx = -1; notifyItemChanged(adapterPos)
-            onVideoSwitchQuality?.invoke(videoIndex)
-        }
-        holder.btnMoveVideo.setOnClickListener {
-            openVideoSettingsIdx = -1; notifyItemChanged(adapterPos)
-            if (isInFolder) onVideoRemoveFromFolder?.invoke(videoIndex)
-            else onVideoMoveToFolder?.invoke(videoIndex)
-        }
-        holder.btnViewDetail.setOnClickListener {
-            openVideoSettingsIdx = -1; notifyItemChanged(adapterPos)
-            onVideoViewDetail?.invoke(videoIndex)
-        }
-        holder.btnCancelSettings.setOnClickListener {
-            openVideoSettingsIdx = -1; notifyItemChanged(adapterPos)
+        holder.itemView.setOnClickListener { playVideo(video) }
+        holder.itemView.setOnLongClickListener {
+            onVideoMenu?.invoke(videoIndex)
+            true
         }
     }
 
@@ -521,24 +317,14 @@ class CacheListAdapter(
 
     class FolderItemHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val folderContent: View = itemView.findViewById(R.id.folderContent)
-        val folderSettingsPanel: View = itemView.findViewById(R.id.folderSettingsPanel)
         val folderName: TextView = itemView.findViewById(R.id.folderName)
         val folderCount: TextView = itemView.findViewById(R.id.folderCount)
-        val btnRename: TextView = itemView.findViewById(R.id.btnFolderRename)
-        val btnDisband: TextView = itemView.findViewById(R.id.btnFolderDisband)
-        val btnCancel: TextView = itemView.findViewById(R.id.btnFolderCancel)
     }
 
     class VideoItemHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val title: TextView = itemView.findViewById(R.id.text_title)
         val extra: TextView = itemView.findViewById(R.id.text_extra)
         val cover: ImageView = itemView.findViewById(R.id.img_cover)
-        val settingsPanel: View = itemView.findViewById(R.id.videoSettingsPanel)
-        val btnUpdateDanmaku: TextView = itemView.findViewById(R.id.btnUpdateDanmaku)
-        val layoutQuality: View = itemView.findViewById(R.id.layoutQuality)
-        val btnMoveVideo: TextView = itemView.findViewById(R.id.btnMoveVideo)
-        val btnCancelSettings: TextView = itemView.findViewById(R.id.btnCancelSettings)
-        val btnViewDetail: TextView = itemView.findViewById(R.id.btnViewDetail)
 
         @SuppressLint("SetTextI18n")
         fun showVideo(video: LocalVideo) {

@@ -311,6 +311,18 @@ object TerminalDialog {
             // 各画一次描边，两层之间还隔着 dialog 默认 padding，看上去就是弹窗外面又套了一圈线。
             dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             dialog.setView(content, 0, 0, 0, 0)
+            // 根布局是 match_parent，窗口会被撑到整屏宽：手表上左右都贴着屏幕边，
+            // 系统的「点窗口外取消」就只剩被状态栏 / 导航栏占住的两道缝，
+            // 底部提示的「点空白处取消」等于点不到（26.10.20 用户反馈）。
+            // 把窗口收窄到屏宽的 90%，两侧留出真正可点的空白区域。
+            dialog.window?.setLayout(
+                (dialog.context.resources.displayMetrics.widthPixels * 0.9f).toInt(),
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            dialog.setCanceledOnTouchOutside(true)
+            // 只调 setCanceledOnTouchOutside 不够：窗口除了 DIM_BEHIND 没有 WATCH_OUTSIDE_TOUCH，
+            // 系统根本不会把「点窗口外」的 ACTION_OUTSIDE 送进来，等于点空白处永远没反应。
+            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH)
             capScrollHeight()
             buttonBar.visibility = if (bottomButtonBar) View.VISIBLE else View.GONE
 
@@ -487,6 +499,9 @@ object TerminalDialog {
         internal fun setHint(hint: String) {
             hintView.text = hint
             hintView.visibility = View.VISIBLE
+            // 提示行本身也点得动：表盘上弹窗左右两侧留给「点外面」的空白只有二十来像素，
+            // 用户更可能直接点这句「点空白处取消」，点它就当取消。
+            hintView.setOnClickListener { dialog.dismiss() }
         }
 
         /** 重绘单选态：选中项 `▸` + 主色 + 右侧 ✓，未选中 `›` + 次级灰。 */

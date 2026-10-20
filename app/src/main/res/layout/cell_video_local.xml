@@ -91,20 +91,6 @@
             android:alpha="0.3"
             android:background="@color/status_success"
             android:visibility="gone" />
-
-        <!-- 视频设置面板 (从右滑入) -->
-        <LinearLayout
-            android:id="@+id/videoSettingsPanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_alignTop="@id/linearLayout"
-            android:layout_alignBottom="@id/linearLayout"
-            android:orientation="vertical"
-            android:background="?attr/colorSurface"
-            android:visibility="gone">
-
-            <include layout="@layout/panel_video_settings" />
-        </LinearLayout>
     </RelativeLayout>
 
 
