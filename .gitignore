@@ -69,3 +69,7 @@ __pycache__/
 server/
 # 控制台的设计文档同理（描述的正是 server/ 那套东西）
 docs/superpowers/specs/2026-10-14-console-v2-design.md
+
+防止IDE配置误入版本库的配置目录
+.vscode/
+.idea/
