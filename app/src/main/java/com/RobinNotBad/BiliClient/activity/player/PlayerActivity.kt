@@ -163,6 +163,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private lateinit var btn_quality: ImageButton
     private lateinit var btn_viewpoint: ImageButton
     private lateinit var btn_debug: ImageButton
+    private lateinit var lock_btn: ImageButton
+    private lateinit var lock_overlay: View
     private lateinit var seekbar_progress: HighEnergyProgressBar
     private lateinit var seekbar_speed: SeekBar
     private lateinit var text_progress: TextView
@@ -200,6 +202,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var isSeeking: Boolean = false
     private var isDanmakuVisible: Boolean = false
     private var menu_opened = false
+
+    /** 播放页触摸锁定的当前状态（状态转移见 [PlayerLockPolicy]）。 */
+    private var lockPhase = PlayerLockPolicy.Phase.UNLOCKED
+
+    /** 锁定期间被拦下的 [finish]，解锁后补执行，避免系统主动的退出请求被永久吞掉。 */
+    private var pendingFinish = false
     private var isAudioOnlyMode = false
     private var isLocalAudioFile = false
     private var audioTrackUrl: String? = null // DASH外部音频轨道
@@ -467,6 +475,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var subtitle_selected = -1
 
     override fun onBackPressed() {
+        // 触摸锁定期间不允许离开播放页：先把锁定按钮点出来作为反馈（再点它才解锁）
+        if (interceptLockedExit()) return
         // 开启「左右滑动控制进度」时视频页屏蔽返回键：否则系统返回 / 手表自带右滑返回会在滑动调进度时
         // 直接退出播放器（issue #1）。蓝牙/表冠的返回键、系统级返回都走这里。
         if (swipeSeekEnabled) return
@@ -661,6 +671,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         mainHandler = Handler(Looper.getMainLooper())
 
         setVideoGestures()
+        initLockUi()
         autohideReset()
 
         initSeekbars()
@@ -769,6 +780,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         text_newspeed = findViewById(R.id.text_newspeed)
         bottom_buttons = findViewById(R.id.bottom_buttons)
         btn_debug = findViewById(R.id.btn_debug)
+        lock_btn = findViewById(R.id.lock_btn)
+        lock_overlay = findViewById(R.id.lock_overlay)
 
         text_subtitle = findViewById(R.id.text_subtitle)
         text_audio_title = findViewById(R.id.audio_title)
@@ -996,6 +1009,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     @SuppressLint("SetTextI18n")
     private fun showcon() {
+        // 锁定期间控制栏必须整体保持隐藏，任何「显示控制栏」的路径都在这里被挡掉
+        if (PlayerLockPolicy.isLocked(lockPhase)) return
         right_control.visibility = View.VISIBLE
         layout_top.visibility = View.VISIBLE
         bottom_buttons.visibility = View.VISIBLE
@@ -1015,12 +1030,17 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             if (onlineTimer != null) text_online.visibility = View.VISIBLE
         }
 
+        // 锁定按钮在 control_layout 之外（锁定时要把整条控制栏一起藏掉），显隐要跟控制栏同步
+        lock_btn.visibility = View.VISIBLE
+
         autohideReset()
     }
 
     private val progressbarEnable = Runnable { seekbar_progress.isEnabled = true }
 
     private val hidecon = Runnable {
+        // 锁定期间由锁定状态自己管显隐，别让自动隐藏去动控制栏（会顶掉浮现中的锁定按钮）
+        if (PlayerLockPolicy.isLocked(lockPhase)) return@Runnable
         right_control.visibility = View.GONE
         layout_top.visibility = View.GONE
         bottom_buttons.visibility = View.GONE
@@ -1029,12 +1049,106 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             text_speed.visibility = View.GONE
             btn_debug.visibility = View.GONE
         }
+        lock_btn.visibility = View.GONE
         if (screen_round) {
             text_progress.gravity = Gravity.CENTER
             text_progress.setPadding(0, 0, 0, ToolsUtil.dp2px(8f))
             if (onlineTimer != null) text_online.visibility = View.GONE
         }
         if (menu_opened) btn_menu.performClick()
+    }
+
+    // ==================== 播放页触摸锁定（防误触） ====================
+
+    /**
+     * 接线锁定相关的两个控件。
+     *
+     * 布局层级（`activity_player.xml` 末尾）：`lock_overlay` 全屏盖住 `control_layout` 与各种弹层，
+     * `lock_btn` 声明在它之后、画在它上面——所以锁定时只有左下/左侧这个按钮可点。
+     */
+    private fun initLockUi() {
+        lock_overlay.setOnClickListener { onLockScreenTap() }
+        lock_btn.setOnClickListener { onLockButtonClick() }
+    }
+
+    /** 浮现中的锁定按钮到点自动隐去。 */
+    private val hideLockIcon = Runnable {
+        applyLockPhase(PlayerLockPolicy.phaseAfterTimeout(lockPhase))
+    }
+
+    private fun onLockButtonClick() {
+        val before = lockPhase
+        val next = PlayerLockPolicy.phaseAfterLockButtonClick(before)
+        applyLockPhase(next)
+        if (before == PlayerLockPolicy.Phase.UNLOCKED) {
+            Logu.d("锁定", "锁定播放画面")
+            showLockHintIfNeeded()
+        } else {
+            Logu.d("锁定", "解锁播放画面")
+            // 锁定期间被拦下的 finish（系统重建、外部调用等）在解锁后补执行，别把退出请求吞掉
+            if (pendingFinish) {
+                pendingFinish = false
+                finish()
+            }
+        }
+    }
+
+    private fun onLockScreenTap() {
+        applyLockPhase(PlayerLockPolicy.phaseAfterScreenTap(lockPhase), PlayerLockPolicy.ICON_VISIBLE_MS)
+    }
+
+    /**
+     * 把锁定状态落到视图上；[autoHideMs] > 0 时在这么多毫秒后自动隐去浮现的按钮。
+     *
+     * 状态只由 [PlayerLockPolicy] 决定，这里不重复判断"该不该锁"。
+     */
+    private fun applyLockPhase(phase: PlayerLockPolicy.Phase, autoHideMs: Long = 0L) {
+        lockPhase = phase
+        mainHandler?.removeCallbacks(hideLockIcon)
+        when (phase) {
+            PlayerLockPolicy.Phase.UNLOCKED -> {
+                lock_overlay.visibility = View.GONE
+                // 整条控制栏在锁定时被藏掉，解锁时连 button 组一起恢复，再走既有的 4 秒自动隐藏
+                layout_control.visibility = View.VISIBLE
+                lock_btn.setImageResource(R.drawable.icon_player_lock)
+                lock_btn.contentDescription = getString(R.string.desc_player_lock_locked)
+                showcon()
+            }
+
+            PlayerLockPolicy.Phase.LOCKED_HIDDEN -> {
+                lock_overlay.visibility = View.VISIBLE
+                layout_control.visibility = View.GONE
+                lock_btn.visibility = View.GONE
+                lock_btn.setImageResource(R.drawable.icon_player_unlock)
+                lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
+            }
+
+            PlayerLockPolicy.Phase.LOCKED_ICON_VISIBLE -> {
+                lock_overlay.visibility = View.VISIBLE
+                layout_control.visibility = View.GONE
+                lock_btn.visibility = View.VISIBLE
+                lock_btn.setImageResource(R.drawable.icon_player_unlock)
+                lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
+            }
+        }
+        if (autoHideMs > 0L) mainHandler?.postDelayed(hideLockIcon, autoHideMs)
+    }
+
+    private fun showLockHintIfNeeded() {
+        if (SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_LOCK_HINT_SHOWN, false)) return
+        SharedPreferencesUtil.putBoolean(SettingsKeys.PLAYER_LOCK_HINT_SHOWN, true)
+        MsgUtil.showMsg(getString(R.string.msg_player_lock_hint))
+    }
+
+    /**
+     * 锁定期间尝试离开播放页：拦住，并让锁定按钮短暂浮现作为反馈。
+     *
+     * @return true 表示这次退出已被拦下，调用方必须直接返回。
+     */
+    private fun interceptLockedExit(): Boolean {
+        if (!PlayerLockPolicy.shouldSwallowExit(lockPhase)) return false
+        applyLockPhase(PlayerLockPolicy.phaseAfterExitAttempt(lockPhase), PlayerLockPolicy.EXIT_HINT_MS)
+        return true
     }
 
     /**
@@ -2262,6 +2376,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 且只依赖内存里的 video_now（不碰 ijkPlayer 的 JNI 调用）。正常退出时会被去重拦掉。
         reportProgressNow(true, UiText.of("销毁兜底"))
         destroyed = true
+        // 锁定按钮自动隐去的延时任务要撤掉，别在 Activity 销毁后再去动 View
+        mainHandler?.removeCallbacks(hideLockIcon)
 
         // 无论哪种退出原因（用户返回、被系统回收、后台通知里点"关闭"），
         // 后台播放服务与它的常驻通知都不能留存。
@@ -2652,6 +2768,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // 锁定期间播放器按键（表冠/方向键/确认键）一律不响应，必须先解锁
+        if (PlayerLockPolicy.shouldBlockPlaybackInput(lockPhase)) return super.onKeyDown(keyCode, event)
         if (isPrepared)
             when (keyCode) {
                 KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> controlVideo()
@@ -4282,6 +4400,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     override fun finish() {
+        // 锁定期间拦下一切 finish：手表右滑返回是在窗口层直接 finish 的（不走 onBackPressed），
+        // 只有在这里兜一道，才能真正做到「必须解锁才能离开播放页」。
+        // 不丢请求：先记住，解锁时再补执行（见 onLockButtonClick）。
+        if (interceptLockedExit()) {
+            pendingFinish = true
+            return
+        }
         if (isPlaying) playerPause()
         // 退出前把最后进度报一次。返回 true 说明请求确实发出去了，就用 progressReported 标记告诉
         // 调用页（JumpToPlayerActivity）别再报一遍——否则同一进度会被写两次

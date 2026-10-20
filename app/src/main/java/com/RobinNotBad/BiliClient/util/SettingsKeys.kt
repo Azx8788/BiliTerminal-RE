@@ -107,6 +107,8 @@ object SettingsKeys {
     const val PLAYER_LONGCLICK = "player_longclick"
     const val PLAYER_DOUBLETAP_SEEK = "player_doubletap_seek"
     const val PLAYER_SWIPE_SEEK = "player_swipe_seek"
+    /** 播放页触摸锁定的首次提示是否已经展示过（纯记账，不出现在设置页）。 */
+    const val PLAYER_LOCK_HINT_SHOWN = "player_lock_hint_shown"
     /** 双击有缩放时优先复位；保留旧键兼容已保存的开关，不再还原屏幕方向。 */
     const val PLAYER_DOUBLETAP_RESTORE_SCREEN = "player_doubletap_restore_screen"
     const val PLAYER_DOUBLETAP_SEEK_SECONDS = "player_doubletap_seek_seconds"

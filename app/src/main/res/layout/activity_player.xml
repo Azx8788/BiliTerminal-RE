@@ -432,7 +432,7 @@
             android:layout_height="wrap_content"
             android:layout_alignParentLeft="true"
             android:layout_centerVertical="true"
-            android:layout_marginStart="4dp"
+            android:layout_marginStart="36dp"
             android:paddingVertical="5dp"
             android:shadowColor="#000000"
             android:shadowDx="2.0"
@@ -757,5 +757,30 @@
         </LinearLayout>
 
     </RelativeLayout>
+
+    <!--
+        播放页触摸锁定（防误触）：锁定时全屏的 lock_overlay 盖住所有控制元素并吞掉触摸，
+        只有它上面的 lock_btn 可以点。两个兄弟节点必须放在最外层最后，才能压住 card_bg 等弹层。
+    -->
+    <View
+        android:id="@+id/lock_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:focusable="true"
+        android:visibility="gone" />
+
+    <ImageButton
+        android:id="@+id/lock_btn"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:layout_alignParentLeft="true"
+        android:layout_centerVertical="true"
+        android:layout_marginStart="4dp"
+        android:adjustViewBounds="true"
+        android:background="?android:attr/selectableItemBackground"
+        android:contentDescription="@string/desc_player_lock_locked"
+        android:scaleType="fitCenter"
+        android:src="@drawable/icon_player_lock" />
 
 </RelativeLayout>

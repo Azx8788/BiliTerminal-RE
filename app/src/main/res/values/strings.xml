@@ -158,6 +158,8 @@
     <string name="desc_danmaku_force_r2l">除了高级弹幕以外的弹幕都会被强制以滚动弹幕的形式展示，从而避免顶部弹幕和底部弹幕遮挡画面</string>
     <string name="desc_danmaku_showsender">显示直播聊天弹幕的发送者名称</string>
     <string name="desc_player_high_energy">在进度条下方用折线图展示弹幕密度分布</string>
+    <string name="desc_player_lock_locked">锁定播放画面（防止误触）</string>
+    <string name="desc_player_lock_unlocked">点击解锁播放画面</string>
     <string name="desc_player_skip_op_ed">播放番剧/影视时，进度走到片头或片尾会自动跳过去，并在屏幕下方留一个「撤回」按钮，点一下就能回到被跳过的地方。\n跳过只对 B 站标注了片头片尾的视频生效。</string>
     <string name="desc_subtitle_autoshow">开启后，播放存在字幕的视频时，将会自动弹出字幕选择对话框。</string>
     <string name="desc_subtitle_ai_allowed">打开此选项，如果视频只有一个中文AI字幕，播放时仍然会让你选择。\n可能比较烦人，谨慎开启。</string>
@@ -2202,6 +2204,7 @@
     <string name="text_player_back_to_root">← 返回主合集</string>
     <string name="msg_player_entered_collection">进入合集：%1$s</string>
     <string name="msg_player_entered_multi_page">进入分P：%1$s</string>
+    <string name="msg_player_lock_hint">已锁定：点画面显示锁定按钮，再点按钮解锁</string>
     <string name="uitext_dynamicholder_019">已经删除过了哦~</string>
     <string name="uitext_dynamicholder_020">不是自己的动态！</string>
     <string name="uitext_dynamicholder_021">%1$s人参与</string>

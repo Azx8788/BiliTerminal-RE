@@ -1,0 +1,18 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <!-- 锁体 + 钥匙孔（evenOdd 把钥匙孔挖空） -->
+    <path
+        android:fillColor="#ffffff"
+        android:fillType="evenOdd"
+        android:pathData="M250,470 Q250,430 290,430 L670,430 Q710,430 710,470 L710,845 Q710,885 670,885 L290,885 Q250,885 250,845 Z M480,562 A52,52 0 1 0 480,666 A52,52 0 1 0 480,562 Z" />
+    <!-- 锁梁：右侧打开，表示「点一下就能解锁」 -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M345,435 L345,320 A135,135 0 0 1 615,320"
+        android:strokeColor="#ffffff"
+        android:strokeLineCap="round"
+        android:strokeWidth="62" />
+</vector>
