@@ -310,12 +310,16 @@ class LocalListActivity : InstanceActivity() {
         adapter?.setData(folderList, videoList, folder.name)
         val pageName = findViewById<TextView>(R.id.pageName)
         pageName?.text = folder.name
+        // 进文件夹后顶栏那个箭头点下去是"退出文件夹"，用返回箭头表达。
+        pageName?.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.arrow_back, 0, 0, 0)
     }
 
     private fun exitFolder() {
         adapter?.setData(folderList, videoList, "")
         val pageName = findViewById<TextView>(R.id.pageName)
         pageName?.text = UiText.of("缓存")
+        // 回到顶层：箭头点下去打开菜单，恢复成朝下的箭头。
+        pageName?.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.arrow_down, 0, 0, 0)
     }
 
     private fun showNewFolderDialog() {
