@@ -140,12 +140,9 @@ class TutorialPagerActivity : BaseActivity() {
         queueIndex = index
         tutorial = target
 
-        // 版本号变大导致教程重新弹出时，在标题上标出来，避免用户疑惑「怎么又弹了一遍」
-        titleView.text = if (TutorialStore.isUpdated(target)) {
-            "${target.title}（已更新）"
-        } else {
-            target.title
-        }
+        // 版本号变大导致教程重新弹出时，不额外加「（已更新）」后缀：
+        // 表盘标题本来就窄，加了会把标题挤断，用户要的是内容不是提示语。
+        titleView.text = target.title
         elapsedSeconds = 0
         handler.removeCallbacks(ticker)
 

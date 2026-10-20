@@ -400,7 +400,9 @@ object Tutorials {
     val local = tutorial(
         id = "local",
         title = UiText.of("缓存与下载"),
-        version = 1,
+        // 26.10.20 改版：长按弹菜单、文件夹卡长按、进文件夹后顶栏变返回箭头、空态改为列表内一行。
+        // 内容变了就 +1，老用户才会重新看到这篇。
+        version = 2,
         target = LocalListActivity::class.java,
         kind = TutorialKind.NOTICE,
     ) {
@@ -409,26 +411,32 @@ object Tutorials {
             newline()
             newline()
             text(UiText.of("· 分两级：未分类视频和自建文件夹，"))
-            text(UiText.of("点文件夹")).bold().color(ACCENT)
-            text(UiText.of("进入，"))
-            text(UiText.of("点顶栏")).bold().color(ACCENT)
-            text(UiText.of("退回上一级"))
+            text(UiText.of("点文件夹卡")).bold().color(ACCENT)
+            text(UiText.of("进入，进文件夹后"))
+            text(UiText.of("点顶栏的返回箭头")).bold().color(ACCENT)
+            text(UiText.of("退回上一级（顶层时顶栏是朝下的箭头，点它打开菜单）"))
             newline()
             text("· ")
             text(UiText.of("下拉")).bold().color(ACCENT)
             text(UiText.of("可以重新扫描已下载的视频"))
             newline()
             text("· ")
-            text(UiText.of("点击视频")).bold().color(ACCENT)
+            text(UiText.of("点击视频卡")).bold().color(ACCENT)
             text(UiText.of("播放；在文件夹里点一个视频，整个文件夹会当成合集连续播放"))
             newline()
             text("· ")
-            text(UiText.of("向左滑动视频卡片")).bold().color(ACCENT)
-            text(UiText.of("打开操作面板：更新弹幕、切换清晰度、移动文件夹、查看详情"))
+            text(UiText.of("长按视频卡")).bold().color(ACCENT)
+            text(UiText.of("弹出功能菜单：更新弹幕、切换分辨率、移动到文件夹、查看详情、删除视频（会再确认一次）"))
+            newline()
+            text("· ")
+            text(UiText.of("长按文件夹卡")).bold().color(ACCENT)
+            text(UiText.of("可以重命名或拆散文件夹"))
             newline()
             text(UiText.of("· 下载会自动合并音视频、自动下载封面/字幕/弹幕，同一个视频不会重复入队"))
             newline()
             text(UiText.of("· 正在下载的任务在「下载列表」里查看进度"))
+            newline()
+            text(UiText.of("· 一个视频都没有时，列表里会显示一行「啥都木有~」")).italic()
         }
     }
 

@@ -13,17 +13,6 @@ object TutorialStore {
     /** 是否已读过该教程的当前版本。 */
     fun isRead(tutorial: Tutorial): Boolean = readVersion(tutorial.id) >= tutorial.version
 
-    /**
-     * 是否处于「读过旧版本、现在有新内容」的状态。
-     *
-     * 教程版本号变大后会重新弹出，此时要让用户知道「这是更新过的内容」，
-     * 而不是疑惑「怎么又弹了一遍」。
-     */
-    fun isUpdated(tutorial: Tutorial): Boolean {
-        val read = readVersion(tutorial.id)
-        return read > 0 && read < tutorial.version
-    }
-
     /** 已读版本号；没读过返回 -1。 */
     fun readVersion(id: String): Int = SharedPreferencesUtil.getInt(keyOf(id), -1)
 
