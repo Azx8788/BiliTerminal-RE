@@ -4,7 +4,7 @@
 > 这份只讲**怎么安全地换掉一句中文**，不讲文风好不好。
 > 全程不需要懂 Android，但需要你会「打开文件、找到那行、改引号里的字、保存」。
 
-> ⚠️ **这份指南写于「文案集中化」之前。26.10.19 起，用户可见文案已基本收进 `app/src/main/res/values/strings.xml`**（1719 条，台账 [STRINGS-MIGRATION.md](STRINGS-MIGRATION.md)）。
+> ⚠️ **这份指南写于「文案集中化」之前。26.10.19 起，用户可见文案已基本收进 `app/src/main/res/values/strings.xml`**（26.10.20 实测 1787 条，台账 [STRINGS-MIGRATION.md](STRINGS-MIGRATION.md)）。
 >
 > 所以现在改一句文案，**多数情况是只改 `strings.xml` 里的一行**——不用再打开 Kotlin 或布局文件。
 > 下面第一、三、四、十二节描述的「同一句话散在多处」属于**迁移前的历史与残余**，仍然值得读（防止改到代码里当键用的中文），但不再是主要路径。
@@ -119,7 +119,7 @@
 | `app/src/main/java/.../XxxActivity.kt:38` | 代码 | 改双引号里的字 | ⭐⭐ |
 | `app/src/main/java/.../tutorial/Tutorials.kt:54` | 教程正文 | 改 `text("...")` 里的字，且**要升版本号** | ⭐⭐⭐ |
 
-**为什么有四种而不是一种？** 因为仓库约定「只有设置页用 `strings.xml`，其他地方一律硬编码中文」（见 `AGENTS.md`）。所以你改设置项是改一个 XML，改别的页面是改代码里的引号。
+**为什么有四种而不是一种？** 这四种是 26.10.19 文案集中化**之前**的历史形态。集中化之后，绝大多数文案已经是 `strings.xml` 里的一行（Kotlin 侧是 `UiText.of("…")` 或 `getString(R.string.…)`，布局侧是 `@string/…`），所以**现在的默认改法是「只改 `strings.xml` 的值」**；只有下面这些还留在代码里：`const val`、`when`/`==` 里当键用的比较、`api/ApiErrorText.kt` 的错误码映射、日志与异常文本、`tools:text`。判断口诀与完整清单见 [`STRINGS-MIGRATION.md`](STRINGS-MIGRATION.md) §4 与 §9。
 
 ---
 
@@ -522,7 +522,7 @@ val recommend = tutorial(
 
 ### 11.5 两件我干不了、得你来的事
 
-- **编译验证**：我这边命令行环境是坏的（所有命令直接返回 `0xC0000142`，起不来），所以只能靠读代码自检。**每次我落地后请你跑一次** `./gradlew.bat :app:assembleDebug`，报错把最后 20 行贴给我。
+- **编译验证**：本机命令行可正常构建（实测 `./gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL`，两个 flavor × 4 个 ABI）。所以落地后**由我跑** `assembleDebug` 与 `:app:testStandardDebugUnitTest` 并把结果贴出来，你只需看效果。
 - **真机看效果**：手表小屏会不会截断（第七节），只有装上去才知道。
 
 ### 11.6 我可能会打回的三种情况

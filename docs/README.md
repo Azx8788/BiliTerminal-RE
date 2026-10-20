@@ -1,6 +1,6 @@
 # 文档总索引
 
-> 整理时间：2026-10-11（基线 `versionName 26.10.11` / `versionCode 2610110`）。
+> 整理时间：2026-10-20（基线 `versionName 26.10.19` / `versionCode 2610190`）。
 > **规则**：本目录只放**活文档**（描述现状 / 承载未完成工作）。一次性审查、已执行完毕的方案、过程流水一律进 `docs/archive/`（索引见 [`archive/README.md`](archive/README.md)）。
 > 引用文档前先确认它是不是归档的——**归档文档只代表当时**。
 
@@ -11,7 +11,7 @@
 | 改任何非平凡代码 | [`../AGENTS.md`](../AGENTS.md) → [`architecture-map.md`](architecture-map.md) | AGENTS 是每次都要遵守的约定；架构地图是真实分层 + 逐条坑 |
 | 找「现在的状态 / 还没做的事」 | [`review/fix-progress.md`](review/fix-progress.md) | **唯一活台账**：当前版本状态、未完成待办（§2，含 §2.4 视觉技术债）、最新两版快照、历史章节索引 |
 | 改网络 / 接口 / 风控相关 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口常识与风控硬约束（错误码语义、取流有效期、弹幕协议取舍） |
-| 发版前上真机 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 与发行版同维护的回归清单（247 条），每条的来源小节都标在标题里 |
+| 发版前上真机 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 与发行版同维护的回归清单（248 条），每条的来源小节都标在标题里 |
 | 补真机 / 联网联调 | [`review/device-test-plan.md`](review/device-test-plan.md) | T0–T15 + D0–D8，**88 条全部未执行**，是待执行计划 |
 | 用 adb / AI agent 驱动 Debug 包测试 | [`review/agent-test-guide.md`](review/agent-test-guide.md) | 调试桥（可编程控制通道）命令表、日志与 HTTP 追踪、UETool 干扰规避、用哪个 flavor |
 | 写新功能 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能 backlog（含实测过的接口地址、判据与仍未落地项） |
@@ -31,7 +31,7 @@
 | [`FEATURES.md`](FEATURES.md) | 用户可见功能总表（19 章） | 新增用户可见功能时 |
 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口与风控常识（来源与可信度、速查表、11 条硬约束、值得做/不做） | 核实出新接口结论时 |
 | [`review/fix-progress.md`](review/fix-progress.md) | 活台账：当前状态 + 未完成待办 + 最新快照 + §一~§四十三 索引 | 修完 bug / 关掉待办 / 每轮真机验证后 |
-| [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 发版前真机回归清单（247 条，含第十三节视觉面；条目只增不改，失效就地标注作废） | 每个发行版 |
+| [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 发版前真机回归清单（248 条，含第十三节视觉面；条目只增不改，失效就地标注作废） | 每个发行版 |
 | [`review/device-test-plan.md`](review/device-test-plan.md) | 待执行的真机/联网测试计划（T/D 两组） | 执行时勾选 |
 | [`review/agent-test-guide.md`](review/agent-test-guide.md) | Debug 包的 agent 测试手册：调试桥命令、可观测性设施、已知限制与设计原则 | 增删调试能力 / 调试桥命令时 |
 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能路线图 + 从各报告回迁的仍未落地项 | 排期 / 落地后 |
@@ -41,7 +41,7 @@
 | [`copy-inventory/README.md`](copy-inventory/README.md) | 全仓文案清单总索引（7 份、1012 条：`A` 应用身份 / `L` 更新日志 / `T` 教程 / `S` 设置项 / `U` 页面静态文案 / `M` 运行时提示 / `E` 彩蛋） | 改文案时按需打开对应那一份，改完在「改写」栏回填 |
 | [`copy-inventory/GUIDE.md`](copy-inventory/GUIDE.md) | 文案改写指南：同一句话的多出处、四种改法、十条红线、手表字数常识、自查清单、FAQ、**怎么把新文案交给 agent** | **动手改文案前先读这一份**，比总索引更先看 |
 | [`copy-inventory/DUPLICATES.md`](copy-inventory/DUPLICATES.md) | 重复文案报告：16 组同一句话的多处位置（逐字相同的 8 组 + 措辞不一致的 8 组 + 刻意保留的 4 类） | 改任何一句之前查它，避免改一处漏一处 |
-| [`copy-inventory/STRINGS-MIGRATION.md`](copy-inventory/STRINGS-MIGRATION.md) | 文案集中化台账：**已全部完成**（B1~B14，`strings.xml` 1719 条 / `UiText` 映射 757 条 / 1028 处调用），含命名规范、占位符规范、不迁移清单、27 条已知坑 | 改文案只想看「现在该改哪里」→ 看第九节；想知道为什么要这么设计 → 看 5.8~5.10 与第 7 节 |
+| [`copy-inventory/STRINGS-MIGRATION.md`](copy-inventory/STRINGS-MIGRATION.md) | 文案集中化台账：**已全部完成**（B1~B14，`strings.xml` 1787 条 / `UiText` 映射 814 条 / 1002 处调用，26.10.20 复核），含命名规范、占位符规范、不迁移清单、27 条已知坑 | 改文案只想看「现在该改哪里」→ 看第九节；想知道为什么要这么设计 → 看 5.8~5.10 与第 7 节 |
 | [`archive/README.md`](archive/README.md) | 归档索引：每份归档文档的内容与「为什么归档」 | 归档新文档时 |
 
 ## 维护纪律（避免又长出一堆旧文档）

@@ -6,21 +6,23 @@
 
 ## 1. 当前版本状态
 
-- **版本号**：`26.10.10`（`app/build.gradle` 的 `versionName`），`versionCode 2610102`。
-- **本版 tag**：`26.10.10.1`。
-- **上一版**：`26.10.10` / `2610101`（正常发版）已占用 tag `26.10.10`——release immutability 下被 Release 用过的 tag **永久不可复用**，所以补丁版只能用 `26.10.10.1`。
-- **下次递增**：先看 `app/build.gradle:23-24`，并保留 `26.10.10.1` 这种「同版本名 + 补丁后缀 tag」的习惯；`versionCode` 递增、`versionName` 可不变。
-- **构建命令**：
+- **版本号**：`26.10.19`（`app/build.gradle` 的 `versionName`），`versionCode 2610190`。**该版已发布**，tag `26.10.19` 已占用。
+- **上一版**：`26.10.16` / tag `26.10.16`。
+- **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.19.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
+- **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
   ```
   .\gradlew.bat :app:assembleDebug
-  .\gradlew.bat :app:testDebugUnitTest
+  .\gradlew.bat :app:testStandardDebugUnitTest
+  .\gradlew.bat :app:testCoexistDebugUnitTest
   .\gradlew.bat :app:assembleRelease
   ```
+- **JDK**：需要 17。仓库 `gradle.properties` **不再写死** `org.gradle.java.home`（写死的机器路径换机即报 `Value '...' is invalid`），本机 JVM 不是 17 时在**用户级** `~/.gradle/gradle.properties` 里设，或让 `JAVA_HOME` 指向 17。
+- **SDK**：`compileSdk 34` 需要 `platforms/android-34` 与 `build-tools/34.0.0`；缺了 AGP 会在配置阶段自动下载（licenses 已接受时），也可用 `sdkmanager` 预装。`local.properties` 里写 `sdk.dir`，该文件被 gitignore。
+- **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数）**：**49 个测试类 / 460 个用例**，对 395 个源文件。计数方式：`app/src/test/` 下 49 个 `*Test.kt|java`，`app/build/test-results/testDebugUnitTest/*.xml` 的 `<testcase>` 求和为 460。
-- **本轮已跑通**：26.10.10 的 `minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → `testDebugUnitTest`」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。单测 `app/build/test-results/testDebugUnitTest/*.xml` 汇总 **49 suites / 460 tests / 0 failures / 0 errors / 0 skipped**，最新 XML 时间 `2026-10-09T22:59:04`（晚于本轮 APK 出包时间 22:56:58，覆盖了本轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
-- **用例数一律以机器产出为准**：读 `app/build/test-results/`，队友口述数字不进入文档。
+- **单测（静态计数，26.10.20 实测）**：**63 个测试类 / 640 个用例**，两个 flavor 完全相同（同源码），0 失败。计数方式：`app/src/test/` 下 63 个 `*Test.kt|java`（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和为 640。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **本轮紧急撤回**：「自动跳过片头片尾」处于**撤回状态**（26.10.10 用户明确要求，非缺陷）——设置入口已隐藏、运行期恒不生效，代码与存档保留。恢复清单 6 步见 §2.2 第一条与 §3.3 末尾。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
   - **24 → 21**：代码侧清掉**四处** API 24 才有的调用：`util/AsyncLayoutInflaterX.java` 的 `java.util.function.BooleanSupplier` → 工程内 `CancelledChecker`；`util/SharedPreferencesUtil.java:167` 的 `java.util.function.Consumer` → 工程内 `EditorAction`；`activity/reply/WriteReplyActivity.kt:177` 的 `Map.getOrDefault` → `msgMap[k] ?: 默认值`；`util/VideoPreloadManager.kt:12` 的 `ConcurrentHashMap.newKeySet<Int>()` → `Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())`（**这一处是会真崩的**：类一初始化就 `NoSuchMethodError`，且已确认留在 release dex 里）。两个调用点（`activity/base/BaseActivity.kt:435`、`util/AccountManager.java:202`）走 SAM 转换，未改。
