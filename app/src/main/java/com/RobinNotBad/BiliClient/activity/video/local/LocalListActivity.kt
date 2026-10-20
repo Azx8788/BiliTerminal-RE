@@ -37,7 +37,6 @@ class LocalListActivity : InstanceActivity() {
 
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private lateinit var recyclerView: RecyclerView
-    private lateinit var emptyTip: TextView
 
     private val folderList = ArrayList<VideoFolder>()
     private val videoList = ArrayList<LocalVideo>()
@@ -85,7 +84,6 @@ class LocalListActivity : InstanceActivity() {
         recyclerView = findViewById(R.id.recyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
         swipeRefreshLayout.setOnRefreshListener { refresh() }
-        emptyTip = findViewById(R.id.emptyTip)
 
         val pageName = findViewById<TextView>(R.id.pageName)
         pageName.text = UiText.of("缓存")
@@ -286,7 +284,6 @@ class LocalListActivity : InstanceActivity() {
             })
             
             swipeRefreshLayout.setRefreshing(false)
-            checkEmpty()
         }
     }
 
@@ -621,16 +618,6 @@ class LocalListActivity : InstanceActivity() {
         return VideoMetaManager.readMeta(videoDir)
     }
 
-    private fun checkEmpty() {
-        runOnUiThread {
-            if (videoList.isEmpty() && folderList.isEmpty()) {
-                emptyTip.visibility = View.VISIBLE
-            } else {
-                emptyTip.visibility = View.GONE
-            }
-        }
-    }
-
     fun refresh() {
         if (!started) return
         CenterThreadPool.run {
@@ -641,7 +628,6 @@ class LocalListActivity : InstanceActivity() {
             runOnUiThread {
                 adapter?.setData(folderList, videoList, currentFolder)
                 swipeRefreshLayout.setRefreshing(false)
-                checkEmpty()
             }
         }
     }

@@ -39,6 +39,7 @@ import java.util.Locale
  * - 新建文件夹按钮
  * - 未分类视频区域标题
  * - 视频项（带滑动设置面板）
+ * - 空态提示行（某个分区一个视频都没有时占位，替代盖住整页的居中空态）
  * - 多选按钮（底部）
  */
 class CacheListAdapter(
@@ -52,6 +53,7 @@ class CacheListAdapter(
         private const val TYPE_ACTION_NEW_FOLDER = 3
         private const val TYPE_SECTION_VIDEO_HEADER = 4
         private const val TYPE_VIDEO_ITEM = 5
+        private const val TYPE_EMPTY_TIP = 6
     }
 
     // 数据
@@ -114,23 +116,35 @@ class CacheListAdapter(
             flatItems.add(FlatItem(TYPE_ACTION_NEW_FOLDER))
 
             flatItems.add(FlatItem(TYPE_SECTION_VIDEO_HEADER))
+            var uncategorizedCount = 0
             for (i in videoList.indices) {
                 if (videoList[i].folderName.isNullOrEmpty()) {
                     flatItems.add(FlatItem(TYPE_VIDEO_ITEM, videoIndex = i))
+                    uncategorizedCount++
                 }
+            }
+            // 空态放在「未分类视频」标题下面当列表项，而不是盖在整页中间的浮层：
+            // 浮层会和「新建文件夹」按钮重合（26.10.20 用户反馈），而且它不参与滚动。
+            if (uncategorizedCount == 0) {
+                flatItems.add(FlatItem(TYPE_EMPTY_TIP))
             }
         } else {
             flatItems.add(FlatItem(TYPE_SECTION_VIDEO_HEADER))
+            var folderVideoCount = 0
             for (i in videoList.indices) {
                 if (videoList[i].folderName == currentFolderName) {
                     flatItems.add(FlatItem(TYPE_VIDEO_ITEM, videoIndex = i))
+                    folderVideoCount++
                 }
+            }
+            if (folderVideoCount == 0) {
+                flatItems.add(FlatItem(TYPE_EMPTY_TIP))
             }
         }
     }
 
     override fun getItemViewType(position: Int): Int {
-        return if (position < flatItems.size) flatItems[position].type else TYPE_GOTO_DOWNLOAD
+        return if (position < flatItems.size) flatItems[position].type else TYPE_EMPTY_TIP
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -156,8 +170,8 @@ class CacheListAdapter(
                 VideoItemHolder(view)
             }
             else -> {
-                val view = LayoutInflater.from(context).inflate(R.layout.cell_video_local, parent, false)
-                VideoItemHolder(view)
+                val view = LayoutInflater.from(context).inflate(R.layout.cell_empty_tip, parent, false)
+                EmptyTipHolder(view)
             }
         }
     }
@@ -501,6 +515,9 @@ class CacheListAdapter(
     class ActionButtonHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val text: TextView = itemView.findViewById(R.id.text)
     }
+
+    /** 空态提示行。文案写在布局里（@string/text_list_empty），不用绑定。 */
+    class EmptyTipHolder(itemView: View) : RecyclerView.ViewHolder(itemView)
 
     class FolderItemHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val folderContent: View = itemView.findViewById(R.id.folderContent)
