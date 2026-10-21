@@ -54,7 +54,7 @@
         </item>
         <item>
             <type>0</type>
-            <text>：打开视频详情页面</text>
+            <text>：按住时 3 倍速播放，松手恢复正常倍速</text>
             <style>none</style>
             <color>#ffffff</color>
         </item>

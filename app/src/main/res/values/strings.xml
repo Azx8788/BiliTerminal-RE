@@ -1508,6 +1508,7 @@
     <string name="uitext_shortvideoplayeractivity_004">加载短视频...</string>
     <string name="text_shortvideoplayer_no_more">没有更多短视频了</string>
     <string name="text_shortvideoplayer_detail_not_ready">短视频还没加载好，先滑回去看看</string>
+    <string name="text_shortvideoplayer_speed_boost">3.0x 倍速播放中</string>
     <string name="uitext_timelineactivity_001">时间线</string>
     <string name="uitext_voteinfoactivity_001">已结束</string>
     <string name="uitext_voteinfoactivity_002">已投票</string>

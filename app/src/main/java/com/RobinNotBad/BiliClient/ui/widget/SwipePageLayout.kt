@@ -54,6 +54,8 @@ class SwipePageLayout @JvmOverloads constructor(
     /** 按下点落在进度条这类「自己要横向拖动」的控件上：本次手势绝不翻页。 */
     private var blockHorizontal = false
 
+    private var moveLogCount = 0
+
     /**
      * 子 View（滚动容器、RecyclerView）会调 true 请求父级别拦截。
      *
@@ -119,10 +121,13 @@ class SwipePageLayout @JvmOverloads constructor(
             MotionEvent.ACTION_MOVE -> {
                 if (!horizontal) return super.onTouchEvent(ev)
                 if (fakeDragging) {
-                    val delta = lastX - ev.x
+                    // 注意方向：ViewPager2 的 fakeDragBy 内部是 scrollBy(-offset)，即
+                    // 传正数 = 往后翻。手指向左（ev.x 变小）要让页面跟着往左走，
+                    // 必须传负数，所以这里用「当前 x - 上次 x」，别照抄常见的手写公式。
+                    val delta = ev.x - lastX
                     pagerProvider?.invoke()?.fakeDragBy(delta)
                     // 第 0 页向右滑时 pager 无页可退，用整页位移给出「要退出」的反馈
-                    if (startItem == 0 && delta < 0) {
+                    if (startItem == 0 && delta > 0) {
                         translationX = (ev.x - downX).coerceAtLeast(0f)
                     }
                     lastX = ev.x
@@ -138,19 +143,16 @@ class SwipePageLayout @JvmOverloads constructor(
                 val clearlyHorizontal = abs(dx) > abs(dy) * 2
                 val passed = clearlyHorizontal && abs(dx) > width * SWIPE_MIN_RATIO
                 val isUp = ev.actionMasked == MotionEvent.ACTION_UP
+                val direction = if (dx < 0) -1 else 1
 
                 if (fakeDragging) {
                     fakeDragging = false
                     val pager = pagerProvider?.invoke()
                     pager?.endFakeDrag()
                     val edgePreview = startItem == 0 && translationX > 0f
-                    val current = pager?.currentItem ?: startItem
                     // 从第 0 页向右滑：fakeDrag 无页可退，吸附回原位后这里当作「退出本页」。
                     // 必须比对按下的页：否则从详情页滑回短视频首页那一下也会被误判成退出。
-                    val shouldExit = isUp && passed && dx > 0 && startItem == 0 && current == 0
-                    // pager 自己吸附时要求拖得足够远；我们的判定阈值更松，没吸附走就补一页，
-                    // 否则「明明滑了却不翻页」会显得控件没反应
-                    val snapBack = isUp && passed && current == startItem
+                    val shouldExit = isUp && passed && direction > 0 && startItem == 0
                     when {
                         shouldExit -> {
                             // 整页滑出屏幕再关，手感与「右滑返回」一致，而不是原地突然消失
@@ -160,13 +162,20 @@ class SwipePageLayout @JvmOverloads constructor(
                             }.start()
                         }
 
-                        snapBack -> onSwipe?.invoke(if (dx < 0) -1 else 1)
+                        isUp && passed -> {
+                            // 让 pager 自己先吸附（带跟手动画）；它没吸附到下一页时再补一次，
+                            // 否则「明明滑了却不翻页」会显得控件没反应。不能在这里立刻读
+                            // currentItem——endFakeDrag 的吸附是异步的，读到的还是按下时的页。
+                            pager?.postDelayed({
+                                if (pager.currentItem == startItem) onSwipe?.invoke(direction)
+                            }, SNAP_CHECK_DELAY_MS)
+                        }
 
                         edgePreview -> animate().translationX(0f).setDuration(130).start()
                     }
                 } else if (isUp && passed) {
                     // fakeDrag 不可用时的兜底：松手按方向切页
-                    onSwipe?.invoke(if (dx < 0) -1 else 1)
+                    onSwipe?.invoke(direction)
                 }
 
                 horizontal = false
@@ -209,5 +218,8 @@ class SwipePageLayout @JvmOverloads constructor(
     companion object {
         /** 横向位移要达到屏宽的这个比例才算「滑了一页」，防手抖。 */
         private const val SWIPE_MIN_RATIO = 0.18f
+
+        /** pager 松手吸附是异步的，等它落位后再判断要不要补一页。 */
+        private const val SNAP_CHECK_DELAY_MS = 150L
     }
 }

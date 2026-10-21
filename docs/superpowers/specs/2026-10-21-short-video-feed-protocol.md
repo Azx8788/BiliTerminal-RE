@@ -156,7 +156,7 @@
 
 - `pager.isUserInputEnabled = false`：pager 不再自己接管触摸（反编译 `viewpager2-1.1.0` 确认 `RecyclerViewImpl.onInterceptTouchEvent/onTouchEvent` 都以该开关为闸门），但事件仍正常分发给页面内容。
 - 每页根布局换成 `SwipePageLayout`（继承 `FrameLayout`，不是 `ViewGroup`，保证布局中的 `layout_gravity` 等属性仍然生效）。它只在「方向明确横向」时拦截：超过 `touchSlop` 后 `|dx| > |dy| * 2`；多指手势（捏合缩放）不参与。
-- 拦截后用 `beginFakeDrag()` / `fakeDragBy(lastX - ev.x)` 让页面**跟手**移动，松手 `endFakeDrag()` 由 pager 吸附。方向已由反编译确认：`fakeDragBy(offset)` 对横向 pager 调 `RecyclerView.scrollBy(offset, 0)`，**正 offset = 下一页**。
+- 拦截后用 `beginFakeDrag()` / `fakeDragBy(ev.x - lastX)` 让页面**跟手**移动，松手 `endFakeDrag()` 由 pager 吸附。方向已由反编译确认：`FakeDrag.fakeDragBy(f)` 内部先 `mRequestedDragDistance -= f`，再 `RecyclerView.scrollBy(round(requested - actual), 0)`；`scrollBy` 正数才是下一页，所以**传负值 = 下一页**（手指左移时 `ev.x - lastX` 正好为负，直接用这个差值。§9 修正了本节的符号说明）。
 - 松手时若已超过屏宽 18%、pager 却没吸附过去，补一次 `setCurrentItem`，避免「滑了不翻页」。
 - 第 0 页向右滑：整页 `translationX` 跟手位移，过阈值后整页滑出再 `finish()`；退出判定必须比对**按下时**所在的页（`startItem == 0`），否则从详情页滑回首页会被误判成退出。
 - Activity 侧只剩 `shellPager()` 与 `handleSwipe(direction)` 两个入口：`-1` = 手指向左翻下一页，`+1` = 手指向右翻上一页，`target < 0` 即退出。原 `dispatchTouchEvent` + `swipeExitDetector` 已删除。
@@ -165,4 +165,29 @@
 
 - 构建：`:app:assembleDebug` 两 flavor 通过；JVM 单测 71 类 / 759 例 / 0 失败（两 flavor 同）。
 - 真机待验：竖向刷视频不再被误判成横滑；横滑跟手；详情页之间连续拖动；第 0 页右滑有滑出动画再退出。
+
+## 9. 26.10.21 第五轮修订：横滑方向与跟手修正、长按改 3 倍速
+
+> 本节记录的改动已在真机（MuMu，`emulator-5554`）逐项验证，见 §9.3。
+
+### 9.1 横滑方向反转与「不跟手」
+
+- 现象：① 拖动过程中页面完全不动，松手才跳页；② 从详情页往右滑，方向与实际手指相反；③ 一次滑动偶尔翻两页。
+- 根因：`FakeDrag.fakeDragBy(f)` 是 `mRequestedDragDistance -= f` 后再 `RecyclerView.scrollBy(requested - actual, 0)`，正数才是下一页，**所以传负值才是下一页**。旧代码传的是 `lastX - ev.x`（手指左移为正），符号正好相反：第 0 页向左滑时 `scrollBy` 拿到负值、又没有更左的页，被 clamp 成 0，于是「怎么拖都不动」；到详情页等中间页时则会往反方向滚，出现「方向和手指相反」。
+- 修正：改传 `ev.x - lastX`。
+- 「偶尔翻两页」：`endFakeDrag()` 的吸附是**异步**的，旧代码在它之后立刻读 `currentItem`（此时还是按下时的页），于是又补一次 `handleSwipe`。现在改为松手后 `postDelayed(150ms)` 再比对，只有 pager 确实没吸附过去才补一次。
+
+### 9.2 长按改为 3 倍速（用户要求）
+
+- 长按不再打开视频详情页（详情页已作为横向第 2 页存在，右滑即可到达），改为**按住期间 3 倍速、松手还原**。
+- 实现：`GestureDetector.onLongPress` → `PageHolder.startSpeedBoost()`；`ACTION_UP` / `ACTION_CANCEL` / 第二根手指按下（开始捏合）→ `endSpeedBoost()`。只改播放器倍速与底部倍速按钮文案，不动 `currentSpeed`（用户选的档位要保持）；按住时用原有的音量提示位 `showsound` 显示「3.0x 倍速播放中」（`R.string.text_shortvideoplayer_speed_boost`）。
+- 教程与功能表同步：`Tutorials.kt` 的 `shortVideo` 教程 `version` 3→4、长按条目改为「按住时 3 倍速播放，松手恢复正常倍速」；`res/xml/tutorial_short_video.xml` 同步。
+
+### 9.3 真机验证（`emulator-5554`，release 包覆盖安装，保留登录态）
+
+- 拖动中截图可见短视频页左移、详情页从右侧进入 —— 跟手成立。
+- 短视频页左滑一次 → 详情页（page 1）；再左滑 → 评论（page 2）；再左滑 → 相关推荐（page 3）；最后页再左滑不再前进。
+- 详情页右滑 → 回到短视频页（方向正确，与手指一致）；短视频页右滑 → 退出本页。
+- 单击、上下滑不再误跳 `VideoInfoActivity`（上一轮 `setOnTouchListener` 返回值问题已修）。
+
 

@@ -358,8 +358,9 @@ object Tutorials {
     val shortVideo = tutorial(
         id = "short_video",
         title = UiText.of("短视频操作指南"),
-        // 26.10.21：左右滑改为翻到右侧的详情/评论/相关推荐页，内容变了要 +1，老用户才会重新看到。
-        version = 3,
+        // 26.10.21：左右滑改为翻到右侧的详情/评论/相关推荐页；长按改为 3 倍速播放。
+        // 内容变了要 +1，老用户才会重新看到。
+        version = 4,
         target = ShortVideoPlayerActivity::class.java,
         kind = TutorialKind.GUIDE,
     ) {
@@ -379,7 +380,7 @@ object Tutorials {
             newline()
             text("· ")
             text(UiText.of("长按")).bold().color(ACCENT)
-            text(UiText.of("：打开视频详情页"))
+            text(UiText.of("：按住时 3 倍速播放，松手恢复正常倍速"))
             newline()
             text("· ")
             text(UiText.of("上下滑动")).bold().color(ACCENT)

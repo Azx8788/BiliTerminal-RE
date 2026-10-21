@@ -1052,12 +1052,31 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **根因**：上一版把横滑完全交给外壳 `ViewPager2`，它判断「横向」的标准是 `dx > dy`（1:1），竖向刷短视频时手指稍微一斜就被它 intercept 成翻页；而且翻页判定发生在 pager 内部，页面层没有「这到底是不是横滑」的裁决权。
 - **方案**：`pager.isUserInputEnabled = false` 彻底禁掉 pager 自己接触摸（已反编译 `viewpager2-1.1.0.aar` 的 `classes.jar` 确认：`ViewPager2$RecyclerViewImpl.onInterceptTouchEvent/onTouchEvent` 都以 `isUserInputEnabled()` 为闸门），改由**每一页的根布局** `ui/widget/SwipePageLayout` 判方向后驱动 pager 的 fakeDrag：
   - 判据：超过 `ViewConfiguration.touchSlop` 后 `|dx| > |dy| * 2` 才算横向（60° 以内的斜滑全算竖向，交给页内竖向 pager / 列表）；多指（缩放）一律不参与翻页。
-  - 横向成立后 `beginFakeDrag()` + 每次 MOVE `fakeDragBy(lastX - ev.x)`，页面**跟手**移动；松手 `endFakeDrag()` 由 pager 自己按速度/位移吸附到目标页。
+  - 横向成立后 `beginFakeDrag()` + 每次 MOVE `fakeDragBy(ev.x - lastX)`，页面**跟手**移动；松手 `endFakeDrag()` 由 pager 自己按速度/位移吸附到目标页。
   - 松手时若已超过 `SWIPE_MIN_RATIO = 0.18` 屏宽、但 pager 因吸附阈值更严没翻过去，则补一次 `setCurrentItem`，避免「明明滑了却不翻页」。
   - 第 0 页向右滑：fakeDrag 无页可退，改用整页 `translationX` 跟手位移作反馈；超过阈值后整页滑出屏幕再 `finish()`（手感对齐系统右滑返回）。**判退出必须比对「按下时所在的页」**（`startItem == 0`），否则从详情页滑回第 0 页那一下也会被误判成退出。
-- **fakeDrag 方向（反编译确认，别凭感觉改）**：`FakeDrag.fakeDragBy(float offset)` 对横向 pager 调的是 `RecyclerView.scrollBy(offset, 0)`，**offset 为正 = 向后一页**；所以手指左移（`lastX - ev.x > 0`）传正值。`beginFakeDrag()` 只检查当前是否正在拖动，**不受 `isUserInputEnabled` 影响**，故禁用触摸后 fakeDrag 仍可用。
+- **fakeDrag 方向（反编译确认，别凭感觉改）**：`FakeDrag.fakeDragBy(float f)` 内部先 `mRequestedDragDistance -= f`，再 `RecyclerView.scrollBy(round(mRequestedDragDistance - mActualDraggedDistance), 0)`；`scrollBy` 正数 = 向后一页，所以**传负值 = 向后一页**（手指左移时 `ev.x - lastX` 为负，直接用这个差值即可；§3.49 修正了本节此前的符号写反）。`beginFakeDrag()` 只检查当前是否正在拖动，**不受 `isUserInputEnabled` 影响**，故禁用触摸后 fakeDrag 仍可用；`endFakeDrag()` 的吸附是**异步**的，松手后立刻读 `currentItem` 还是按下时的页。
 - **接线**：`fragment_short_video_feed.xml` / `fragment_short_video_detail_page.xml` 根节点由 `FrameLayout` 换成 `SwipePageLayout`；两个 Fragment 在 `onViewCreated` 里 `pagerProvider = { host.shellPager() }`、`onSwipe = { host.handleSwipe(it) }`；`ShortVideoPlayerActivity` 删掉 `dispatchTouchEvent` 与 `swipeExitDetector`，新增 `shellPager()` / `handleSwipe(direction)`（-1 = 手指向左翻下一页，+1 = 手指向右翻上一页，`target < 0` 即退出本页）。
 - **验证**：`./gradlew.bat :app:assembleDebug --offline` → BUILD SUCCESSFUL（两 flavor）；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 各 71 类 / 759 例、0 失败（与 §3.47 时一致，本次只改 UI 手势链路，未动可选为单测的纯函数）。**真机手感（跟手、阈值 2:1、退出动画）未验证**。
+
+### 3.49 短视频横滑方向/跟手修正 + 长按改 3 倍速（26.10.21，真机已验证）
+
+- **反馈**：① "修复，在进入视频详情卡片页面后，滑动方向和实际手指方向相反的bug"；② "长按视频改为3倍数播放"。
+- **根因（方向 + 不跟手）**：`FakeDrag.fakeDragBy(f)` 内部是 `mRequestedDragDistance -= f`，再 `RecyclerView.scrollBy(round(requested - actual), 0)`，**正数 scrollBy 才是下一页**。旧代码传 `lastX - ev.x`（手指左移为正）→ 实际 `scrollBy` 拿到负值：第 0 页没有更左的页可滚，被 clamp 成 0（表现为「怎么拖页面都不动，松手才跳页」）；在详情/评论等中间页则往反方向滚（表现为「方向和手指相反」）。
+- **根因（偶尔翻两页）**：`endFakeDrag()` 的吸附是异步的，旧代码紧接着读 `currentItem` 仍是按下时的页，于是又补一次 `handleSwipe`，与 pager 自己的吸附叠加成 +2。
+- **修复**：
+  - `SwipePageLayout` 的 MOVE 改为 `fakeDragBy(ev.x - lastX)`（源码注释写明别照抄常见手写公式）。
+  - 松手后改 `pager.postDelayed(150ms)` 再判断「pager 是否还停在按下时的页」，只有确实没吸附过去才补一次 `onSwipe`；`SNAP_CHECK_DELAY_MS = 150L`。
+  - 第 0 页右滑退出的判据从 `dx > 0 && startItem == 0 && current == 0` 简化为 `direction > 0 && startItem == 0`（不再依赖异步的 `currentItem`）。
+- **长按改 3 倍速**：`GestureDetector.onLongPress` → `PageHolder.startSpeedBoost()`；`ACTION_UP` / `ACTION_CANCEL` / `ACTION_POINTER_DOWN` → `endSpeedBoost()`。只动播放器倍速与底部倍速按钮文案，`currentSpeed` 保持用户选的档位；按住时复用 `showsound` 提示「3.0x 倍速播放中」（新增 `R.string.text_shortvideoplayer_speed_boost`）。`openVideoDetail()` 与其 `VideoInfoActivity` / `Intent` import 一并删除（详情页已作为横向第 2 页存在）。教程 `Tutorials.kt` `version` 3→4、长按条目改写；`res/xml/tutorial_short_video.xml` 同步；`docs/FEATURES.md` §2.7 长按条目改写。
+- **真机验证（`emulator-5554`，release 覆盖安装保留登录态）**：
+  - 拖动中截图：短视频页左移、详情页从右侧进入 —— **跟手成立**；
+  - 短视频页左滑 → 详情（page 1）→ 评论（page 2）→ 相关推荐（page 3），一次一页；末页再左滑不前进；
+  - 详情页右滑 → 回短视频页（方向与手指一致）；短视频页右滑 → 退出本页；
+  - 单击 / 纵向滑动不再误跳 `VideoInfoActivity`。
+- **长按 3 倍速验证（`emulator-5554`）**：`input swipe 720 1200 720 1200 2500` 按住 2.5s，按住期间截图显示居中提示「3.0x 倍速播放中」，松手后提示消失、底部倍速按钮回到 `1.0x`；教程 v4 弹出且长按条目已是「按住时 3 倍速播放，松手恢复正常倍速」。
+- **未验证**：手表窄屏（300x300）下的 18% 阈值、内容列宽与长按手势；`testCoexist` 包未装机。
+- **已知现象（非 bug）**：横滑动画进行中截图会抓到两页叠加/视频帧残留（TextureView 与 ViewPager2 动画的合成帧），动画结束后显示正常。
 
 ## 4. 历史章节索引
 

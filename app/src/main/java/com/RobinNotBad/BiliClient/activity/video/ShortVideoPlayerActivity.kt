@@ -2,7 +2,6 @@ package com.RobinNotBad.BiliClient.activity.video
 
 import com.RobinNotBad.BiliClient.util.UiText
 
-import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
@@ -32,7 +31,6 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.InstanceActivity
-import com.RobinNotBad.BiliClient.activity.video.info.VideoInfoActivity
 import com.RobinNotBad.BiliClient.api.DanmakuApi
 import com.RobinNotBad.BiliClient.api.ShortVideoFeedApi
 import com.RobinNotBad.BiliClient.model.ShortVideoItem
@@ -403,6 +401,10 @@ class ShortVideoPagerAdapter(
         private var currentSpeedIndex = 2
         private var currentSpeed = 1.0f
 
+        /** 长按临时加速用的倍速：松开后要还原成 [currentSpeed]，不能污染用户选的档位。 */
+        private val boostSpeed = 3.0f
+        private var speedBoosted = false
+
         private var currentScale = 1.0f
         private val minScale = 1.0f
         private val maxScale = 3.0f
@@ -465,7 +467,9 @@ class ShortVideoPagerAdapter(
                 }
 
                 override fun onLongPress(e: MotionEvent) {
-                    openVideoDetail()
+                    // 长按不再跳视频详情页，改为「按住 3 倍速、松手还原」（与手机版短视频一致）。
+                    // 详情页现在是横向第 2 页，右滑即可到达，不需要再用长按另开一个 Activity。
+                    startSpeedBoost()
                 }
             })
 
@@ -498,9 +502,16 @@ class ShortVideoPagerAdapter(
 
                 scaleGestureDetector?.onTouchEvent(event)
                 gestureDetector?.onTouchEvent(event)
+                // 长按加速是「按住生效」：抬手、被父容器打断（CANCEL）、或第二根手指按下
+                // （开始捏合缩放）都要立刻还原倍速，否则会一直停在 3 倍速上。
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL,
+                    MotionEvent.ACTION_POINTER_DOWN -> endSpeedBoost()
+                }
                 // 必须返回 true：返回 false 时本 View 不会成为触摸目标，父容器（竖向 pager）
                 // 接管后续事件后**不会**再给这里发 MOVE/UP/CANCEL，GestureDetector 收不到抬手，
-                // 于是每次点按/滑动都会在 500ms 后误触发 onLongPress 打开视频详情
+                // 于是每次点按/滑动都会在 500ms 后误触发 onLongPress
                 // （真机实测：点一下、上下滑一下都会跳详情页）。返回 true 不影响父级滚动：
                 // pager 在手指真正纵向移动后仍会 onInterceptTouchEvent 抢走手势并给这里发 CANCEL。
                 true
@@ -574,6 +585,31 @@ class ShortVideoPagerAdapter(
         }
 
         /**
+         * 长按临时切到 [boostSpeed]（3 倍速），松手由 [endSpeedBoost] 还原。
+         *
+         * 只改播放器倍速与按钮文案，不动 [currentSpeed]/[currentSpeedIndex]——用户选的档位要保持，
+         * 否则长按一次就把底部按钮的倍速档位改掉了。
+         */
+        private fun startSpeedBoost() {
+            if (speedBoosted || isScaling) return
+            speedBoosted = true
+            playerBridge.setSpeed(boostSpeed)
+            buttonSpeed.text = "${boostSpeed}x"
+
+            hideVolumeRunnable?.let { mainHandler.removeCallbacks(it) }
+            showSound.visibility = View.VISIBLE
+            showSound.text = activity.getString(R.string.text_shortvideoplayer_speed_boost)
+        }
+
+        private fun endSpeedBoost() {
+            if (!speedBoosted) return
+            speedBoosted = false
+            playerBridge.setSpeed(currentSpeed)
+            buttonSpeed.text = "${currentSpeed}x"
+            showSound.visibility = View.GONE
+        }
+
+        /**
          * 切换弹幕显示/隐藏
          */
         private fun toggleDanmaku() {
@@ -622,16 +658,6 @@ class ShortVideoPagerAdapter(
             hideVolumeRunnable?.let { mainHandler.removeCallbacks(it) }
             hideVolumeRunnable = Runnable { showSound.visibility = View.GONE }
             mainHandler.postDelayed(hideVolumeRunnable!!, 3000)
-        }
-
-        private fun openVideoDetail() {
-            currentItem?.let { item ->
-                if (item.aid > 0) {
-                    val intent = Intent(activity, VideoInfoActivity::class.java)
-                    intent.putExtra("aid", item.aid)
-                    activity.startActivity(intent)
-                }
-            }
         }
 
         private fun applyScale() {
