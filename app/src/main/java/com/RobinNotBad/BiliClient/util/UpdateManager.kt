@@ -12,8 +12,10 @@ import com.RobinNotBad.BiliClient.BuildConfig
 import com.RobinNotBad.BiliClient.api.TerminalApi
 import com.RobinNotBad.BiliClient.model.UpdateConfig
 import kotlinx.coroutines.CancellationException
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -24,6 +26,9 @@ import java.util.concurrent.TimeUnit
 object UpdateManager {
 
     private const val APK_FILE_NAME = "bili_terminal_update.apk"
+
+/** 内测 `.txt` 的体积上限：公告式展示只该读小文件，超过这个量级一律报错。 */
+private const val BETA_TEXT_MAX_BYTES = 2L * 1024 * 1024
     private const val TAG = "更新检查"
 
     @Volatile
@@ -74,6 +79,122 @@ object UpdateManager {
             deleteOldApkFile()
         }
         return hasUpdate
+    }
+
+    /**
+     * 内测包解析：用户输入的纯数字内测码 → 分享站上的 APK 直链。
+     *
+     * 分享站有两个域名（[BetaUpdate.HOSTS]），哪个域名有包就从哪个下载：
+     * 按顺序 POST `/share/select/`，第一个返回**安装包**的域名即采用。
+     *
+     * 失败提示分两种：**两个域名都没有这个包、或对应的文件不是 `.apk`** 时，对用户就是
+     * 「内测码错误」（分享站不校验上传内容，内测码可能对应一张图片）；只有真的访问不了
+     * 分享站时才报网络原因。两种都不在这里做版本比较：内测包的版本号可能等于或低于当前版本。
+     */
+    fun resolveBetaShare(
+        code: String,
+        onResult: (BetaUpdate.ShareFile, String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        CenterThreadPool.run {
+            val normalized = BetaUpdate.normalizeCode(code)
+            if (normalized == null) {
+                val msg = BiliTerminal.context?.getString(R.string.msg_update_beta_code_invalid)
+                    ?: "内测码只能是数字"
+                CenterThreadPool.runOnUiThread { onError(msg) }
+                return@run
+            }
+
+            val errors = ArrayList<String>()
+            var networkFailed = false
+            Logu.i(TAG, "解析内测分享链接：${BetaUpdate.buildShareUrl(normalized)}")
+            for (host in BetaUpdate.HOSTS) {
+                try {
+                    when (val result = selectBetaShare(host, normalized)) {
+                        is BetaUpdate.Result.Found -> {
+                            Logu.i(TAG, "内测包来自 $host：${result.file.name}")
+                            CenterThreadPool.runOnUiThread { onResult(result.file, result.host) }
+                            return@run
+                        }
+
+                        is BetaUpdate.Result.NotFound -> {
+                            Logu.e(TAG, "$host 上没有内测包：${result.message}")
+                            errors.add("${hostName(host)}：${result.message}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Logu.e(TAG, "访问 $host 失败：${e.message}")
+                    networkFailed = true
+                    errors.add("${hostName(host)}：${e.message ?: "网络错误"}")
+                }
+            }
+            // 两个域名都没有这个包（或对应的根本不是安装包）时，对用户就是「内测码错误」——
+            // 拼一长串域名细节既看不懂也没用；只有真的连不上时才报网络原因。
+            val ctx = BiliTerminal.context
+            val message = if (!networkFailed) {
+                ctx?.getString(R.string.msg_update_beta_code_wrong) ?: "内测码错误"
+            } else {
+                ctx?.getString(R.string.text_update_beta_failed, errors.joinToString("；"))
+                    ?: "获取内测包失败：${errors.joinToString("；")}"
+            }
+            CenterThreadPool.runOnUiThread { onError(message) }
+        }
+    }
+
+    private fun hostName(host: String): String = host.substringAfter("://")
+
+    /**
+     * 内测码解析到的是 `.txt` 时，把正文取回来当公告展示（与「公告列表」点开的页面一致）。
+     *
+     * 不落盘、不走 `downloadApk`：文本不是安装包，没必要占更新缓存；
+     * 超过 [BETA_TEXT_MAX_BYTES] 直接报错，避免把一份大文件读进内存。
+     */
+    fun downloadBetaText(url: String, onResult: (String) -> Unit, onError: (String) -> Unit) {
+        CenterThreadPool.run {
+            try {
+                val request = Request.Builder().url(url).get().build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+                    val length = response.body?.contentLength() ?: -1L
+                    if (length > BETA_TEXT_MAX_BYTES) throw IOException("文本过大")
+                    val bytes = response.body?.bytes() ?: ByteArray(0)
+                    if (bytes.size > BETA_TEXT_MAX_BYTES) throw IOException("文本过大")
+                    // 分享站导出的 txt 可能带 BOM，去掉以免正文第一行前多一个不可见字符
+                    val text = BetaUpdate.decodeText(bytes)
+                    CenterThreadPool.runOnUiThread { onResult(text) }
+                }
+            } catch (e: Exception) {
+                Logu.e(TAG, "下载内测文本失败：${e.message}")
+                val reason = e.message ?: "网络错误"
+                val msg = BiliTerminal.context?.getString(R.string.text_update_beta_text_failed, reason)
+                    ?: "获取内测文本失败：$reason"
+                CenterThreadPool.runOnUiThread { onError(msg) }
+            }
+        }
+    }
+
+    /** POST `/share/select/`，把 HTTP 层错误与业务层「文件不存在」区分开。 */
+    private fun selectBetaShare(host: String, code: String): BetaUpdate.Result {
+        val body = BetaUpdate.buildSelectBody(code)
+            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url(BetaUpdate.selectUrl(host))
+            .post(body)
+            .build()
+        okHttpClient.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            val parsed = if (text.isNotBlank()) BetaUpdate.parseSelectResponse(text, host) else null
+            return when {
+                parsed is BetaUpdate.Result.Found -> parsed
+                !response.isSuccessful -> {
+                    // 非 2xx 时尽量带上响应体里的业务原因（有的部署 404 也会回 JSON）
+                    val reason = (parsed as? BetaUpdate.Result.NotFound)?.message
+                    throw IOException(if (reason.isNullOrBlank()) "HTTP ${response.code}" else "HTTP ${response.code}：$reason")
+                }
+                parsed is BetaUpdate.Result.NotFound -> parsed
+                else -> throw IOException("响应体为空")
+            }
+        }
     }
 
     private fun getApkFile(context: Context? = BiliTerminal.context): File? {

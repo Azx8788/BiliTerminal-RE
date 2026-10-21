@@ -25,6 +25,7 @@ import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.ui.appearance.CornerStyle
 import com.RobinNotBad.BiliClient.ui.appearance.FontStyle
 import com.RobinNotBad.BiliClient.util.Aria2Util
+import com.RobinNotBad.BiliClient.util.BetaUpdate
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.FileUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
@@ -32,6 +33,7 @@ import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.PerformanceManager
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
+import com.RobinNotBad.BiliClient.util.TerminalDialog
 import com.RobinNotBad.BiliClient.util.TerminalReportPrefs
 
 /** 「外观设置」分组的 group_type 取值。`SettingsIndex` 里跳转该分组时也用这个常量。 */
@@ -526,9 +528,16 @@ class SettingGroupActivity : RefreshListActivity() {
                 true
             }
         )
-        nav(R.drawable.icon_update, "检查更新", "检查新版本并更新") {
-            startActivity(Intent(this, UpdateActivity::class.java))
-        }
+        nav(
+            R.drawable.icon_update,
+            "检查更新",
+            "检查新版本并更新",
+            onClick = { startActivity(Intent(this, UpdateActivity::class.java)) },
+            onLongClick = {
+                showBetaCodeDialog()
+                true
+            }
+        )
         nav(R.drawable.icon_announcement, "公告列表", "查看哔哩终端发布公告") {
             startActivity(Intent(this, AnnouncementsActivity::class.java))
         }
@@ -549,6 +558,34 @@ class SettingGroupActivity : RefreshListActivity() {
                 putExtra("group_title", "反馈与统计")
             })
         }
+    }
+
+    /**
+     * 26.10.21：长按「检查更新」输入内测码，直接从内测分享站下载内测包。
+     *
+     * 内测码是纯数字（校验 + 数字键盘 + InputFilter 三层），拼成
+     * `https://share.lanol.cn/#/?code=<码>` 这种分享链接后由 [UpdateManager.resolveBetaShare]
+     * 解析出真实下载地址。解析、下载、安装都在 [UpdateActivity] 的 `beta_code` 模式里完成。
+     */
+    private fun showBetaCodeDialog() {
+        TerminalDialog.input(
+            this,
+            title = getString(R.string.text_update_beta_code_title),
+            hint = getString(R.string.text_update_beta_code_hint),
+            maxLength = 20,
+            digitsOnly = true,
+            confirmText = getString(R.string.btn_update_beta_download)
+        ) { raw ->
+            val code = BetaUpdate.normalizeCode(raw)
+            if (code == null) {
+                MsgUtil.showMsg(getString(R.string.msg_update_beta_code_invalid))
+            } else {
+                startActivity(
+                    Intent(this, UpdateActivity::class.java)
+                        .putExtra("beta_code", code)
+                )
+            }
+        }.show()
     }
 
     /**
