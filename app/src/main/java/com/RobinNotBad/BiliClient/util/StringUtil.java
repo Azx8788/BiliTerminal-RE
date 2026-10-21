@@ -30,6 +30,7 @@ import android.text.style.ImageSpan;
 import android.util.Pair;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.widget.TextView;
 
 import androidx.annotation.DrawableRes;
@@ -518,9 +519,65 @@ public class StringUtil {
         }
     }
 
-    // 查到的一种LinkMovementMethod问题的解决方法
+    /**
+     * 这次「按下 → 抬手」是否已经达到系统长按阈值（纯函数，供 JVM 单测）。
+     *
+     * <p>判据必须与 {@link android.view.ViewConfiguration#getLongPressTimeout()} 对齐：
+     * View 正是在按下后这么久触发 {@code OnLongClickListener}，所以「抬手时已经够久」
+     * 就等于「长按回调已经跑过（或马上就要跑）」，此时不能再补一次链接点击。
+     *
+     * <ul>
+     *   <li>没有记录到按下时间（{@code downEventTime < 0}）：不是长按——那是从别处滑进
+     *       链接区域之类的情况，保持旧的「抬手即点链接」行为；</li>
+     *   <li>TextView 不可长按（没挂 OnLongClickListener）：永远不算长按。此时长按回调
+     *       根本不会被调用，按住再久抬手也应该点开链接（旧行为），否则链接就点不动了。</li>
+     * </ul>
+     *
+     * @param longClickable       该 TextView 当前是否可长按（{@link View#isLongClickable()}）
+     * @param downEventTime       ACTION_DOWN 的 {@link MotionEvent#getEventTime()}，未记录传 -1
+     * @param upEventTime         ACTION_UP 的 {@link MotionEvent#getEventTime()}
+     * @param longPressTimeoutMs  系统长按阈值，即 {@code ViewConfiguration.getLongPressTimeout()}
+     */
+    public static boolean isLongPressGesture(boolean longClickable, long downEventTime,
+                                             long upEventTime, int longPressTimeoutMs) {
+        if (downEventTime < 0) return false;
+        if (!longClickable) return false;
+        return upEventTime - downEventTime >= longPressTimeoutMs;
+    }
+
+    /**
+     * 让 TextView 里的 {@link ClickableSpan} 可点，同时**不吞掉长按**。
+     *
+     * <h3>为什么不能消费 ACTION_DOWN</h3>
+     * OnTouchListener 在 {@code View.dispatchTouchEvent} 里先于 {@code TextView.onTouchEvent}
+     * 执行，返回 true 就等于把这次触摸从 View 手里拿走。View 收不到按下事件时**不会启动长按
+     * 判定**，于是挂在同一个 TextView 上的 {@code setOnLongClickListener}（长按复制 / 长按
+     * 操作面板）永远不会触发。旧实现正是这样：正文只要整段是一个链接（评论内容只有一条
+     * {@code https://www.bilibili.com/} 就是典型），整块文字都被 ClickableSpan 覆盖，
+     * 用户长按没有任何反应，抬手反而直接把链接打开。
+     *
+     * <h3>现在的分工</h3>
+     * <ul>
+     *   <li>ACTION_DOWN：**不消费**，只记下「按在哪个链接上、什么时候按的」，把事件交给
+     *       View 去启动长按判定；</li>
+     *   <li>ACTION_UP：按住时长已达系统长按阈值（{@link #isLongPressGesture}）时说明长按
+     *       回调已经处理过这次手势，这里什么都不做，让 View 自己收尾；否则补发一次链接
+     *       点击，并**取消 View 待触发的长按**——UP 被我们消费后 View 收不到收尾事件，
+     *       那个延时任务不会自己消失，会在抬手之后把「长按复制」弹出来。</li>
+     * </ul>
+     *
+     * <p>状态放在单例上：Android 默认不拆分多指事件（{@code splitMotionEvents=false}），
+     * 同一时刻只有一整个触摸序列派发给一个 View，所以不存在两个 TextView 同时按下的情况。
+     * 将来若启用多指拆分，这里要改成每个 View 一个实例。
+     */
     public static class ClickableSpanTouchListener implements View.OnTouchListener {
         private static final ClickableSpanTouchListener INSTANCE = new ClickableSpanTouchListener();
+
+        /** 按下时命中的链接；null 表示这次手势不是从链接上按下的（或已经结束）。 */
+        private ClickableSpan downLink;
+
+        /** 按下时的事件时间；-1 表示没有记录。 */
+        private long downEventTime = -1L;
 
         public static ClickableSpanTouchListener getInstance() {
             return INSTANCE;
@@ -537,32 +594,68 @@ public class StringUtil {
                 return false;
             }
             Spanned buffer = (Spanned) text;
-            int action = event.getAction();
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_DOWN) {
-                int x = (int) event.getX();
-                int y = (int) event.getY();
 
-                x -= widget.getTotalPaddingLeft();
-                y -= widget.getTotalPaddingTop();
-
-                x += widget.getScrollX();
-                y += widget.getScrollY();
-
-                Layout layout = widget.getLayout();
-                int line = layout.getLineForVertical(y);
-                int off = layout.getOffsetForHorizontal(line, x);
-
-                ClickableSpan[] links = buffer.getSpans(off, off, ClickableSpan.class);
-
-                if (links.length != 0) {
-                    ClickableSpan link = links[0];
-                    if (action == MotionEvent.ACTION_UP) {
-                        link.onClick(widget);
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: {
+                    downEventTime = event.getEventTime();
+                    downLink = findLinkAt(widget, buffer, event);
+                    // 不消费按下事件，否则 View 不会启动长按判定（见类注释）
+                    return false;
+                }
+                case MotionEvent.ACTION_UP: {
+                    ClickableSpan link = downLink;
+                    long downTime = downEventTime;
+                    downLink = null;
+                    downEventTime = -1L;
+                    if (link == null) {
+                        return false;
                     }
+                    // 长按已经由 OnLongClickListener（长按复制 / 操作面板）处理，别再补一次链接点击
+                    if (isLongPressGesture(widget.isLongClickable(), downTime,
+                            event.getEventTime(), ViewConfiguration.getLongPressTimeout())) {
+                        return false;
+                    }
+                    // 按下与抬手必须落在同一个链接上，避免滑动手势被误判成点击
+                    if (findLinkAt(widget, buffer, event) != link) {
+                        return false;
+                    }
+                    // UP 被下面消费，View 收不到收尾事件：替它取消待触发的长按并复位按压态
+                    widget.cancelLongPress();
+                    widget.setPressed(false);
+                    link.onClick(widget);
                     return true;
                 }
+                case MotionEvent.ACTION_CANCEL:
+                    downLink = null;
+                    downEventTime = -1L;
+                    return false;
+                default:
+                    return false;
             }
-            return false;
+        }
+
+        /**
+         * 触摸点命中的链接；没命中（或布局还没完成）返回 null。
+         */
+        private static ClickableSpan findLinkAt(TextView widget, Spanned buffer, MotionEvent event) {
+            Layout layout = widget.getLayout();
+            if (layout == null) return null;
+
+            int x = (int) event.getX();
+            int y = (int) event.getY();
+
+            x -= widget.getTotalPaddingLeft();
+            y -= widget.getTotalPaddingTop();
+
+            x += widget.getScrollX();
+            y += widget.getScrollY();
+
+            int line = layout.getLineForVertical(y);
+            if (line < 0 || line >= layout.getLineCount()) return null;
+            int off = layout.getOffsetForHorizontal(line, x);
+
+            ClickableSpan[] links = buffer.getSpans(off, off, ClickableSpan.class);
+            return links.length == 0 ? null : links[0];
         }
     }
 }
