@@ -358,7 +358,8 @@ object Tutorials {
     val shortVideo = tutorial(
         id = "short_video",
         title = UiText.of("短视频操作指南"),
-        version = 1,
+        // 26.10.21：左右滑改为翻到右侧的详情/评论/相关推荐页，内容变了要 +1，老用户才会重新看到。
+        version = 3,
         target = ShortVideoPlayerActivity::class.java,
         kind = TutorialKind.GUIDE,
     ) {
@@ -382,7 +383,11 @@ object Tutorials {
             newline()
             text("· ")
             text(UiText.of("上下滑动")).bold().color(ACCENT)
-            text(UiText.of("：切换上一个/下一个短视频"))
+            text(UiText.of("：切换上一个/下一个短视频；一条播完会自动播下一条，到底后接着放相关推荐"))
+            newline()
+            text("· ")
+            text(UiText.of("左右滑动")).bold().color(ACCENT)
+            text(UiText.of("：滑到右侧查看视频详情、评论和相关推荐；在短视频页右滑退出"))
             newline()
             text("· ")
             text(UiText.of("双指捏合")).bold().color(ACCENT)

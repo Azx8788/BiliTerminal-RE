@@ -823,6 +823,14 @@ class VideoInfoFragment : BaseFragment() {
             val activity = activity
             if (activity is VideoInfoActivity) {
                 activity.crossFade(view)
+            } else {
+                // 直接嵌在别的宿主里（例如短视频页右侧的详情页）时没有 VideoInfoActivity 的
+                // crossFade 可调：initView 里为配合转场把根布局设成了 GONE，这里必须自己显示，
+                // 否则整页只有背景色（26.10.21 真机踩过）。
+                view?.apply {
+                    alpha = 1f
+                    visibility = View.VISIBLE
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

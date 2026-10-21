@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -26,9 +27,10 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.fragment.app.Fragment
+import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import com.RobinNotBad.BiliClient.R
-import com.RobinNotBad.BiliClient.activity.MenuActivity
 import com.RobinNotBad.BiliClient.activity.base.InstanceActivity
 import com.RobinNotBad.BiliClient.activity.video.info.VideoInfoActivity
 import com.RobinNotBad.BiliClient.api.DanmakuApi
@@ -40,6 +42,7 @@ import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
+import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.VideoPreloadManager
@@ -58,20 +61,23 @@ import tv.danmaku.ijk.media.player.IjkMediaPlayer
 
 class ShortVideoPlayerActivity : InstanceActivity() {
 
-    private lateinit var viewPager: ViewPager2
-    private lateinit var loadingLayout: View
-    private lateinit var errorLayout: View
-    private lateinit var loadingText: TextView
-    private lateinit var errorText: TextView
+    /**
+     * 本页要自己处理横滑与「短视频页右滑退出」，必须关掉系统窗口层的右滑返回：
+     * 那只手势在窗口层直接 finish()，不走 onBackPressed，应用根本收不到。
+     */
+    override val forceNoSwipeTheme: Boolean
+        get() = true
 
-    private val preloadManager = VideoPreloadManager(preloadCount = 3)
+    /** 外壳横向 pager：第 0 页短视频流，第 1~3 页详情/评论/相关推荐（与手机版一致）。 */
+    private lateinit var pager: ViewPager2
+    private lateinit var shellAdapter: ShortVideoShellAdapter
+
     var screenWidth = 0
     var screenHeight = 0
-    private var currentPageIndex = 0
-    private var wasPlayingWhenPaused = false
     internal var isBottomControlVisible = true
-    
-    private lateinit var audioManager: AudioManager
+
+    /** 右侧详情三页当前对应的 aid；变化时调用 [onFeedAnchorChanged] 重绑。 */
+    private var detailAnchorAid = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,100 +88,27 @@ class ShortVideoPlayerActivity : InstanceActivity() {
         screenWidth = metrics.widthPixels
         screenHeight = metrics.heightPixels
 
-        viewPager = findViewById(R.id.viewPager)
-        loadingLayout = findViewById(R.id.loadingLayout)
-        errorLayout = findViewById(R.id.errorLayout)
-        loadingText = findViewById(R.id.loadingText)
-        errorText = findViewById(R.id.errorText)
-
-        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-
-        findViewById<TextView>(R.id.retryButton).setOnClickListener { loadFeed() }
-
-        preloadManager.onItemsLoaded = { items ->
-            if (items.isNotEmpty()) {
-                loadingLayout.visibility = View.GONE
-                errorLayout.visibility = View.GONE
-
-                val adapter = viewPager.adapter as? ShortVideoPagerAdapter
-                if (adapter == null) {
-                    val newAdapter = ShortVideoPagerAdapter(this, preloadManager, audioManager)
-                    viewPager.adapter = newAdapter
-                } else {
-                    // 用范围插入代替 notifyDataSetChanged：避免 ViewPager2 重建全部页面并跳回第一页
-                    val start = preloadManager.getItemCount() - items.size
-                    if (start >= 0) adapter.notifyItemRangeInserted(start, items.size)
-                }
-            }
-        }
-
-        preloadManager.onLoadError = { msg ->
-            if (preloadManager.getItemCount() == 0) {
-                loadingLayout.visibility = View.GONE
-                errorLayout.visibility = View.VISIBLE
-                errorText.text = msg
-            } else {
-                MsgUtil.showMsg(msg)
-            }
-        }
-
-        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+        pager = findViewById(R.id.pager)
+        shellAdapter = ShortVideoShellAdapter(
+            this,
+            // 复用「视频详情页相关推荐」的既有开关：关掉的人，短视频第 4 页也不出现
+            relatedEnabled = SharedPreferencesUtil.getBoolean(SettingsKeys.RELATED_ENABLE, true)
+        )
+        pager.adapter = shellAdapter
+        // 横向翻页不再让 pager 自己抢手势：它判定「横向」的阈值太松，竖向刷短视频时
+        // 手指稍微一斜就被它拦成翻页。改由每一页根布局 SwipePageLayout 判方向后驱动
+        // fakeDrag（见该类注释），pager 只负责承载页面与吸附。
+        pager.isUserInputEnabled = false
+        // 详情/评论/相关推荐三页常驻：滑过去是纯横向动画，不用等它们现建
+        pager.offscreenPageLimit = shellAdapter.itemCount
+        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
-                currentPageIndex = position
-                preloadManager.onSwipeToIndex(position)
-
-                val adapter = viewPager.adapter as? ShortVideoPagerAdapter
-                adapter?.let {
-                    val prevPos = it.lastVisiblePosition
-                    if (prevPos >= 0 && prevPos != position) {
-                        it.pausePlayer(prevPos)
-                    }
-                    it.lastVisiblePosition = position
-                    it.setupPlayerAtPosition(position)
-                }
-            }
-
-            override fun onPageScrollStateChanged(state: Int) {
-                if (state == ViewPager2.SCROLL_STATE_IDLE) {
-                    val adapter = viewPager.adapter as? ShortVideoPagerAdapter
-                    adapter?.playAtPosition(currentPageIndex)
-                }
+                // 从详情页滑回短视频时，当前条可能已经变了（例如播完自动接下一条）
+                if (position == 0) onFeedAnchorChanged()
             }
         })
 
         // 教程改由 BaseActivity 按 Tutorials 注册表集中触发
-
-        loadFeed()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        val adapter = viewPager.adapter as? ShortVideoPagerAdapter
-        if (wasPlayingWhenPaused) {
-            adapter?.resumeCurrent()
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        val adapter = viewPager.adapter as? ShortVideoPagerAdapter
-        wasPlayingWhenPaused = adapter?.isCurrentPlaying() == true
-        adapter?.pauseCurrent()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        if (isFinishing) {
-            val adapter = viewPager.adapter as? ShortVideoPagerAdapter
-            adapter?.releaseAll()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        // 兜底：onStop 里只在 isFinishing 时释放，系统回收页面时也要释放，否则播放器泄漏
-        (viewPager.adapter as? ShortVideoPagerAdapter)?.releaseAll()
-        preloadManager.release()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -184,25 +117,129 @@ class ShortVideoPlayerActivity : InstanceActivity() {
         windowManager.defaultDisplay.getMetrics(metrics)
         screenWidth = metrics.widthPixels
         screenHeight = metrics.heightPixels
-        (viewPager.adapter as? ShortVideoPagerAdapter)?.notifyScreenSizeChanged(screenWidth, screenHeight)
     }
 
     override fun onBackPressed() {
-        // 返回时暂停当前视频和弹幕，增加异常捕获防止闪退
-        try {
-            val adapter = viewPager.adapter as? ShortVideoPagerAdapter
-            adapter?.pauseCurrent()
-        } catch (e: Exception) {
-            Logu.e("ShortVideo", "返回暂停异常: ${e.message}")
+        // 在右侧详情/评论/相关推荐页时，返回先回到短视频首页，而不是直接退出本页
+        if (::pager.isInitialized && pager.currentItem > 0) {
+            pager.setCurrentItem(0, true)
+            return
         }
-        finish()
+        super.onBackPressed()
     }
 
-    private fun loadFeed() {
-        loadingLayout.visibility = View.VISIBLE
-        errorLayout.visibility = View.GONE
-        loadingText.text = UiText.of("加载短视频...")
-        preloadManager.loadInitial()
+    /** 供页面根布局驱动 fakeDrag；页面还没建好时返回 null。 */
+    internal fun shellPager(): ViewPager2? = if (::pager.isInitialized) pager else null
+
+    /**
+     * 页面根布局判出「明确横向」后回调（见 [com.RobinNotBad.BiliClient.ui.widget.SwipePageLayout]）。
+     *
+     * @param direction -1 = 手指向左（翻到下一页），+1 = 手指向右（翻回上一页）
+     */
+    internal fun handleSwipe(direction: Int) {
+        val pager = shellPager() ?: return
+        if (isFinishing) return
+        val target = if (direction < 0) pager.currentItem + 1 else pager.currentItem - 1
+        if (target < 0) {
+            // 短视频首页再向右滑就是退出本页（系统右滑返回已在本页关闭）
+            finish()
+            return
+        }
+        if (target < shellAdapter.itemCount) pager.setCurrentItem(target, true)
+    }
+
+    /**
+     * 短视频页换了当前条：把右侧详情/评论/相关推荐热更新到新视频。
+     *
+     * 注意不能去 `notifyItemRangeChanged`：那会让 ViewPager2 把已经显示出来的页面
+     * 移除再重建，真机上出现过整页空白（详见 [ShortVideoShellAdapter] 注释）。
+     */
+    internal fun onFeedAnchorChanged() {
+        if (!::pager.isInitialized) return
+        val item = currentShortVideo()
+        val aid = item?.aid ?: 0L
+        if (aid == detailAnchorAid) return
+        detailAnchorAid = aid
+        shellAdapter.refreshDetailPages(aid, item?.bvid)
+    }
+
+    /** 当前这条短视频；右侧详情页据此渲染。 */
+    fun currentShortVideo(): ShortVideoItem? {
+        if (!::pager.isInitialized) return null
+        val item = shellAdapter.activeFeedFragment?.currentShortVideo
+        return item
+    }
+
+    /** 播放完成的回调转交（播放逻辑在短视频页里；外壳只做转发）。 */
+    internal fun onVideoCompleted(position: Int) {
+        shellAdapter.activeFeedFragment?.handleVideoCompleted(position)
+    }
+}
+
+/**
+ * 外壳 pager 的适配器：第 0 页是短视频流（[ShortVideoFeedFragment]），
+ * 第 1~3 页是视频详情 / 评论 / 相关推荐（[ShortVideoDetailPageFragment]）。
+ *
+ * **页码与 itemId 都不能跟着 aid 变**：26.10.21 真机上试过把 aid 编进 `getItemId`
+ * 再 `notifyItemRangeChanged`，旧 Fragment 的视图被摘掉后新视图挂不回来，整页只剩背景色。
+ * 现在 id 恒等于页码，换视频时由 [refreshDetailPages] 直接通知三个页面壳自己换内容。
+ */
+class ShortVideoShellAdapter(
+    activity: ShortVideoPlayerActivity,
+    private val relatedEnabled: Boolean
+) : FragmentStateAdapter(activity) {
+
+    /** 右侧详情三页当前的锚点 aid；0 表示短视频还没加载出来。 */
+    var detailAid: Long = 0L
+        private set
+
+    /** 与 [detailAid] 配套的 bvid，详情页问接口时要用。 */
+    var detailBvid: String? = null
+        private set
+
+    /** 已经创建出来的详情页壳，换视频时逐个热更新内容。 */
+    private val detailFragments = mutableMapOf<Int, ShortVideoDetailPageFragment>()
+
+    /** 短视频流那页；外壳从这里取「当前这条视频」并转交播放完成回调。 */
+    var feedFragment: ShortVideoFeedFragment? = null
+        private set
+
+    /** 只在还挂在页面里时可用：Fragment 被回收后引用会失效。 */
+    val activeFeedFragment: ShortVideoFeedFragment?
+        get() = feedFragment?.takeIf { it.isAdded }
+
+    override fun getItemCount(): Int = if (relatedEnabled) 4 else 3
+
+    override fun createFragment(position: Int): Fragment {
+        if (position == 0) {
+            val fragment = ShortVideoFeedFragment()
+            feedFragment = fragment
+            return fragment
+        }
+        val fragment = ShortVideoDetailPageFragment.newInstance(position, detailAid, detailBvid)
+        detailFragments[position] = fragment
+        return fragment
+    }
+
+    /**
+     * 当前短视频换了：把右侧三页的内容换成新 aid 对应的视频。
+     *
+     * 不碰 ViewPager2 的 item 与 id，只让页面壳自己重建子 Fragment，
+     * 这样屏幕上的页面不会经历「移除 → 重建」的中间态。
+     */
+    fun refreshDetailPages(aid: Long, bvid: String?) {
+        if (aid == detailAid && bvid == detailBvid) return
+        detailAid = aid
+        detailBvid = bvid
+        val iterator = detailFragments.iterator()
+        while (iterator.hasNext()) {
+            val (page, fragment) = iterator.next()
+            if (fragment.isAdded) {
+                fragment.updateItem(aid, bvid)
+            } else {
+                iterator.remove() // 已销毁的页面壳不再持有
+            }
+        }
     }
 }
 
@@ -458,9 +495,14 @@ class ShortVideoPagerAdapter(
                 if (event.action == MotionEvent.ACTION_DOWN) {
                     isScaling = false
                 }
-                
+
                 scaleGestureDetector?.onTouchEvent(event)
                 gestureDetector?.onTouchEvent(event)
+                // 必须返回 true：返回 false 时本 View 不会成为触摸目标，父容器（竖向 pager）
+                // 接管后续事件后**不会**再给这里发 MOVE/UP/CANCEL，GestureDetector 收不到抬手，
+                // 于是每次点按/滑动都会在 500ms 后误触发 onLongPress 打开视频详情
+                // （真机实测：点一下、上下滑一下都会跳详情页）。返回 true 不影响父级滚动：
+                // pager 在手指真正纵向移动后仍会 onInterceptTouchEvent 抢走手势并给这里发 CANCEL。
                 true
             }
 
@@ -746,13 +788,13 @@ class ShortVideoPagerAdapter(
                 }
 
                 playerBridge.setOnCompletion {
-                    // 循环播放
-                    playerBridge.seekTo(0)
-                    danmakuManager?.seekTo(0)
-                    if (isActive) {
-                        playerBridge.start()
-                        danmakuManager?.resume()
-                    }
+                    // 不再循环当前条：交给 Activity 决定「切下一条 / 相关推荐续接 / 停下」
+                    // （旧实现是 seekTo(0) 无限循环同一条，与手机版行为不一致）
+                    isPlaying = false
+                    buttonVideo.setImageResource(R.drawable.btn_player_play)
+                    playIcon.visibility = View.VISIBLE
+                    danmakuManager?.pause()
+                    activity.onVideoCompleted(boundPosition)
                 }
 
                 playerBridge.setScreenOnWhilePlaying(true)
@@ -921,6 +963,11 @@ class ShortVideoPagerAdapter(
 
         fun resume() {
             if (isPrepared) {
+                // 已经播到结尾（自动接续失败停住的情况）：先回到开头，否则 start() 会立刻再次触发完成
+                if (videoAll > 0 && videoNow >= videoAll - 250) {
+                    playerBridge.seekTo(0)
+                    danmakuManager?.seekTo(0)
+                }
                 playerBridge.start()
                 isPlaying = true
                 buttonVideo.setImageResource(R.drawable.btn_player_pause)
