@@ -66,13 +66,16 @@ class DanmakuManager(
         if (!file.exists()) return
 
         try {
-            // 用 use{} 包住输入流：原来 file.inputStream() 交给 createParser 后，
-            // 解析中途抛异常或提前结束时这个文件描述符就没人关了。
-            // DanmakuParser.prepare() 是同步解析，configureAndPrepare 返回后流已读完，可安全关闭
-            file.inputStream().use { stream ->
-                val parser = createParser(stream)
-                configureAndPrepare(parser)
-            }
+            // 必须把文件内容**整体读进内存**再交给 parser，不能直接交 FileInputStream。
+            // 原因：DFM 的 XML 解析是懒执行的 —— 真正的解析发生在 DanmakuView 的渲染线程
+            // （DrawTask.loadDanmakus → BiliDanmukuParser.parse → xmlReader.parse(source.data())），
+            // 而 configureAndPrepare() 返回时 parser 只是**存了流引用**，一个字节都还没读。
+            // 26.10.02 的审计把这里改成了 `file.inputStream().use { ... }`，流在
+            // configureAndPrepare() 返回的瞬间就被关掉，懒解析去读时拿到的是已关闭的流：
+            // BiliDanmukuParser 捕获 IOException 后 return null → 弹幕列表为空且**没有任何提示**。
+            // 表现就是「所有本地缓存视频都没有弹幕，点『更新弹幕』重下也没用」（文件本身是好的）。
+            // ByteArrayInputStream 的 close() 是空操作，即使之后有人关流也仍可读，正好适合这种晚读。
+            loadFromXmlInput(java.io.ByteArrayInputStream(file.readBytes()))
         } catch (e: Exception) {
             e.printStackTrace()
         }

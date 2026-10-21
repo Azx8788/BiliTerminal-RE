@@ -120,7 +120,9 @@ open class RefreshListFragment : BaseFragment() {
 
     fun loadFail() {
         page--
-        MsgUtil.showMsgLong(getString(R.string.text_load_failed))
+        // 用 application context 取文案：失败回调常常发生在 fragment 已经 detach 之后，
+        // 直接 getString 会抛 IllegalStateException: Fragment ... not attached to a context.
+        MsgUtil.showMsgLong(getAppContext().getString(R.string.text_load_failed))
         setRefreshing(false)
     }
 

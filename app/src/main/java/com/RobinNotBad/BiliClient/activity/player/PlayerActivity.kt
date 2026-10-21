@@ -83,6 +83,7 @@ import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
+import com.RobinNotBad.BiliClient.util.view.EditorEnterKeyGuard
 import com.google.android.material.snackbar.Snackbar
 import master.flame.danmaku.controller.IDanmakuView
 import okhttp3.OkHttpClient
@@ -214,6 +215,14 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var audioTrackUrl: String? = null // DASH外部音频轨道
     private var audioPlayer: android.media.MediaPlayer? = null // 外部音频播放器
 
+    /**
+     * 外部音频轨道的「seek 冷却截止时刻」（`SystemClock.elapsedRealtime()`）。
+     * `MediaPlayer.seekTo` 是异步的：seek 还没落地时 `currentPosition` 仍停在旧位置，
+     * 此时若继续按 800ms 偏差校正就会对同一次拖动再 seek 一遍，听感是"拖完停两次"。
+     * 由 [seekToPosition] 写入，[progressChange] 的音频校正读取。
+     */
+    private var audioResyncSuppressMs: Long = 0L
+
     companion object {
         /** `onSaveInstanceState` 保存的播放位置（毫秒），用于系统重建本页后回到原位 */
         private const val STATE_POSITION = "player_state_position"
@@ -223,6 +232,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         /** 两次自动恢复之间的最小间隔，避免刚重建完又被判停滞 */
         private const val STALL_RETRY_COOLDOWN_MS = 15_000L
+
+        /**
+         * seek 之后外部音频轨道偏差校正的冷却时长（毫秒）。
+         * 要盖住 `MediaPlayer.seekTo` 的异步窗口：seek 完 currentPosition 才会跳到新位置，
+         * 冷却太短仍会在 seek 落地前触发二次校正（重复 seek 造成可闻停顿）。
+         */
+        private const val AUDIO_RESYNC_COOLDOWN_MS = 1_200L
 
         /** 恢复后位置又前进了这么多毫秒，才算"真的播起来了"，恢复计数清零 */
         private const val STALL_RECOVERED_MS = 5_000
@@ -1563,15 +1579,20 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (isPrepared && isPlaying && !isSeeking && !destroyed) {
                     // 取不到播放器时保持上次位置，避免进度条突然跳回 0
                     video_now = ijkPlayer?.currentPosition?.toInt() ?: video_now
-                    // 外部音频轨道（DASH分离文件fallback）同步校正：偏差过大时重新对齐，避免音画漂移
+                    // 外部音频轨道（DASH分离文件fallback）同步校正：偏差过大时重新对齐，避免音画漂移。
+                    // seek 的冷却期内不校正：MediaPlayer.seekTo 异步，seek 未完成时 currentPosition
+                    // 还停在旧位置，这时再校正等于同一位置 seek 两遍（用户听到的就是停顿两次）。
+                    val nowElapsed = android.os.SystemClock.elapsedRealtime()
                     audioPlayer?.let { ap ->
-                        try {
-                            val audioPos = ap.currentPosition
-                            if (audioPos >= 0 && Math.abs(audioPos - video_now) > 800) {
-                                ap.seekTo(video_now)
-                                Logu.d("AudioTrack", "音频轨道重新同步: $audioPos -> $video_now")
-                            }
-                        } catch (_: Exception) {}
+                        if (nowElapsed >= audioResyncSuppressMs) {
+                            try {
+                                val audioPos = ap.currentPosition
+                                if (audioPos >= 0 && Math.abs(audioPos - video_now) > 800) {
+                                    ap.seekTo(video_now)
+                                    Logu.d("AudioTrack", "音频轨道重新同步: $audioPos -> $video_now")
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
                     // 弹幕时钟对齐：DFM 的时钟按自身 mTimeBase 自走，只有基准与视频位置一致时才会跟着视频走。
                     // 跑偏时**必须**用 seekTo（DrawHandler 的 SEEK_POS 分支会同步 `mTimeBase -= deltaMs`），
@@ -1583,7 +1604,6 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         loading_info.visibility != View.VISIBLE
                     ) {
                         val danmakuTime = mDanmakuView!!.currentTime
-                        val nowElapsed = android.os.SystemClock.elapsedRealtime()
                         if (DanmakuSync.shouldResync(video_now.toLong(), danmakuTime) &&
                             nowElapsed - danmakuResyncMs >= 1000L
                         ) {
@@ -2754,11 +2774,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             override fun onStopTrackingTouch(seekBar: SeekBar) {
                 isSeeking = false
                 if (isPrepared && !destroyed) {
-                    val seekPos = seekbar_progress.progress
-                    // 用户主动拖进片头/片尾就算「已处理」，否则会被立刻自动跳走
-                    onUserSeekTo(seekPos.toLong())
-                    ijkPlayer!!.seekTo(seekPos.toLong())
-                    if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(seekPos.toLong())
+                    // 统一走 seekToPosition：它会同时 seek 视频、弹幕和外部音频轨。
+                    // 原来这里只 seek 了视频（和弹幕），DASH 双文件播放时 audioPlayer 仍停在旧位置，
+                    // 随后被 progressChange 的 800ms 偏差校正再 seek 一次 —— 用户听到的就是
+                    // "松手后声音停半秒到一秒"。
+                    seekToPosition(seekbar_progress.progress.toLong())
                     autohideReset()
                 }
             }
@@ -2792,6 +2812,23 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         })
     }
 
+    /**
+     * 兜住平台「回车推进焦点」自己抛的 ISE（线上崩溃 #66，成因见 [EditorEnterKeyGuard]）。
+     *
+     * 播放页**不继承 BaseActivity**（直接 extends Activity，见类声明），所以基类那层
+     * dispatchKeyEvent 兜底覆盖不到它；而播放页恰好有单行输入框 `danmaku_send_edit`
+     * （`activity_player.xml`，singleLine + 无 OnEditorActionListener），正是平台那条
+     * `shouldAdvanceFocusOnEnter()` 为真的形态，必须单独兜一次。
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        return try {
+            super.dispatchKeyEvent(event)
+        } catch (e: IllegalStateException) {
+            if (!EditorEnterKeyGuard.swallowFocusSearchFailure("PlayerActivity", e)) throw e
+            true
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // 锁定期间播放器按键（表冠/方向键/确认键）一律不响应，必须先解锁
         if (PlayerLockPolicy.shouldBlockPlaybackInput(lockPhase)) return super.onKeyDown(keyCode, event)
@@ -2813,10 +2850,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             onUserSeekTo(position)
             ijkPlayer!!.seekTo(position)
             if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(position)
-            // 同步外部音频轨道
+            // 同步外部音频轨道：DASH 双文件（video.mp4 + audio.m4a）是视频、音频两个播放器，
+            // 只 seek 视频会让音轨留在旧位置。seek 期间先压住 progressChange 的偏差校正，
+            // 否则异步 seek 未落地时会再校正一次（重复 seek → 可闻停顿）。
             if (audioPlayer != null) {
                 try { audioPlayer!!.seekTo(position.toInt()) } catch (_: Exception) {}
             }
+            audioResyncSuppressMs = android.os.SystemClock.elapsedRealtime() + AUDIO_RESYNC_COOLDOWN_MS
         }
     }
 

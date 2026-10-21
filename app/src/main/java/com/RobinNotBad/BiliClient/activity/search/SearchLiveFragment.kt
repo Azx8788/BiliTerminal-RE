@@ -57,6 +57,7 @@ class SearchLiveFragment : SearchFragment() {
                     if (jsonArray != null) list.addAll(LiveApi.analyzeLiveRooms(jsonArray))
                     if (list.size == 0) bottom = true
                     else CenterThreadPool.runOnUiThread {
+                        if (!isAdded || view == null) return@runOnUiThread
                         // 26.10.04 批次 3（B5）：起点 lastSize + 1 → lastSize（原写法第 2 页越界）
                         val lastSize = roomList.size
                         roomList.addAll(list)
@@ -75,6 +76,7 @@ class SearchLiveFragment : SearchFragment() {
 
     override fun refreshInternal() {
         CenterThreadPool.runOnUiThread {
+            if (!isAdded || view == null) return@runOnUiThread
             page = 1
             if (this.liveCardAdapter == null)
                 this.liveCardAdapter = LiveCardAdapter(this.requireContext(), this.roomList)

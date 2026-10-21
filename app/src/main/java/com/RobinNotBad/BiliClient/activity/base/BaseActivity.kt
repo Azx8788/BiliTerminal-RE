@@ -50,6 +50,7 @@ import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
 import com.RobinNotBad.BiliClient.util.TopbarLongPressPrefs
 import com.RobinNotBad.BiliClient.util.ViewCapabilityProbe
+import com.RobinNotBad.BiliClient.util.view.EditorEnterKeyGuard
 
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
@@ -74,6 +75,19 @@ open class BaseActivity : AppCompatActivity() {
 
     @JvmField var force_single_column: Boolean = false
 
+    /**
+     * 子类是否**强制**使用带 `windowSwipeToDismiss=false` 的 NoSwipe 主题。
+     *
+     * 为什么做成钩子而不是让子类在 `onCreate` 里自己 `setTheme`：主题统一在本类
+     * [onCreate] 里设置（在 `super.onCreate` 之前），窗口属性在窗口创建时就已生效，
+     * 子类事后再调 `setTheme` 既会被这里覆盖、也改不动已经在用的窗口属性。
+     *
+     * 需要它的场景：短视频页要在应用层实现「右滑进 UP 主页 / 左滑返回」，
+     * 必须先吃掉系统窗口层的右滑返回（它直接 `finish()`，不走 `onBackPressed`）。
+     */
+    protected open val forceNoSwipeTheme: Boolean
+        get() = false
+
     // 记录本 Activity 创建时的「外观版本号」，用于返回前台时检测配色/圆角/字体任一项变更并即时重建。
     // 用单个 Int 而不是逐个比对各设置项：将来再加第 4 个外观模块时不需要改这里。
     private var appliedAppearanceVersion: Int = -1
@@ -94,7 +108,13 @@ open class BaseActivity : AppCompatActivity() {
         // 「禁用返回键」为的是拦住手表自带的右滑返回；那只手势在窗口层直接 finish，不走 onBackPressed，
         // 所以这里必须同时换到带 windowSwipeToDismiss=false 的 NoSwipe 主题。
         // 此前只改了 onBackPressed，右滑返回照旧生效——这就是 issue #1 里「全局屏蔽右滑返回失效」。
-        setTheme(ColorScheme.themeResId(theme, noSwipe = SharedPreferencesUtil.getBoolean(SettingsKeys.BACK_DISABLE, false)))
+        setTheme(
+            ColorScheme.themeResId(
+                theme,
+                noSwipe = forceNoSwipeTheme ||
+                    SharedPreferencesUtil.getBoolean(SettingsKeys.BACK_DISABLE, false)
+            )
+        )
 
         setRequestedOrientation(
             if (SharedPreferencesUtil.getBoolean("ui_landscape", false))
@@ -287,6 +307,27 @@ open class BaseActivity : AppCompatActivity() {
                 current ?: android.widget.LinearLayout.LayoutParams(width, height)
             )
             else -> ViewGroup.MarginLayoutParams(current ?: ViewGroup.MarginLayoutParams(width, height))
+        }
+    }
+
+    /**
+     * 兜住平台在「回车推进焦点」时自己抛的 ISE（线上崩溃 #66；成因与判据不一致的两端都在
+     * [EditorEnterKeyGuard] 里）。
+     *
+     * <h3>为什么覆写 dispatchKeyEvent 而不是 onKeyDown / onKeyUp</h3>
+     * 崩溃发生在**视图**的 `TextView.onKeyUp` 里，而它是被 `super.dispatchKeyEvent(event)`
+     * 一路调到的（`Activity.dispatchKeyEvent` → `PhoneWindow.superDispatchKeyEvent` →
+     * `DecorView` → 视图树），只有在这一层包住才能赶在异常冒泡回 `ViewRootImpl`（那里会直接
+     * 崩进程）之前接住；`onKeyDown` / `onKeyUp` 是视图消费不掉后才轮到的回调，根本走不到。
+     *
+     * 只吞「消息原文等于平台那句」的 ISE，其它异常照旧抛出——同名的 ISE 别处可能是真 bug。
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        return try {
+            super.dispatchKeyEvent(event)
+        } catch (e: IllegalStateException) {
+            if (!EditorEnterKeyGuard.swallowFocusSearchFailure("BaseActivity", e)) throw e
+            true
         }
     }
 

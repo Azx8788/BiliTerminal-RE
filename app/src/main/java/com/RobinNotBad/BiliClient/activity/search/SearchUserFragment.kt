@@ -50,6 +50,7 @@ class SearchUserFragment : SearchFragment() {
                     SearchApi.getUsersFromSearchResult(result, list)
                     if (list.isEmpty()) bottom = true
                     CenterThreadPool.runOnUiThread {
+                        if (!isAdded || view == null) return@runOnUiThread
                         val lastSize = userInfoList.size
                         userInfoList.addAll(list)
                         userInfoAdapter.notifyItemRangeInserted(lastSize, userInfoList.size - lastSize)
@@ -65,6 +66,7 @@ class SearchUserFragment : SearchFragment() {
     override fun refreshInternal() {
         page = 1
         CenterThreadPool.runOnUiThread {
+            if (!isAdded || view == null) return@runOnUiThread
             val sizeOld = this.userInfoList.size
             this.userInfoList.clear()
             if (sizeOld != 0) this.userInfoAdapter.notifyItemRangeRemoved(0, sizeOld)
