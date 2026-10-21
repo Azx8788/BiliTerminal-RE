@@ -722,6 +722,22 @@
     <string name="btn_download_update">下载更新</string>
     <string name="btn_cancel_download">取消下载</string>
     <string name="btn_retry_download">重试下载</string>
+
+    <!-- ===== 内测码更新（26.10.21） ===== -->
+    <string name="text_update_beta_code_title">输入内测码</string>
+    <string name="text_update_beta_code_hint">纯数字内测码</string>
+    <string name="msg_update_beta_code_invalid">内测码只能是数字</string>
+    <string name="msg_update_beta_code_wrong">内测码错误</string>
+    <string name="btn_update_beta_download">下载</string>
+    <string name="text_update_beta_checking">正在解析内测包…</string>
+    <string name="text_update_beta_text_loading">正在下载内测文本…</string>
+    <string name="text_update_beta_text_failed">获取内测文本失败：%1$s</string>
+    <string name="text_update_beta_text_title">内测公告</string>
+    <string name="text_update_beta_failed">获取内测包失败：%1$s</string>
+    <string name="text_update_beta_title">内测版更新</string>
+    <string name="text_update_beta_version">%1$s（%2$s）</string>
+    <string name="text_update_beta_default_name">内测包</string>
+    <string name="text_update_beta_desc">内测码：%1$s\n内测包下载完成后直接安装，不比较版本号。</string>
     <!-- ===== 列表空态 / 翻页（12.4 文案迁移：二批） ===== -->
     <string name="text_list_empty">啥都木有~</string>
     <string name="text_list_empty_retry">啥都木有~\n点我重试</string>
@@ -756,6 +772,8 @@
     <string name="text_download_complete_install_tried">下载完成，已尝试安装</string>
     <string name="text_download_complete_install_failed">下载完成，安装失败，已保存到下载文件夹</string>
     <string name="text_download_complete_rename_failed">下载完成，重命名失败</string>
+    <!-- 图片下载完成提示（26.10.21 起带上实际保存目录；登记媒体库的细节见 util/PictureMediaStore.kt） -->
+    <string name="msg_picture_saved">图片已保存：%1$s\n可在相册中查看</string>
     <string name="text_danmaku_download_failed">弹幕下载失败！</string>
     <string name="text_load_failed">加载失败</string>
     <!-- ===== 敏感操作前的 Cookie 检查提示（12.4 文案迁移：五批） ===== -->
@@ -772,6 +790,9 @@
     <string name="text_update_verify_failed">安装包校验失败：%1$s</string>
     <string name="text_update_download_error">下载出错：%1$s</string>
     <string name="text_parse_failed">解析失败！</string>
+
+    <!-- ===== 头像选图（线上崩溃 #63：不再依赖 ACTION_PICK，见 EditProfileActivity.selectImage） ===== -->
+    <string name="msg_no_image_picker">没有可用的相册或文件管理器</string>
 
     <!-- ===== 12.4 B9a: settings messages / page names ===== -->
     <string name="msg_settinggroupactivity_001">自定义字体已应用</string>
@@ -1485,6 +1506,8 @@
     <string name="uitext_shortvideoplayeractivity_002">加载视频失败</string>
     <string name="uitext_shortvideoplayeractivity_003">播放错误</string>
     <string name="uitext_shortvideoplayeractivity_004">加载短视频...</string>
+    <string name="text_shortvideoplayer_no_more">没有更多短视频了</string>
+    <string name="text_shortvideoplayer_detail_not_ready">短视频还没加载好，先滑回去看看</string>
     <string name="uitext_timelineactivity_001">时间线</string>
     <string name="uitext_voteinfoactivity_001">已结束</string>
     <string name="uitext_voteinfoactivity_002">已投票</string>
