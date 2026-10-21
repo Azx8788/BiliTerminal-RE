@@ -445,16 +445,15 @@ class LocalListActivity : InstanceActivity() {
     }
 
     private fun downloadDanmakuFile(url: String, file: File) {
-        try {
-            val response = NetWorkUtil.get(url)
-            val body = response.body
-            if (body != null) {
-                val data = NetWorkUtil.decompress(body.bytes())
-                file.writeBytes(data)
-            }
-            response.close()
-        } catch (e: Exception) {
-            throw e
+        NetWorkUtil.get(url).use { response ->
+            // 不判状态码时，404/412 的错误页会被当成弹幕正文写进 danmaku.xml，
+            // 用户看到的是「更新成功」但播放时依旧没有弹幕 —— 和下载服务里的
+            // 审计 M11-f 是同一类坑，改成失败即抛出、由上层提示「弹幕更新失败」。
+            if (!response.isSuccessful) throw java.io.IOException("HTTP " + response.code)
+            val body = response.body ?: throw java.io.IOException("empty body")
+            val data = NetWorkUtil.decompress(body.bytes())
+            if (data.isEmpty()) throw java.io.IOException("empty danmaku")
+            file.writeBytes(data)
         }
     }
 

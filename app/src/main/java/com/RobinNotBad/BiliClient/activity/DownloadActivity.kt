@@ -17,6 +17,7 @@ import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.FileUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
+import com.RobinNotBad.BiliClient.util.PictureMediaStore
 import okhttp3.Response
 import okio.buffer
 import okio.sink
@@ -222,6 +223,17 @@ class DownloadActivity : BaseActivity() {
                 }
             } else {
                 runOnUiThread { MsgUtil.showMsg(getString(R.string.text_download_complete_rename_failed)) }
+            }
+        } else if (type == 0) {
+            // 图片下载（type 0，入口只有 ImageViewerActivity）。写完必须登记进系统媒体库：
+            // 这里是裸 File 写公共 Pictures/ 目录，Android 10+ 不会自动索引，而相册/图库和
+            // 文件管理器的「图片」分类都只查 MediaStore —— 不登记就是「下载完成」却哪儿都找不到
+            // （26.10.21 在手表模拟器上复现并确证，细节见 util/PictureMediaStore.kt 的注释）。
+            PictureMediaStore.scan(this, downloadedFile)
+            // 提示里带上实际保存目录：以前只有一句「下载完成」，用户即使知道去相册翻，
+            // 也不知道文件落在哪个文件夹
+            runOnUiThread {
+                MsgUtil.showMsg(getString(R.string.msg_picture_saved, PictureMediaStore.displayFolder(downloadedFile)))
             }
         } else {
             runOnUiThread { MsgUtil.showMsg(getString(R.string.text_update_download_complete)) }
