@@ -165,6 +165,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private lateinit var btn_debug: ImageButton
     private lateinit var lock_btn: ImageButton
     private lateinit var lock_overlay: View
+    private lateinit var left_control: LinearLayout
     private lateinit var seekbar_progress: HighEnergyProgressBar
     private lateinit var seekbar_speed: SeekBar
     private lateinit var text_progress: TextView
@@ -782,6 +783,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         btn_debug = findViewById(R.id.btn_debug)
         lock_btn = findViewById(R.id.lock_btn)
         lock_overlay = findViewById(R.id.lock_overlay)
+        left_control = findViewById(R.id.left_control)
 
         text_subtitle = findViewById(R.id.text_subtitle)
         text_audio_title = findViewById(R.id.audio_title)
@@ -1069,6 +1071,23 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun initLockUi() {
         lock_overlay.setOnClickListener { onLockScreenTap() }
         lock_btn.setOnClickListener { onLockButtonClick() }
+        alignLeftControlToRight()
+    }
+
+    /**
+     * 把左侧按钮列对齐到右侧竖列（弹幕/旋转/更多）的竖向中线。
+     *
+     * 右列的上下锚点（`top` 与 `bottom_control`）都在 `control_layout` 内部，位于 root 层的
+     * `left_control` 够不到它们，所以这里量一次两条列的中线差、用 translationY 平移。
+     * 一旦量到就不再重复——顶栏/底栏高度变化会触发重新布局，那时会重新量。
+     */
+    private fun alignLeftControlToRight() {
+        left_control.post {
+            if (left_control.height <= 0 || right_control.height <= 0) return@post
+            val dy = (right_control.top + right_control.bottom) / 2f -
+                    (left_control.top + left_control.bottom) / 2f
+            left_control.translationY = dy
+        }
     }
 
     /** 浮现中的锁定按钮到点自动隐去。 */
@@ -1113,6 +1132,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 lock_btn.setImageResource(R.drawable.icon_player_lock)
                 lock_btn.contentDescription = getString(R.string.desc_player_lock_locked)
                 showcon()
+                // 解锁后 control_layout 重新可见，右列位置可能变过，重新对齐左列
+                alignLeftControlToRight()
             }
 
             PlayerLockPolicy.Phase.LOCKED_HIDDEN -> {

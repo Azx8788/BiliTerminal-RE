@@ -778,7 +778,9 @@
 
     <!--
         左侧按钮列：与 right_control 的竖排图标列对称（同 28dp 图标、同 4dp 边距、上下居中）。
-        现在只有锁定按钮一个；锁定后控制栏整体隐藏，这一列仍留着 lock_btn。
+        右列的上下锚点在 control_layout 内部，root 层够不到，所以中线对齐由
+        PlayerActivity.alignLeftControlToRight() 在运行时用 translationY 补。
+        锁定后 control_layout 整体隐藏，这一列仍留着 lock_btn。
     -->
     <LinearLayout
         android:id="@+id/left_control"
