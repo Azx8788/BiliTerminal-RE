@@ -112,7 +112,7 @@
 
 - `control_layout`：沿用现有布局；锁定时整体 `GONE`。
 - `lock_overlay`：全屏透明、`clickable=true`，默认 `gone`；锁定时 `visible`，拦截所有触摸；点击 → 按状态机浮现按钮。
-- `left_control`（第四轮新增）：`LinearLayout` wrap×wrap、`alignParentLeft` + `centerVertical` + `marginStart 4dp`、`gravity=center`、`orientation=vertical`，**与 `right_control` 的竖排图标列对称**（右侧同 28dp 图标、同 4dp 边距、上下居中）；内部放 `lock_btn`。现在这一列只有锁定按钮一个，后续再加左侧按钮直接往这个容器里塞。
+- `left_control`（第四轮新增）：`LinearLayout` wrap×wrap、`alignParentLeft` + `centerVertical` + `marginStart 4dp`、`gravity=center`、`orientation=vertical`，**与 `right_control` 的竖排图标列对称**（右侧同 28dp 图标、同 4dp 边距、上下居中）；内部自上而下放 `lock_btn` 与 `text_speed`（第六轮：倍速文字从 `control_layout` 搬进来，改竖排「锁在上、倍数在下」）。今后再加左侧按钮直接往这个容器里塞。
   - **竖向中线对齐由代码补**（第五轮）：右列真正的上下锚点是 `top` 与 `bottom_control`——两者都在 `control_layout` 内部，位于 root 层的 `left_control` 在 XML 里引用不到，所以 `PlayerActivity.alignLeftControlToRight()` 在布局完成后量一次两列中线差、用 `translationY` 平移（解锁时重算一次）。不写死 dp，顶栏/底栏高度变了自动跟随。
 - `lock_btn`：单个 `ImageButton`，28dp、`adjustViewBounds=true`、`scaleType="fitXY"`、`background=?android:attr/selectableItemBackground`（与右侧三个竖排按钮同规格），`src` 按状态切换闭锁/开锁图标；点击 → 按状态机锁定/解锁。它是**同一个按钮**，不复制第二份，只是换了容器。
 - `text_speed` 的 `marginStart` 从 4dp 调到 36dp 避让（3x 倍速文字显示在左侧按钮列右侧；`btn_debug` 位置不变）。
@@ -136,6 +136,7 @@
 ### 4.5 文案与图标
 
 - 新增 `res/drawable/icon_player_lock.xml`（闭锁）、`icon_player_unlock.xml`（开锁）：vector，24dp、viewport 960、`fillColor="#ffffff"`，风格对齐现有 `icon_debug.xml`。
+- **图标语义＝当前状态**（26.10.21 用户反馈原先把开启/关闭画反）：未锁定显示开锁图标（点它去锁），锁定后浮现的按钮显示闭锁图标（点它解锁）。`contentDescription` 仍按「点了会发生什么」写（未锁定＝"锁定播放画面（防止误触）"，锁定＝"点击解锁播放画面"）。
 - `strings.xml` 新增：锁定按钮的无障碍描述（闭锁/开锁两种状态）、首次提示文案；命名沿用现有前缀（`desc_` / `msg_`，实现时对照既有 player 相关 key 确认）。
 
 ### 4.6 存储
@@ -191,4 +192,6 @@ adb shell run-as com.RobinNotBad.BiliClient cat shared_prefs/*.xml | grep player
   → ① 锁定按钮不再直接挂在根布局上，改成左侧竖排容器 `left_control`（对齐右侧 `right_control` 的竖列范式：28dp 图标、4dp 边距、上下居中、`fitXY`）；② 字幕 `text_subtitle` 搬出 `control_layout`，修掉「锁定后字幕消失」（见 §4.2）。
 - **修订（2026-10-21 第五轮，真机截图批注）**：`看好我的标注`（截图上圈出「左列上方空白」与「x 1.0 倍速文字」两处）
   → 左列此前用 `centerVertical` 相对**整屏**居中，比右侧三图标的中线低约 35px（右列锚在顶栏与底部控制栏之间）；改为 `alignLeftControlToRight()` 运行时对齐右列中线，左锁图标与右侧三图标同高，倍速文字原位不动。
+- **修订（2026-10-21 第六轮，真机截图批注）**：`没对齐` → `锁在上面，倍数在下面`；随后 `还有我感觉你锁的状态搞反了，就是开启和关闭的哪个`
+  → ① 左侧列改为竖排两行：**锁按钮在上、倍速文字在下**（`text_speed` 从 `control_layout` 搬进 `left_control`，`btn_debug` 的 `layout_above` 改锚 `bottom_control`；锁定态单独把倍速文字 GONE，因为它已不随控制栏隐藏）；② 图标语义改为**当前状态**：未锁定＝开锁图标、锁定后浮现＝闭锁图标（此前按"点击后会发生什么"画，用户认为开启/关闭反了）。
 - 仍待确认：§2.3 表冠/方向键是否也在锁定时屏蔽（当前按"屏蔽"写）；§2.4 浮现期间再点画面是否重置 3 秒计时（当前按"重置"写，即"每次点画面都刷新计时"）。

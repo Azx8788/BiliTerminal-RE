@@ -1129,7 +1129,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 lock_overlay.visibility = View.GONE
                 // 整条控制栏在锁定时被藏掉，解锁时连 button 组一起恢复，再走既有的 4 秒自动隐藏
                 layout_control.visibility = View.VISIBLE
-                lock_btn.setImageResource(R.drawable.icon_player_lock)
+                // 图标画的是「当前状态」：未锁定＝开锁，锁定＝闭锁（26.10.21 用户反馈原先把状态画反了）
+                lock_btn.setImageResource(R.drawable.icon_player_unlock)
                 lock_btn.contentDescription = getString(R.string.desc_player_lock_locked)
                 showcon()
                 // 解锁后 control_layout 重新可见，右列位置可能变过，重新对齐左列
@@ -1140,7 +1141,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 lock_overlay.visibility = View.VISIBLE
                 layout_control.visibility = View.GONE
                 lock_btn.visibility = View.GONE
-                lock_btn.setImageResource(R.drawable.icon_player_unlock)
+                // 倍速文字现在挂在左侧列里，不随 control_layout 一起隐藏，得单独收掉
+                text_speed.visibility = View.GONE
+                lock_btn.setImageResource(R.drawable.icon_player_lock)
                 lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
             }
 
@@ -1148,7 +1151,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 lock_overlay.visibility = View.VISIBLE
                 layout_control.visibility = View.GONE
                 lock_btn.visibility = View.VISIBLE
-                lock_btn.setImageResource(R.drawable.icon_player_unlock)
+                text_speed.visibility = View.GONE
+                lock_btn.setImageResource(R.drawable.icon_player_lock)
                 lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
             }
         }
