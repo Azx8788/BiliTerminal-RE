@@ -1068,13 +1068,13 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `SwipePageLayout` 的 MOVE 改为 `fakeDragBy(ev.x - lastX)`（源码注释写明别照抄常见手写公式）。
   - 松手后改 `pager.postDelayed(150ms)` 再判断「pager 是否还停在按下时的页」，只有确实没吸附过去才补一次 `onSwipe`；`SNAP_CHECK_DELAY_MS = 150L`。
   - 第 0 页右滑退出的判据从 `dx > 0 && startItem == 0 && current == 0` 简化为 `direction > 0 && startItem == 0`（不再依赖异步的 `currentItem`）。
-- **长按改 3 倍速**：`GestureDetector.onLongPress` → `PageHolder.startSpeedBoost()`；`ACTION_UP` / `ACTION_CANCEL` / `ACTION_POINTER_DOWN` → `endSpeedBoost()`。只动播放器倍速与底部倍速按钮文案，`currentSpeed` 保持用户选的档位；按住时复用 `showsound` 提示「3.0x 倍速播放中」（新增 `R.string.text_shortvideoplayer_speed_boost`）。`openVideoDetail()` 与其 `VideoInfoActivity` / `Intent` import 一并删除（详情页已作为横向第 2 页存在）。教程 `Tutorials.kt` `version` 3→4、长按条目改写；`res/xml/tutorial_short_video.xml` 同步；`docs/FEATURES.md` §2.7 长按条目改写。
+- **长按改 3 倍速**：`GestureDetector.onLongPress` → `PageHolder.startSpeedBoost()`；`ACTION_UP` / `ACTION_CANCEL` / `ACTION_POINTER_DOWN` → `endSpeedBoost()`。只动播放器倍速与底部倍速按钮文案，`currentSpeed` 保持用户选的档位；提示用 `fragment_short_video_page.xml` 新增的 `text_speed_boost`（`layout_gravity="top|center_horizontal"` + `marginTop=32dp`，**贴在顶栏下沿而不是画面中央**——放中间会挡视频，用户明确反馈过），文案新增 `R.string.text_shortvideoplayer_speed_boost`。`openVideoDetail()` 与其 `VideoInfoActivity` / `Intent` import 一并删除（详情页已作为横向第 2 页存在）。教程 `Tutorials.kt` `version` 3→4、长按条目改写；`res/xml/tutorial_short_video.xml` 同步；`docs/FEATURES.md` §2.7 长按条目改写。
 - **真机验证（`emulator-5554`，release 覆盖安装保留登录态）**：
   - 拖动中截图：短视频页左移、详情页从右侧进入 —— **跟手成立**；
   - 短视频页左滑 → 详情（page 1）→ 评论（page 2）→ 相关推荐（page 3），一次一页；末页再左滑不前进；
   - 详情页右滑 → 回短视频页（方向与手指一致）；短视频页右滑 → 退出本页；
   - 单击 / 纵向滑动不再误跳 `VideoInfoActivity`。
-- **长按 3 倍速验证（`emulator-5554`）**：`input swipe 720 1200 720 1200 2500` 按住 2.5s，按住期间截图显示居中提示「3.0x 倍速播放中」，松手后提示消失、底部倍速按钮回到 `1.0x`；教程 v4 弹出且长按条目已是「按住时 3 倍速播放，松手恢复正常倍速」。
+- **长按 3 倍速验证（`emulator-5554`）**：`input swipe 720 1200 720 1200 2500` 按住 2.5s，按住期间截图显示「3.0x 倍速播放中」贴在顶栏下沿、不遮画面（V4 版曾放正中央，按用户反馈移到这里），松手后提示消失、底部倍速按钮回到 `1.0x`；教程 v4 弹出且长按条目已是「按住时 3 倍速播放，松手恢复正常倍速」。
 - **未验证**：手表窄屏（300x300）下的 18% 阈值、内容列宽与长按手势；`testCoexist` 包未装机。
 - **已知现象（非 bug）**：横滑动画进行中截图会抓到两页叠加/视频帧残留（TextureView 与 ViewPager2 动画的合成帧），动画结束后显示正常。
 

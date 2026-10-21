@@ -359,6 +359,7 @@ class ShortVideoPagerAdapter(
         private val buttonSpeed: TextView = itemView.findViewById(R.id.button_speed)
         private val buttonDanmaku: ImageButton = itemView.findViewById(R.id.button_danmaku)
         private val showSound: TextView = itemView.findViewById(R.id.showsound)
+        private val speedBoostHint: TextView = itemView.findViewById(R.id.text_speed_boost)
 
         private val playerBridge = IjkPlayerBridge(onError = { what, _ ->
             Logu.e("ShortVideo", "Player error: $what")
@@ -597,8 +598,8 @@ class ShortVideoPagerAdapter(
             buttonSpeed.text = "${boostSpeed}x"
 
             hideVolumeRunnable?.let { mainHandler.removeCallbacks(it) }
-            showSound.visibility = View.VISIBLE
-            showSound.text = activity.getString(R.string.text_shortvideoplayer_speed_boost)
+            speedBoostHint.text = activity.getString(R.string.text_shortvideoplayer_speed_boost)
+            speedBoostHint.visibility = View.VISIBLE
         }
 
         private fun endSpeedBoost() {
@@ -606,7 +607,7 @@ class ShortVideoPagerAdapter(
             speedBoosted = false
             playerBridge.setSpeed(currentSpeed)
             buttonSpeed.text = "${currentSpeed}x"
-            showSound.visibility = View.GONE
+            speedBoostHint.visibility = View.GONE
         }
 
         /**
