@@ -7,8 +7,10 @@
 > **状态（2026-10-10 复核）：88 条用例一条都还没执行**——它是一份「待执行清单」而非历史记录，所以留在 `docs/review/` 保持可见；真正在用的发版前清单是 `docs/review/real-device-regression-checklist.md`。
 
 **本计划合并自两份来源**：
+
 - `docs/review/device-test-plan.md`（提交 `e7d182c`）——平台上行/功能组改动（T0–T15）
 - `docs/review/device-test-plan-2026-10-02.md`——本机审计修复轮次（D0–D7）
+
 合并后本文档为唯一真机测试计划，原 `device-test-plan-2026-10-02.md` 已删除。
 
 ---
@@ -20,7 +22,7 @@
 这不是偷懒，是这些改动**在现有验证手段下根本验不出来**：
 
 | 改动类型 | 编译能查 | Lint 能查 | 单测能查 | 只有真机能查 |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 平台 API 版本误用（`List.of` → API 30） | ❌ | ◐ | ❌ | ✅ 直接 `NoSuchMethodError` |
 | 反射调框架方法（`hasOnLongClickListeners`） | ❌ | ❌ | ❌ | ✅ 部分手表裁掉了该方法 |
 | 前台服务类型/权限（Android 14） | ❌ | ◐ | ❌ | ✅ `SecurityException` / 直接崩 |
@@ -35,7 +37,7 @@
 ### 已由构建与静态检查覆盖（不用真机）
 
 | 项目 | 证据 |
-|---|---|
+| --- | --- |
 | 编译通过 | `:app:compileDebugKotlin` + `:app:compileDebugJavaWithJavac` ✅ BUILD SUCCESSFUL in 58s |
 | 单元测试 | `:app:testDebugUnitTest` ✅ 通过 |
 | Debug 打包 | `:app:assembleDebug` ✅ BUILD SUCCESSFUL in 1m 22s |
@@ -47,7 +49,7 @@
 ### 我这边验不了、必须上手做的
 
 | 原因 | 受影响项 |
-|---|---|
+| --- | --- |
 | Linux 侧没有可执行的 `adb`（SDK 里只有 Windows 的 `adb.exe`），无法连设备、抓日志、看 UI 树 | **全部**用例 |
 | 需要真机行为 | 权限弹窗、跨进程（外部播放器）、文件路径、前台服务、native Surface/播放器 |
 | 需要真手表 | 表冠（旋转编码器）、圆屏布局、震动 |
@@ -59,7 +61,7 @@
 按"不过就是真问题、且后果最重"排序。**前 6 条必测。**
 
 | # | 用例 | 操作 | 为什么排这里 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **R1** | T10-1 | 下载中断/杀 App 后已下好的文件还在 | ★数据丢失，修前会递归删成品 |
 | **R2** | T2 | 后台/熄屏继续播放（**Android 14**） | 平台硬校验，缺一个类型/权限就崩 |
 | **R3** | D4-3 | 下载中**切后台再回前台**，任务不被重置为「未开始」 | S6 未修净会**两个线程写同一文件** |
@@ -106,7 +108,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### 1.3 待测 APK
 
 | 文件 | 大小 | 用途 |
-|---|---|---|
+| --- | --- | --- |
 | `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk` | 17 657 017 B | 主测包（含 `TestActivity` 调试页、UETool 悬浮窗） |
 | `app/build/outputs/apk/release/app-arm64-v8a-release.apk` | 10 110 640 B | 发布包验证（R8 混淆后的行为差异、`TestActivity` 是否已被 strip） |
 | `app/build/outputs/apk/release/app-armeabi-v7a-release.apk` | 8 610 409 B | 老手表（32 位）用 |
@@ -119,7 +121,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 本计划的用例分两组，来自两条独立的改动线，请**分别复验**：
 
 | 组 | 改动内容 | 用例 | 来源 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **T 组** | 平台上行 / 功能移植：前台服务、番剧进度上报、动态配图与表情、图文直取、搜索番剧、更新日志页、评论点赞、下载与后台、登录 Cookie | T0–T15 | `docs/archive/review/upstream-fork-audit.md` / `docs/archive/review/fork-fix-worklog.md` |
 | **D 组** | 本机深度审计修复：Response 泄漏、下载并发与字节计数、Cookie 解析、字符集、权限收敛、FileProvider、播放器 Surface/scope、搜索 `seid`、取消重试、异常链 | D0–D8 | `docs/archive/review/audit-2026-09-24.md` 第六节 |
 
@@ -156,7 +158,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 
 ### T0-3 冒烟扫一遍
 
-```
+```text
 菜单 → 每一页都进一次再返回
 ```
 
@@ -183,9 +185,11 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 - [ ] 确认设置页里**没有「测试页面」入口**（`TestActivity` 只在 debug 源集注册）
 - [ ] 确认通知栏没有被要求 `SYSTEM_ALERT_WINDOW`
 - [ ] 权限面回归（D 组改动）：release 包**不应**再声明以下权限
+
       ```powershell
       & $adb shell dumpsys package com.RobinNotBad.BiliClient | Select-String -Pattern "READ_PHONE_STATE|ACCESS_WIFI_STATE|SYSTEM_ALERT_WINDOW"
       ```
+
       预期：**零命中**（这三条已在 D 组从主清单删除，`SYSTEM_ALERT_WINDOW` 只留在 debug 清单）
 - [ ] 保留项确认（**有意保留，不要报为多余**）：`REQUEST_INSTALL_PACKAGES`（应用内更新）、`READ_EXTERNAL_STORAGE`（minSdk 19 读已下载文件）
 
@@ -242,9 +246,11 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 **日志开关**：实现里打了带 `进度上报` tag 的日志，直接抓这几行就能看出链路走没走通。
 
 - [ ] **T3-1 投稿视频周期上报**：登录后播任意普通视频 **≥ 20 秒**，然后退出
+
       ```powershell
       & $adb logcat -d | Select-String -Pattern "进度上报"
       ```
+
       预期看到类似 `周期上报 aid=... cid=... epid=0 sid=0 progress=17s`
 - [ ] **T3-2 上报真的成功**（不只发了，还要服务端认）
       - 去网页端/B站App 查该视频的观看记录，进度应该对得上
@@ -289,9 +295,11 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
       - 通过：表情以**图片**形式显示
       - 不通过：显示成 `[doge]` 这样的**纯文本**
 - [ ] **T5-3 若不通过**，抓证据：`EmoteApi` 返回的 name 是否含方括号
+
       ```powershell
       & $adb logcat -d | Select-String -Pattern "emote|表情"
       ```
+
       （若日志不足，临时在该接口加一行 `Logu.d` 打印 `emote.name` 原始值再验）
 - [ ] **T5-4 转发时原文里的表情**：转发一条含表情的动态，引用的原文里表情也应正确渲染
 
@@ -373,7 +381,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### D1 网络层（Response 关闭 / 重试 / Cookie）
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D1-1 | 打开 5~6 个不同页面（推荐/热门/排行榜/收藏/历史/我的） | 全部正常加载，无 `java.io.IOException: closed` / `ConnectionShutdownException` |
 | D1-2 | 弱网（限速/丢包）下反复刷新列表 | 能重试成功，不出现"一失败就永久失败" |
 | D1-3 | 播放中**主动取消**一个正在进行的请求（如快速返回） | 日志里**不应**出现该请求被重试的痕迹（本轮专门加了取消不重试） |
@@ -383,7 +391,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### D2 登录与账号
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D2-1 | **扫码登录**（TV 端 + Web 端两种都试） | 扫码 → 确认 → 成功进入已登录状态，不卡在「等待确认」 |
 | D2-2 | 检查 logcat | **不得出现完整 Cookie / `access_token` / `refresh_token` 明文**（QRLogin 的 4 行敏感日志已删） |
 | D2-3 | **密码登录** | 点击登录后界面**不卡死**（原来整段登录流程跑在 UI 线程，含多次同步网络请求） |
@@ -394,7 +402,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### D3 播放器
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D3-1 | 普通视频播放（App 内播放器） | 出画出声，进度条正常走 |
 | D3-2 | 拖动进度条到最前 / 最后 | **不崩溃、不跳到非法位置**（`IjkPlayerBridge.seekTo` 已钳制到 `[0, duration]`） |
 | D3-3 | 拖动进度条到**超出末尾**（快速连续拖） | 播放器不报错（原实现会乐观更新到非法值） |
@@ -416,7 +424,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 > 本轮 `DownloadService.kt` 改了 136 行，是最可能出问题的一块。**D4-3 与 D4-4 出现反例时立刻停止测试并反馈**。
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D4-1 | 正常下载，观察进度条 | **不得出现「先涨到 100% 再退回」**（S7 字节双重计数已修，若仍回退说明没修净） |
 | D4-2 | 下载中再点一次「缓存」同一个视频 | 应提示「下载队列已在进行中」，**不得出现第二个进度通知**（S6 幂等守卫） |
 | **D4-3** | 下载中**切后台再回前台** | **正在下载的任务绝不能被重置为「未开始」**（S6 修的就是这个：原来会把运行中的任务当"遗留"重置，导致两个线程写同一文件）→ 反例立刻反馈 |
@@ -431,7 +439,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### D5 搜索
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D5-1 | 搜索**中文关键词**，翻到第 2、3 页 | 结果不重复、不跳回第一页（`seid` 已按关键词隔离缓存） |
 | D5-2 | 搜索 A → 搜索 B → **再搜回 A** | 结果正常（LRU 容量 16，回搜 A 应重新取 seid） |
 | D5-3 | 各分类页签（视频/番剧/直播/用户/专栏）各搜一次 | 都能出结果 |
@@ -441,7 +449,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### D6 私信、权限与异常处理
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D6-1 | 打开私信列表 | 正常渲染，**会话不缺失** |
 | D6-2 | 检查 logcat 收私信 | **不得打印私信正文**（改为只记条数） |
 | D6-3 | 故意制造一次崩溃（debug 包：设置 → 测试页面） | 崩溃页正常弹出 |
@@ -452,7 +460,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### D7 文件路径与存储 ★最容易漏
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D7-1 | 保持**默认下载目录**下载一个视频 | 成功（默认目录已被新 `file_paths.xml` 覆盖） |
 | **D7-2** | 把下载目录改成**外置卡 / SD 卡**上的自定义路径 ★ | 能下载成功 |
 | D7-3 | 若 D7-2 失败 | **这是已知风险**——`file_paths.xml` 删掉了 `<root-path path="" />`，自定义目录不再被 FileProvider 覆盖。**把具体路径发出来**，我加对应的 `<path>` 条目 |
@@ -463,7 +471,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ### D8 短视频页（Surface 生命周期）
 
 | # | 操作 | 判据 |
-|---|---|---|
+| --- | --- | --- |
 | D8-1 | **上下滑 10+ 个视频** | 每个都能播、**不出黑屏**、内存不持续上涨 |
 | D8-2 | 滑到第 10 个后**返回再进入** | 仍能正常播放（`IjkPlayerBridge.release()` 现在会 cancel 并**重建** scope） |
 | **D8-3** | 滑动时看**进度条** | **进度条要动**。若某些视频进度条卡在 0，说明 scope 重建逻辑有问题 → **立刻反馈** |
@@ -515,9 +523,11 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 
 - [ ] 下载弹幕/视频在**弱网**下不卡死（P15 解压死循环修的就是这个：原来损坏数据会让 CPU 跑到 100%）
 - [ ] 日志里不应出现 Cookie / SESSDATA 明文
+
       ```powershell
       & $adb logcat -d | Select-String -Pattern "SESSDATA|bili_jct|DedeUserID="
       ```
+
       预期：**零命中**
 
 ### D9 表冠 / 圆屏（仅手表可测）
@@ -573,7 +583,7 @@ Select-String -Path crash.log -Pattern "FATAL EXCEPTION" -Context 0,40
 
 ### 6.4 每个用例的记录格式
 
-```
+```text
 [id] 结论（通过/不通过/阻塞）
 设备：<型号> / Android <版本>
 操作：<做了什么>
@@ -586,7 +596,7 @@ Select-String -Path crash.log -Pattern "FATAL EXCEPTION" -Context 0,40
 这几条不是"不好用"，而是**说明修复没修净或引入了回归**：
 
 | 现象 | 指向 |
-|---|---|
+| --- | --- |
 | 下载进度**先满后回退** | S7 字节双重计数未修净（D4-1） |
 | 下载中任务被重置为「未开始」 | S6 未修净，**会损坏文件**（D4-3） |
 | 短视频进度条卡在 0 不动 | `IjkPlayerBridge` scope 重建有问题（D8-3） |
@@ -602,7 +612,7 @@ Select-String -Path crash.log -Pattern "FATAL EXCEPTION" -Context 0,40
 ## 七、优先级与时间盒
 
 | 优先级 | 用例 | 为什么排这个顺序 |
-|---|---|---|
+| --- | --- | --- |
 | **P0** | T0 装包冒烟 | 崩在这里，后面全是白测 |
 | **P1** | **T2 后台播放（尤其 Android 14）**、T1 播放失败、T3 番剧进度 | 本轮改动的核心，且是"用户可感知损失最大"的三条 |
 | **P1** | T4 动态配图、T5 表情、T10-1 下载不误删、**D4 全部** | 前两个是"发了才知道对不对"，后两个是数据丢失 |
@@ -675,7 +685,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 ## 附三、测试结果记录表（直接回填）
 
 | 章节 | 通过 / 未通过 / 未测 | 备注 |
-|---|---|---|
+| --- | --- | --- |
 | §二 T0 装包与冒烟 | | |
 | T1 播放失败 | | |
 | T2 后台/熄屏播放 ★ | | |

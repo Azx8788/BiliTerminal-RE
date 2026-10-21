@@ -16,11 +16,13 @@
 ### 1.2 来源清单
 
 **接口字典（本文结论的直接依据）**
+
 - bilibili-API-collect（**已永久关停，2026-01-28**）— https://github.com/SocialSisterYi/bilibili-API-collect ；关停说明 https://raw.githubusercontent.com/SocialSisterYi/bilibili-API-collect/master/README.md
 - bilibili-API-collect 贡献者复刻（快照 2026-01-25，用于本次接口核对）— https://github.com/pskdje/bilibili-API-collect
 - 本仓库自带快照 `bilibili-API/` （关停前版本，197 文件 / 195 篇 md）
 
 **纠偏 / 旁证来源**
+
 - SponsorBlock 官方 README（用于纠偏"是否支持 B 站"）— https://raw.githubusercontent.com/ajayyy/SponsorBlock/master/README.md
 - BiliRoaming（已 archived，收到律师函）— https://github.com/yujincheng08/BiliRoaming ；https://m.ithome.com/html/973202.htm
 - B 站官方口径（正文可读的少数来源）：官方下载中心 https://app.bilibili.com/ ；腾讯应用宝 https://sj.qq.com/appdetail/tv.danmaku.bili ；小米应用商店 https://app.mi.com/details?id=tv.danmaku.bili
@@ -30,6 +32,7 @@
 ### 1.3 可信度分级：哪些是一手实测、哪些是二手/待核实
 
 **一手实测（可直接依赖）**
+
 - §3 第 1~4、8、9 条：全部标注了 `bilibili-API/...md:行号` 原文，可直接核对。
 - §3 第 5 条：搜索风控原文（快照 `docs/search/search_request.md:3`）**另加本仓库实测**——`search.bilibili.com/all?keyword=...` 直接返回 `<title>验证码_哔哩哔哩</title>`，确认 Web 页面模拟已不可用。
 - §3 第 6 条：快照 `docs/misc/errcode.md` 有更长列表，本文**只逐字核对了 §3 提到的这几条**。
@@ -37,6 +40,7 @@
 - §2 速查表三列（登录 / wbi / csrf）：按快照文档逐端点核对。
 
 **二手 / 待核实（用到时须再验）**
+
 - GitHub `RobinNotBad/BiliClient` 返回 404（上游主仓只在 Gitee）；Gitee 无公开 API，`71★ / 1322 commits / 状态「暂停」` 取自网页。
 - `Darock-Studio/Darock-Bili`（Apple Watch 版）因匿名 API 限流（HTTP 403）**未能核实**。
 - `qingyiwebt/Biliw`、`nonomal/bilibili-for-AppleWatch` 仅见搜索结果中的个位数 star，**未核实**。
@@ -54,7 +58,7 @@
 **播放 / 字幕**
 
 | 端点 | 用途 | 登录 | wbi | csrf |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `x/player/wbi/playurl` | 取流（**现行唯一 Web 取流**） | 可选 | 是 | 否 |
 | `x/player/wbi/v2` | 字幕 / 章节看点 / 播放器元数据 | 字幕需登录 | 是 | 否 |
 | `x/web-interface/view/conclusion/get` | AI 总结 / AI 字幕（`part_subtitle[].timestamp/content` 带时间戳） | — | — | 否 |
@@ -66,7 +70,7 @@
 **列表 / 内容**
 
 | 端点 | 用途 | 登录 | wbi | csrf |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `x/v2/history/toview`(+`/add` `/del` `/clear`) | 稍后再看 | 是 | 否 | 写操作**是** |
 | `x/web-interface/history/cursor`、`x/v2/history` | 历史（游标翻页） | 是 | 否 | 否 |
 | `x/web-interface/wbi/index/top/feed/rcmd` | 首页推荐流 | 否 | 是 | 否 |
@@ -111,7 +115,7 @@
 **值得做（且本项目的接口基础已经具备）：**
 
 | 方向 | 为什么 | 本项目现状 |
-|---|---|---|
+| --- | --- | --- |
 | 稍后再看队列 | 本质是离线播放队列，无键盘 + 弱网点播 + 碎片时间三件事同时满足 | ✅ 列表/增删已有（`api/WatchLaterApi.java:23,48,59`），仅缺"未看完"分组 |
 | 历史续播 | "打开就接着看/听" | ✅ 已有（`api/HistoryApi.java:37,174,257` + PGC 专用心跳） |
 | 后台听视频 + AI 字幕 | 圆屏天生适合"一屏一句"；音频轨省流省电 | ✅ 听视频、字幕、AI 字幕已有；**缺的是二者组合的"车载/播客式"体验打磨** |

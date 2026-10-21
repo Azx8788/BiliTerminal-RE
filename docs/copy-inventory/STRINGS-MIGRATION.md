@@ -252,7 +252,7 @@ MsgUtil.showDialog("无法发送", "上一次的Cookie刷新失败了，\n您可
 
 B6 最初是照 B1~B5 的老样子，把这三句加进 `strings.xml`，用例里用 `BiliTerminal.context.getString(...)`。结果 **6 个 JVM 单测直接挂**：
 
-```
+```text
 DynamicApiTest > topErrorMsg_unknownCodeStillShowsTheCode FAILED
 FavoriteApiTest > resourceErrorMsg_mapsKnownCodes FAILED
 FollowApiMoveUsersTest > 未知码兜底带上错误码本身 FAILED
@@ -387,7 +387,6 @@ UiText.fmt("共%1\$s张图片", count)            // 带占位符：原先是 "�
 
 ## 6. 每批的标准动作（照做即可）
 
-
 1. **挑一批**：从上表的表里选，范围控制在「一个屏幕 / 一个模块」，改动文件 ≤ 8 个。
 2. **先查重**：拿句子去 `DUPLICATES.md` 搜一遍，有同义的就复用键，别新开。
 3. **加键**：追加在 `strings.xml` 末尾，带分组注释，键名按第 1 节规范。
@@ -442,14 +441,14 @@ UiText.fmt("共%1\$s张图片", count)            // 带占位符：原先是 "�
 
 **一句话**：用户可见文案现在只有一个来源——`app/src/main/res/values/strings.xml`。
 
-| 项 | 数值 |
+| 项 | 数值（26.10.20 实测复核；括号里是迁移当轮的数字） |
 | --- | --- |
-| `strings.xml` 的 `<string>` | 1719 条（另有 5 个 `<string-array>`） |
-| 其中 `uitext_*` 键 | 708 条 |
-| `util/UiText.kt` 映射表 | 757 条（`字面量 → R.string.*`） |
-| `UiText.of` / `UiText.fmt` 调用点 | 1028 处 |
-| 布局 XML 走 `@string/*` | 332 处 |
-| `AndroidManifest.xml` 的 `android:label` | 103 个全部走 `@string/*` |
+| `strings.xml` 的 `<string>` | **1787** 条（1719；另有 5 个 `<string-array>`） |
+| 其中 `uitext_*` 键 | **764** 条（708） |
+| `util/UiText.kt` 映射表 | **814** 条（757，`字面量 → R.string.*`） |
+| `UiText.of` / `UiText.fmt` 调用点 | **1002** 处（1028，迁移后又清了死映射） |
+| 布局 XML 里 `text`/`hint`/`contentDescription` 走 `@string/*` | **467** 处（迁移当轮新增 332 处，其余是原本就在资源里的） |
+| `AndroidManifest.xml` 的 `android:label` | **105** 个全部走 `@string/*`（103） |
 | 本轮改动规模 | 271 个文件，+3487 / −1725 行 |
 | 验证 | `:app:assembleDebug`、`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 全部通过 |
 

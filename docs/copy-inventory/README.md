@@ -7,7 +7,7 @@
 
 > 👉 **第一次动手，先读 [GUIDE.md](GUIDE.md)（文案改写指南）**：用大白话讲清「同一句话可能有几份」「四种改法」「十条红线」，比本索引更该先看。
 >
-> 🔧 **「以后改一句是不是只改一处？」→ 是了。** 26.10.19 起，用户可见文案已收进 `app/src/main/res/values/strings.xml`（1719 条 `<string>`、`UiText` 映射 757 条、1028 处调用、布局 332 处、Manifest 103 个 label）。```strings.xml``` 是唯一来源，改文案一般只改那里。进度与规范见 [STRINGS-MIGRATION.md](STRINGS-MIGRATION.md)（第九节是「现状与以后怎么改」）。
+> 🔧 **「以后改一句是不是只改一处？」→ 是了。** 26.10.19 起，用户可见文案已收进 `app/src/main/res/values/strings.xml`（26.10.20 实测 1787 条 `<string>`、`UiText` 映射 814 条、1002 处调用、布局 467 处 `@string/*`、Manifest 105 个 label）。```strings.xml``` 是唯一来源，改文案一般只改那里。进度与规范见 [STRINGS-MIGRATION.md](STRINGS-MIGRATION.md)（第九节是「现状与以后怎么改」）。
 
 ---
 

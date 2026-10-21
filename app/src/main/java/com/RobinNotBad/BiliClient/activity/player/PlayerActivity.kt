@@ -255,6 +255,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var video_now_last: Int = 0
     /** 上次给弹幕时钟做基准对齐（`seekTo`）的时间，用于限频——见 `progressChange` 里的对齐块。 */
     private var danmakuResyncMs: Long = 0
+    /** 连续吸附次数，用于「吸附也治不了」时退避（见 `DanmakuSync.decide`）。 */
+    private var danmakuSnapCount: Int = 0
     private var lastMediaSessionSecond: Int = -1 // 上次上报 MediaSession 的整秒数，用于抑制重复 Binder IPC
     private var progress_history: Long = 0
     private var progress_str: String = ""
@@ -1595,19 +1597,31 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         }
                     }
                     // 弹幕时钟对齐：DFM 的时钟按自身 mTimeBase 自走，只有基准与视频位置一致时才会跟着视频走。
-                    // 跑偏时**必须**用 seekTo（DrawHandler 的 SEEK_POS 分支会同步 `mTimeBase -= deltaMs`），
-                    // 用 DanmakuTimer.update 只改时间不改基准，DFM 的 syncTimer 会立刻把时钟拉回旧基准
-                    // —— 那就是用户报的「弹幕一抖一抖」。判定用纯函数 DanmakuSync（容差 400ms > 250ms 采样间隔）。
-                    // 两条闸门：① 缓冲中不动它（缓冲时弹幕视图被 pause，seekTo 会顺带 resume，等于把暂停撤销）；
-                    // ② 限频 1s，避免"视频卡住但没报缓冲"时每 250ms 重建一次弹幕更新线程。
+                    //
+                    // **seekTo 的代价**：DrawHandler.SEEK_POS 会走 DrawTask.seek() → reset()，
+                    // 把屏上弹幕全部清掉再靠 CacheManagingDrawTask.prepareCaches(true) 重建
+                    // （见 DanmakuFlameMaster/.../controller/DrawTask.java 与 CacheManagingDrawTask.java）。
+                    // 所以**绝不能拿它做小偏差的"连续纠偏"**——那等于每隔一会儿清一次屏，
+                    // 用户看到的就是「弹幕闪一下又没了」。判据全部收敛到 DanmakuSync.decide：
+                    // 只有 >1.5s 的大跳才吸附、吸附后冷静 1.5s、连续 3 次不收敛退避 30s。
                     if ((hasDanmaku || isLiveMode) && mDanmakuView != null &&
                         loading_info.visibility != View.VISIBLE
                     ) {
-                        val danmakuTime = mDanmakuView!!.currentTime
-                        if (DanmakuSync.shouldResync(video_now.toLong(), danmakuTime) &&
-                            nowElapsed - danmakuResyncMs >= 1000L
-                        ) {
+                        // nowElapsed 由上方音频重同步那段统一取（同一帧内两处判定共用同一个时刻）
+                        val decision = DanmakuSync.decide(
+                            video_now.toLong(),
+                            mDanmakuView!!.currentTime,
+                            nowElapsed,
+                            danmakuResyncMs,
+                            danmakuSnapCount
+                        )
+                        danmakuSnapCount = decision.consecutive
+                        if (decision.snap) {
                             danmakuResyncMs = nowElapsed
+                            Logu.d(
+                                "弹幕纠偏",
+                                "视频=$video_now 弹幕=${mDanmakuView!!.currentTime} 第 ${decision.consecutive} 次吸附"
+                            )
                             mDanmakuView!!.seekTo(video_now.toLong())
                         }
                     }
@@ -2137,11 +2151,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (interactionData != null && interactionData!!.edges != null &&
                     interactionData!!.edges!!.questions != null && !questionShown) {
                     if (!questionShown) {
+                        markSeekTarget(0L)
                         ijkPlayer!!.seekTo(0)
                         if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(0L)
                         Logu.v("播完重播")
                     }
                 } else {
+                    markSeekTarget(0L)
                     ijkPlayer!!.seekTo(0)
                     if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(0L)
                     Logu.v("播完重播")
@@ -2774,11 +2790,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             override fun onStopTrackingTouch(seekBar: SeekBar) {
                 isSeeking = false
                 if (isPrepared && !destroyed) {
-                    // 统一走 seekToPosition：它会同时 seek 视频、弹幕和外部音频轨。
-                    // 原来这里只 seek 了视频（和弹幕），DASH 双文件播放时 audioPlayer 仍停在旧位置，
-                    // 随后被 progressChange 的 800ms 偏差校正再 seek 一次 —— 用户听到的就是
-                    // "松手后声音停半秒到一秒"。
-                    seekToPosition(seekbar_progress.progress.toLong())
+                    // 统一走 seekToVideo：它同时 seek 视频、弹幕、外部音频轨，并压住
+                    // progressChange 的偏差校正。原来这里只 seek 了视频（和弹幕），DASH 双文件
+                    // 播放时 audioPlayer 仍停在旧位置，随后被 800ms 偏差校正再 seek 一次 ——
+                    // 用户听到的就是"松手后声音停半秒到一秒"。
+                    seekToVideo(seekbar_progress.progress.toLong())
                     autohideReset()
                 }
             }
@@ -2846,18 +2862,51 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     private fun seekToPosition(position: Long) {
         if (ijkPlayer != null && isPrepared) {
-            // 用户手动拖进片头/片尾就算「已处理」，否则下一轮定时器会立刻把他弹走
-            onUserSeekTo(position)
-            ijkPlayer!!.seekTo(position)
-            if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(position)
-            // 同步外部音频轨道：DASH 双文件（video.mp4 + audio.m4a）是视频、音频两个播放器，
-            // 只 seek 视频会让音轨留在旧位置。seek 期间先压住 progressChange 的偏差校正，
-            // 否则异步 seek 未落地时会再校正一次（重复 seek → 可闻停顿）。
-            if (audioPlayer != null) {
-                try { audioPlayer!!.seekTo(position.toInt()) } catch (_: Exception) {}
-            }
+            seekToVideo(position)
+        }
+    }
+
+    /**
+     * 用户主动跳转（拖进度条 / 快进快退）的**唯一入口**。
+     *
+     * 为什么不能各处各写一遍「ijkPlayer.seekTo + mDanmakuView.seekTo」：
+     * ① `progressChange` 的弹幕纠偏判据比较的是 `video_now` 与弹幕时钟，**跳转后若不立刻更新
+     * `video_now`**，下一次采样会拿旧位置去比新时钟，算出几百秒的"偏差"并把弹幕视图 seek 回旧位置
+     * —— 用户看到的就是「拖完进度条弹幕没了，偶尔闪一下又消失」。
+     * 所以这里必须同时做四件事：更新 `video_now`、强制刷新进度显示、清掉纠偏计数、给一段冷静期。
+     *
+     * ② DASH 双文件（video.mp4 + audio.m4a）是视频、音频两个播放器，**只 seek 视频会让音轨留在旧位置**；
+     * 而 `progressChange` 的 800ms 偏差校正随后会再 seek 一次音频，用户听到的是"停顿两次"。
+     * 所以这里一并 seek 音频，并压住校正冷却（[AUDIO_RESYNC_COOLDOWN_MS]）。
+     */
+    private fun seekToVideo(position: Long) {
+        // 用户手动拖进片头/片尾就算「已处理」，否则下一轮定时器会立刻把他弹走
+        onUserSeekTo(position)
+        markSeekTarget(position)
+
+        ijkPlayer?.seekTo(position)
+        if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(position)
+        // 同步外部音频轨道：DASH 双文件时只 seek 视频会让音轨留在旧位置
+        if (audioPlayer != null) {
+            try {
+                audioPlayer!!.seekTo(position.toInt())
+            } catch (_: Exception) {}
+            // seek 的冷却期内 progressChange 不再校正音频：MediaPlayer.seekTo 异步，
+            // seek 未完成时 currentPosition 还停在旧位置，这时再校正等于同一位置 seek 两遍。
             audioResyncSuppressMs = android.os.SystemClock.elapsedRealtime() + AUDIO_RESYNC_COOLDOWN_MS
         }
+    }
+
+    /**
+     * 视频位置被动跳变（重播、切页、恢复现场）时同步 `video_now` 与弹幕纠偏的状态。
+     *
+     * 不更新 `video_now` 的后果见 [seekToVideo]：纠偏会拿旧位置把弹幕视图 seek 回去。
+     */
+    private fun markSeekTarget(position: Long) {
+        video_now = position.toInt()
+        video_now_last = -1 // 让 progressChange 下一帧立刻按新位置刷新进度条/字幕
+        danmakuSnapCount = 0
+        danmakuResyncMs = android.os.SystemClock.elapsedRealtime()
     }
 
     /**

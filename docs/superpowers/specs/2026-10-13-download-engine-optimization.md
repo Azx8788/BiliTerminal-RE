@@ -46,7 +46,7 @@
 ### 2.1 断点续传：完全没有
 
 | 路径 | 写法 | 续传 |
-|---|---|---|
+| --- | --- | --- |
 | `downFileNormal`（`:945`） | `FileOutputStream(file)`（`:970`）——截断重写 | ❌ |
 | `downFileSpeedSingle`（`:1071`） | `FileOutputStream(file)`（`:1090`）——截断重写 | ❌ |
 | `downFileSpeedSeg`（`:1133`） | 入口 `resetFile(file)`（`:1038`）+ `raf.setLength(totalSize)`（`:1137`）——清空重来 | ❌ |
@@ -57,9 +57,10 @@
 
 ### 2.2 分片：粒度随文件线性增长，失败即全废
 
-```
+```text
 segmentCount = min(maxSplit, max(1, totalSize / 2MB))   // DownloadProgressMath.kt:31
 ```
+
 - `maxSplit` 默认 5（`Aria2Util.getSplit()`）。
 - 10MB 文件 → 5 片（每片 2MB）；100MB 文件 → 5 片（每片 **20MB**）；1GB 文件 → 5 片（每片 **200MB**）。
 - 每片一个裸 `Thread`（`:1155`），并发度 = 片数，**固定 5**，无法单独调。
@@ -90,7 +91,7 @@ segmentCount = min(maxSplit, max(1, totalSize / 2MB))   // DownloadProgressMath.
 ### 3.1 对标产品做法
 
 | 维度 | **ReBiliClient** | **PiliPlus**（Flutter） | **bilimiao2**（KMP/Compose） | **BBDown / DownKyi**（桌面） |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 任务调度 | 串行 或 并行（Semaphore，1–10） | **串行队列**（`curDownload` + `waitDownloadQueue`） | 单任务 | 多任务并发 |
 | 单流断点续传 | ❌ 截断重写 | ✅ `Range: bytes=$received-` + `writeOnlyAppend` | ✅ `RANGE: bytes=$len-$size` + `FileOutputStream(file, true)` | ✅ aria2 原生 |
 | 续传时的 URL | — | **每次重新取流**（`getVideoUrl`）后 Range 续 | 每次重新取流 | 重新取流 |
@@ -150,7 +151,7 @@ fileOutputStream = FileOutputStream(file, true)          // 追加
 
 **本项目引擎的能力错位**：唯一比对标产品"先进"的是分片并发，但这恰恰是最脆的一环；而所有对标产品都有的**续传**，本项目为零。即：
 
-```
+```text
 本项目：  分片并发 ✅   +  续传 ❌  +  失败保留 ❌  →  看着快，实际一断全废
 PiliPlus：分片并发 ❌   +  续传 ✅  +  失败保留 ✅  →  看着朴素，但断了能接着下
 ```
@@ -166,6 +167,7 @@ PiliPlus：分片并发 ❌   +  续传 ✅  +  失败保留 ✅  →  看着朴
 **目标**：任何中断（暂停 / 杀进程 / 断网 / 切清晰度重下）后，已下载字节不丢。
 
 **设计**：
+
 1. 新增 `service/download/RangeResumableWriter.kt`（纯逻辑 + IO，可单测部分抽纯函数）：
    - `already = file.length()`；
    - 发请求带 `Range: bytes=$already-`，`validateStatus` 接受 `200/206/416`；
@@ -186,6 +188,7 @@ PiliPlus：分片并发 ❌   +  续传 ✅  +  失败保留 ✅  →  看着朴
 **目标**：分片失败不再"整批回退重下"。
 
 **设计**（两档，建议先做 A）：
+
 - **A（最小改动）**：分片失败时**只重试该片**（提高重试次数到 5 次、指数退避），全部片成功后才算完成；仍失败则**保留已成功片**，下次续传时跳过已完成的片。
   - 需要每片记录"已完成"标志 → 新增分片状态文件 `.segments.json`（`[{i, start, end, done}]`）。
 - **B（更彻底）**：每片写独立 `.part{i}` 文件，全成功后按序拼接成 `video_new.mp4`；失败只重下对应 `.part{i}`。
@@ -198,6 +201,7 @@ PiliPlus：分片并发 ❌   +  续传 ✅  +  失败保留 ✅  →  看着朴
 **目标**：大文件切成足够多的小片，失败代价可控；并发度可单独设置。
 
 **设计**：
+
 - `segmentCount` 改为**固定片大小**（建议 4MB，可设 `download_segment_size`），片数 = `ceil(totalSize / 4MB)`，硬上限（如 64）防爆；
 - **并发**用独立设置 `download_concurrency`（默认 4，范围 1–8），以 `Semaphore` 限流，而非"片数=线程数"；
 - 小文件（≤ 一个片大小）直接单线程，不分片。
@@ -207,6 +211,7 @@ PiliPlus：分片并发 ❌   +  续传 ✅  +  失败保留 ✅  →  看着朴
 ### P0-4 失败语义统一 + 自动重试
 
 **设计**：
+
 - 定义 `DownloadError` 分类：
   - **可重试**：连接超时、读超时、5xx、连接中断、下载不完整 → 自动退避重试（3 次，间隔 2s/5s/10s），**保留断点**，期间状态 `retrying`；
   - **终态**：403 防盗链（URL 过期 → 重新取流后重试一次）、404/-404（视频不存在）、磁盘满（ENOSPC）、文件系统错误 → 置 `error` + 中文原因。
@@ -269,7 +274,7 @@ PiliPlus：分片并发 ❌   +  续传 ✅  +  失败保留 ✅  →  看着朴
 按 AGENTS.md「小步提交、每步可独立验证」：
 
 | 步骤 | 内容 | 验证 |
-|---|---|---|
+| --- | --- | --- |
 | 1 | P0-1 续传写入器（先只接 `downFileNormal`） | `assembleDebug` + 单测（`Range` 头构造、416/200/206 分支的纯函数）+ 真机杀进程续传 |
 | 2 | P0-1 接入 `downFileSpeedSingle` | 同上 |
 | 3 | P0-4 失败分类与自动重试 | 单测（错误码 → 可重试/终态映射）+ 真机断网重试 |

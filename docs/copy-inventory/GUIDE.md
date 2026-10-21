@@ -4,7 +4,7 @@
 > 这份只讲**怎么安全地换掉一句中文**，不讲文风好不好。
 > 全程不需要懂 Android，但需要你会「打开文件、找到那行、改引号里的字、保存」。
 
-> ⚠️ **这份指南写于「文案集中化」之前。26.10.19 起，用户可见文案已基本收进 `app/src/main/res/values/strings.xml`**（1719 条，台账 [STRINGS-MIGRATION.md](STRINGS-MIGRATION.md)）。
+> ⚠️ **这份指南写于「文案集中化」之前。26.10.19 起，用户可见文案已基本收进 `app/src/main/res/values/strings.xml`**（26.10.20 实测 1787 条，台账 [STRINGS-MIGRATION.md](STRINGS-MIGRATION.md)）。
 >
 > 所以现在改一句文案，**多数情况是只改 `strings.xml` 里的一行**——不用再打开 Kotlin 或布局文件。
 > 下面第一、三、四、十二节描述的「同一句话散在多处」属于**迁移前的历史与残余**，仍然值得读（防止改到代码里当键用的中文），但不再是主要路径。
@@ -57,15 +57,18 @@
 
 打开对应的清单文件（比如改界面文字就是 [05-ui-pages.md](05-ui-pages.md)），挑一条。每条长这样：
 
-```
+```text
 ### U-014 详情
 
 - **位置**：`activity/message/NoticeActivity.kt:22`
 - **出现在哪**：消息页 → 点一条系统通知进详情
 - **用途**：告诉用户当前在通知详情页
 - **原文**：
+
 > 详情
+
 - **改写**：
+
 ```
 
 **「位置」是最重要的**：第一段是文件路径，冒号后面是**行号**。`activity/message/NoticeActivity.kt:22` 的意思是：打开 `app/src/main/java/com/RobinNotBad/BiliClient/activity/message/NoticeActivity.kt`，跳到**第 22 行**附近。
@@ -100,7 +103,7 @@
 
 清单的「位置」已经告诉你文件了，但你还要知道**它属于哪一种**，因为改法完全不同。看文件后缀就够：
 
-```
+```text
 位置里的路径以 .xml 结尾
 ├─ 在 res/values/      → 字符串资源 → 改法 A（第四节 4.1）
 └─ 在 res/layout/      → 界面布局   → 改法 C（第四节 4.3）
@@ -119,7 +122,7 @@
 | `app/src/main/java/.../XxxActivity.kt:38` | 代码 | 改双引号里的字 | ⭐⭐ |
 | `app/src/main/java/.../tutorial/Tutorials.kt:54` | 教程正文 | 改 `text("...")` 里的字，且**要升版本号** | ⭐⭐⭐ |
 
-**为什么有四种而不是一种？** 因为仓库约定「只有设置页用 `strings.xml`，其他地方一律硬编码中文」（见 `AGENTS.md`）。所以你改设置项是改一个 XML，改别的页面是改代码里的引号。
+**为什么有四种而不是一种？** 这四种是 26.10.19 文案集中化**之前**的历史形态。集中化之后，绝大多数文案已经是 `strings.xml` 里的一行（Kotlin 侧是 `UiText.of("…")` 或 `getString(R.string.…)`，布局侧是 `@string/…`），所以**现在的默认改法是「只改 `strings.xml` 的值」**；只有下面这些还留在代码里：`const val`、`when`/`==` 里当键用的比较、`api/ApiErrorText.kt` 的错误码映射、日志与异常文本、`tools:text`。判断口诀与完整清单见 [`STRINGS-MIGRATION.md`](STRINGS-MIGRATION.md) §4 与 §9。
 
 ---
 
@@ -174,10 +177,12 @@ setPageName("通知详情")
 **三个坑：**
 
 1. **一句话被拆成几段拼起来的**，会分布在同一行或相邻行：
+
    ```kotlin
    setPageName("缓存" + folder.name)      // 只改「缓存」两个字
    String.format(Locale.getDefault(), "已阅(%ds)", 3)   // 别动 %d
    ```
+
 2. **带占位符的字符串**（`%s`、`%d`）**数量、顺序、字母都不能变**，否则运行时崩溃或显示乱码。`strings.xml` 里带占位符的一共 7 条：
 
    | 行号 | name | 原文 |
@@ -199,6 +204,7 @@ setPageName("通知详情")
    >   `"回复我的" + (if ((stats.getInt("reply") > 0)) ("(" + stats.getInt("reply") + "未读)") else "")`
    >   这里「回复我的」和「未读」是可改的文字，括号和 `stats.getInt("reply")` 不能碰。
    >   ⚠️ 这条正好又是「双真相」：`activity_message.xml:105` 还写死了一份「回复我的」，改的话两处一起改。
+
 3. **`if / else` 两个分支各有一份文案**，改一个忘另一个。清单里标了「双真相」的优先查。
 
 ### 4.3 界面布局 `res/layout/*.xml`
@@ -300,7 +306,7 @@ val recommend = tutorial(
 | 规则 | 谁在检查 |
 | --- | --- |
 | `update_log_current` 第一行必须是 `【YY.MM.DD 本次更新】` | `activity/settings/UpdateHistoryActivity.kt:40`、`:54-55` 用 `\d{2}\.\d{2}\.\d{2}` 抠版本号，抠不到就显示异常 |
-| 历史日志每组第一行必须是 `## YYYY-MM-DD` | `:94` 靠 `## ` 前缀分组，没有前缀整组不显示 |
+| 历史日志每组第一行必须是 `## YYYY-MM-DD` | `:94` 靠开头的 `##` 加一个空格分组，没有前缀整组不显示 |
 | `[分类]` 首尾方括号必须保留 | `:202` 会把方括号连同中间的字一起加粗，删了方括号就只剩普通字 |
 | 不能出现重名日期组 | `:96-103` 重名整组丢弃 |
 | 空的 `<item></item>` | `:74`、`:92` 会被跳过（这是清空某组的手段，不是 bug） |
@@ -315,7 +321,7 @@ val recommend = tutorial(
 
 **清单条目**（[04-settings.md:1514](04-settings.md#L1514) 的 `S-121`，节选）：
 
-```
+```text
 ### S-121 条目说明「界面大小」
 
 - **位置**：`app/src/main/res/values/strings.xml:21`（`R.string.desc_setting_ui`）
@@ -323,6 +329,7 @@ val recommend = tutorial(
 - **控件类型**：说明文字（长段落，两行 + 警告）
 - **用途**：给出安全范围与「别乱调」的警告
 - **原文**：
+
 > 有效范围为0.25~5.00（倍），建议每次仅进行轻微调节，调节后请预览页面，确认显示正常后完成修改，打开新页面后将会生效。
 > 注意：尽量不要调到两个最值处，否则你可能会后悔！若乱调此选项，导致应用无法正常使用的，请清除应用数据或卸载重装！
 ```
@@ -343,10 +350,12 @@ val recommend = tutorial(
 
 **清单条目**：
 
-```
+```text
 ### U-014 详情
+
 - **位置**：`activity/message/NoticeActivity.kt:22`
 - **原文**：详情
+
 ```
 
 1. 复制 `详情`——**这一个搜不了**，全仓几百处。所以改成**按文件搜**：先打开 `NoticeActivity.kt`，看第 22 行的上下文确认真的是 `setPageName("详情")`。
@@ -441,7 +450,7 @@ val recommend = tutorial(
 
 ## 十、一页速查卡
 
-```
+```text
 改文案 → ① 复制原文 → ② 全仓搜（>1 处就是双真相，全改）
         → ③ 按后缀选改法：
                strings.xml  → 改 > 和 < 中间，name 不动
@@ -464,17 +473,23 @@ val recommend = tutorial(
 
 **原文已经替你抄进「改写」位了**（2026-10-19 起）。你打开任何一条，看到的就是：
 
-```
+```text
+
 - **原文**：添加成功
 - **改写**：添加成功
+
 ```
 
 原文较长时（多行）：
 
-```
+```text
+
 - **原文**：
+
 > 当前客户端版本较低，可能无法正常播放，建议更新到最新版本。
+
 - **改写**：
+
 > 当前客户端版本较低，可能无法正常播放，建议更新到最新版本。
 ```
 
@@ -486,8 +501,10 @@ val recommend = tutorial(
 
 **要换行**的（比如带 `\n` 的长说明），一段一行写，我按行还原成 `\n`：
 
-```
+```text
+
 - **改写**：
+
 有效范围为0.25~5.00（倍）。
 注意：不要调到最值处！
 ```
@@ -496,13 +513,13 @@ val recommend = tutorial(
 
 把该条**标题**末尾加上 `〔待落地〕`：
 
-```
+```text
 ### U-014 详情 〔待落地〕
 ```
 
 我改完源码后，会把它换成落地位置：
 
-```
+```text
 ### U-014 详情 〔已落地：activity/message/NoticeActivity.kt:22〕
 ```
 
@@ -522,7 +539,7 @@ val recommend = tutorial(
 
 ### 11.5 两件我干不了、得你来的事
 
-- **编译验证**：我这边命令行环境是坏的（所有命令直接返回 `0xC0000142`，起不来），所以只能靠读代码自检。**每次我落地后请你跑一次** `./gradlew.bat :app:assembleDebug`，报错把最后 20 行贴给我。
+- **编译验证**：本机命令行可正常构建（实测 `./gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL`，两个 flavor × 4 个 ABI）。所以落地后**由我跑** `assembleDebug` 与 `:app:testStandardDebugUnitTest` 并把结果贴出来，你只需看效果。
 - **真机看效果**：手表小屏会不会截断（第七节），只有装上去才知道。
 
 ### 11.6 我可能会打回的三种情况
@@ -544,7 +561,7 @@ val recommend = tutorial(
 **你不用逐条写，只写一张替换规则表**：
 
 | 旧 | 新 | 适用范围 |
-|---|---|---|
+| --- | --- | --- |
 | `操作失败` | `没成功` | 全局 |
 | `加载失败` | `没加载出来` | 只改长提示，Toast 不动 |
 | `请稍后再试` | `等会儿再试` | 全局 |

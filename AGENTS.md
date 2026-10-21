@@ -43,6 +43,15 @@
 - 页面级排序/分区配置沿两个既有范式：`MenuConfig`（启用/未启用）与 `MySpaceConfig`（主列表/更多列表）——都是纯 Kotlin 单一数据源 + JVM 单测 + 复用 `MenuSettingAdapter` 式双分区拖拽写法。
 - 请求与解析分离，纯解析抽成 `static`/`object` 函数并补 JVM 单测（参考 `HotSearchApi.parseHotSearch`；需要 SharedPreferences 时注入 `SharedPreferencesUtil.sharedPreferences = FakeSharedPreferences()`——该假实现是共享助手 `app/src/test/…/util/FakeSharedPreferences.kt`，**别再抄一份**）。
 - **小步提交**：把改动切成小步，每步都能独立验证（`assembleDebug` + 单测通过）并说清楚改了什么，再进入下一步；不要一次性堆大量改动。
+- **做完就提交并推送，且按改动类型落到不同分支**（26.10.20 起）：一次改动完成后**自己写 commit message、自己 commit、自己 push**，不要等用户催；只有改动没验证过（构建/单测没跑通）才停下来问。惯例：中文、`type(scope): 摘要`（`fix` / `feat` / `docs` / `chore` / `refactor` / `test`），一次提交只装一个关注点，末尾带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`。**不开 PR**（自己的仓库不需要），一个改动做完后把该分支 merge 回 `main` 并 push，保证 `main` 始终是最新可发布状态。
+- **分支映射**（三条都是长期类型分支，2026-10-20 已全部同步到最新 `main`，此后各自往上叠；分支名是历史名字，**不要改名**，它们现在承担的是类型桶的角色）：
+
+  | 改动类型 | 推到哪个分支 |
+  | --- | --- |
+  | `feat/*`（新功能、新能力） | `feat/gitee-release` |
+  | `fix/*`（修 bug、行为纠正） | `fix/issue-1-swipe-seek-back` |
+  | `docs/*` / `chore/*` / `refactor/*` / `test/*` | `main`（直接提交） |
+
 - **用户可见文案一律进 `app/src/main/res/values/strings.xml`**（26.10.19 起从「只有设置页用」改为全仓迁移，台账与规范见 `docs/copy-inventory/STRINGS-MIGRATION.md`）。命名沿用既有前缀：`pagename_` 页面标题 / `btn_` 按钮 / `text_` 界面文本 / `desc_` 设置说明 / `msg_` 一次性提示。**新代码不要再硬编码中文**；迁移未覆盖的老代码可以留着，但改到哪块顺手迁哪块，别新增第二份。写法：Kotlin `getString(R.string.x)`；`companion object` / `object` 里用 `BiliTerminal.context!!.getString(...)`；Java 用 `BiliTerminal.context.getString(...)`（别忘了 import `R` 与 `BiliTerminal`）。
 
   **唯一例外：会被 JVM 单测直接调用的纯函数不要读资源**。本仓库不用 Robolectric，单测里没有 Context，`getString` 必然空指针（26.10.19 B6 一次挂掉 6 个用例）。这类「服务端错误码 → 人话」的映射统一放 `api/ApiErrorText.kt`（`object` + `@JvmStatic`，同包 Java 直接调），要改那几句改它一处。
@@ -67,6 +76,20 @@
 - **本文件描述的内容变了**（入口、约定、坑清单）→ 顺手改 `AGENTS.md`，别留过时描述。
 - **一份知识只有一个落点**，别在多处复述；文档间引用一律写仓库相对路径（`docs/...`），源码注释里的文档路径同样要跟着改。
 - **过期文档不删，归档**：`git mv` 进 `docs/archive/` 并在 `docs/archive/README.md` 加一行「内容 + 为什么归档」；**归档前先回迁**——把文中唯一还活着的知识（不要回退的取舍、未落地的待办、实测数字）搬进活文档。归档后同步改掉所有指向它的引用。
+
+### Markdown 格式规范（26.10.20 起，`.markdownlint.json` 固化）
+
+改任何 `.md` 后跑一次，**要求 0 错误**（`docs/archive/` 不参与：归档正文一字不改）：
+
+```bash
+npx --yes markdownlint-cli2 "AGENTS.md" "readme.md" "docs/**/*.md" "!docs/archive/**"
+```
+
+**必修项**（默认全开）：标题/围栏/列表/表格前后留一个空行（MD022/031/032/058）、代码围栏**必须写语言**（MD040，纯日志用 `text`）、列表符号统一 `-`（MD004）、表格分隔行统一 `| --- | --- |`（MD055/056）、行尾不留空格（MD009）、文件以单个换行结尾（MD047）、标题不跳级（MD001）。
+
+**已豁免**（写进 `.markdownlint.json`，理由是这些规则与中文技术文档的既有写法冲突，不是"懒得改"）：`MD013` 行长（中文长句本来就超 80）、`MD033` 内联 HTML（文档里有 `<br>`）、`MD034` 裸 URL、`MD036` 用加粗当小标题、`MD042` 空链接（徽章）、`MD041` 首行标题、`MD046` 代码块风格（列表内嵌围栏会被误判成缩进代码）、`MD024` 重复标题（按同级判断，更新日志日期会重复）、`MD028` 引用块内空行、`MD029` 有序列表编号风格。
+
+**`docs/copy-inventory/*.md` 是逐字素材**：文件里行首的 `*` / `+` / `##`、引用块内的列表、以及 `` `✓ ` `` 这类**结尾带空格的 code span** 都是**被照抄的原文**，不是格式问题。这类文件在头部用 `<!-- markdownlint-disable ... -->` 单独豁免，**别为了过 lint 去改里面的引文**——改了清单就不再是"逐字照抄"。
 
 ## 构建
 
@@ -93,7 +116,7 @@
 
 > **只想拿包、不想发版**：手工触发 `build-release.yml` 时勾选 `build_only`（26.10.17 新增）。它照常跑单测 + `assembleRelease` + 整理发行 APK + 生成 MD5 并上传 artifact `release-apks`，但**跳过**「计算发行 tag 与发布说明」「创建 GitHub Release」「Notify relay」等全部发行动作——不产生 Release、不占 tag（release immutability）、不同步 Gitee，适合传应用商店或自己装。实现上由 job 级 `env.BUILD_ONLY` 归一化（**推 tag 时 `inputs.*` 恒空，必须显式判 `event_name`**），五处步骤条件前置 `env.BUILD_ONLY != 'true'`，并**比较字符串而非布尔**。「tag 留空」不是等价做法：那条路仍会组装发布说明，`update_log_current` 抽不出条目时会 `::error::` 退出。细节见 `docs/review/fix-progress.md` §3.25。
 
-坑：`gradle.properties` 第 9 行硬编码 `org.gradle.java.home`（Windows 路径），代理配置在第 88-92 行**是注释状态**；release 签名读 gitignore 的 `local.properties`；`copyApkToDesktop` 未挂在 `assembleRelease` 上，需手动跑。
+坑：`gradle.properties` **不再写死** `org.gradle.java.home`（26.10.20 起；旧版指向 `C:\Program Files\Java\jdk-17`，换台机器/换 JDK 发行版就报 `Value '...' given for org.gradle.java.home Gradle property is invalid`，整个构建起不来）——本机 JVM 不是 JDK 17 时在**用户级** `~/.gradle/gradle.properties` 里设，或让 `JAVA_HOME` 指向 17；代理配置在第 94-97 行**是注释状态**；`compileSdk 34` 需要 `platforms/android-34` + `build-tools/34.0.0`（缺了 AGP 自动下载，licenses 已接受时），`sdk.dir` 写在 gitignore 的 `local.properties`，release 签名也读它；依赖仓库已在 `settings.gradle` 前置 aliyun 的 `google`/`public`/`gradle-plugin` 镜像；`copyApkToDesktop` 未挂在 `assembleRelease` 上，需手动跑。
 
 **更容易踩的坑（build cache 回放陈旧资源）**：`gradle.properties` 开着 `org.gradle.configuration-cache` 与 build cache。只要你改动 `res/` 的**文件集合**（新增/删除/移动资源文件），`:app:mergeDebugResources` 可能 `FROM-CACHE` 回放一份旧结果，症状是编译报莫名其妙的 `Unresolved reference 'R.layout.xxx'` 或新的 string/color 找不到，而源文件明明存在。此时必须：
 
@@ -105,6 +128,7 @@
 判断依据：`app/build/intermediates/merged_res/debug/**/` 里找不到该资源对应的 `.flat` 文件，但 `aapt2 compile` 单独编译它又是成功的。
 
 注意两点：
+
 1. **`clean` 和 `assemble` 必须分两次 Gradle 调用**。写在同一次调用里（哪怕顺序正确）可能因配置缓存复用而报 `ManifestMerger2$MergeFailureException: NoSuchFileException: .../navigation_json/debug/extractDeepLinksDebug/navigation.json`。
 2. 光加 `--no-build-cache` 不够时，把 `--no-configuration-cache` 也带上——配置缓存会复用过期的任务图，让上面那条 `Unresolved reference 'R.layout.xxx'` 继续复现。
 

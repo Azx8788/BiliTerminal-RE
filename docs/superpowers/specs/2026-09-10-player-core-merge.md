@@ -12,7 +12,7 @@
 合并本身不是目的，**它解决的是三处会造成实际播放开销的重复实现**：
 
 | 重复实现 | 性能代价 |
-|---|---|
+| --- | --- |
 | **Surface 绑定**：`PlayerActivity` 用 `java.util.Timer` 每 200ms 轮询等 surface 就绪；短视频用 `TextureView` listener | 首播/切清晰度/切分页/切听视频模式**每次都新建一个 Timer 线程**；surface 未就绪时最长等满 200ms 才开始 `prepareAsync`，**直接拖慢首帧** |
 | **进度轮询**：`PlayerActivity` 主线程自循环；`IjkPlayerBridge` 协程 | 两套机制、两套生命周期，容易漏清理 |
 | **弹幕栈**：`PlayerActivity` 内联 `streamDanmaku`/`createParser`/`DanmakuContext` 配置；`DanmakuManager` | 切清晰度/切分页都会重建 `DanmakuContext` + parser；两套实现意味着两套 bug |
@@ -23,7 +23,7 @@
 
 ## 2. 分层设计
 
-```
+```text
 activity/（UI、手势、Intent 契约、页面级功能）
     ├─ PlayerActivity            普通播放器：多P/清晰度/字幕/互动视频/直播/听视频/MediaSession
     └─ ShortVideoPlayerActivity  短视频：ViewPager2 分页/预加载/封面/控制栏
@@ -54,7 +54,7 @@ player/
 ## 4. 分步实施（每步都必须 `assembleDebug` + `testDebugUnitTest` 通过）
 
 | 步骤 | 内容 | 性能收益 | 需要真机 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **S1** ✅ | `player/PlayerSurfaceBinder.kt`：Surface 就绪改事件回调，接入 `PlayerActivity`（删除 `surfaceTimer`、`mSurfaceTexture`） | 去掉每次 `setDisplay()` 的 Timer 线程；去掉最长 200ms 的首帧等待 | ✅ 是（黑屏/不播） |
 | **S2** ✅ | `player/VideoPlayerCore.kt`：通用播放内核（多实例安全、无 View 依赖、回调统一主线程、`reload()` 复用播放器保留进度）。**已可用，但尚未接入消费方** | 复用 `IjkMediaPlayer` 省掉切清晰度/切分页的一次 native 播放器创建 | ✅ 是 |
 | **S3** ✅ | 弹幕栈合并（方案 B）：`DanmakuManager` 补 protobuf 分段 / 空 parser / 与 `PlayerActivity` 完全同签名的 `addDanmaku`；`PlayerActivity` 删掉内联的 `createParser`×2 + `streamDanmaku`×2 + `mContext` | 两个播放器共用一套弹幕配置与回调；`PlayerDanmuClientListener` 无需改动 | ✅ 是 |

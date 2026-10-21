@@ -6,21 +6,25 @@
 
 ## 1. 当前版本状态
 
-- **版本号**：`26.10.10`（`app/build.gradle` 的 `versionName`），`versionCode 2610102`。
-- **本版 tag**：`26.10.10.1`。
-- **上一版**：`26.10.10` / `2610101`（正常发版）已占用 tag `26.10.10`——release immutability 下被 Release 用过的 tag **永久不可复用**，所以补丁版只能用 `26.10.10.1`。
-- **下次递增**：先看 `app/build.gradle:23-24`，并保留 `26.10.10.1` 这种「同版本名 + 补丁后缀 tag」的习惯；`versionCode` 递增、`versionName` 可不变。
-- **构建命令**：
-  ```
+- **版本号**：`26.10.19`（`app/build.gradle` 的 `versionName`），`versionCode 2610200`（26.10.21 合并上游时上游把它从 `2610190` 抬到 `2610200`，`versionName` 未变）。tag `26.10.19` 已占用。
+- **上一版**：`26.10.16` / tag `26.10.16`。
+- **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.19.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
+- **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
+
+  ```text
   .\gradlew.bat :app:assembleDebug
-  .\gradlew.bat :app:testDebugUnitTest
+  .\gradlew.bat :app:testStandardDebugUnitTest
+  .\gradlew.bat :app:testCoexistDebugUnitTest
   .\gradlew.bat :app:assembleRelease
   ```
+
+- **JDK**：需要 17。仓库 `gradle.properties` **不再写死** `org.gradle.java.home`（写死的机器路径换机即报 `Value '...' is invalid`），本机 JVM 不是 17 时在**用户级** `~/.gradle/gradle.properties` 里设，或让 `JAVA_HOME` 指向 17。
+- **SDK**：`compileSdk 34` 需要 `platforms/android-34` 与 `build-tools/34.0.0`；缺了 AGP 会在配置阶段自动下载（licenses 已接受时），也可用 `sdkmanager` 预装。`local.properties` 里写 `sdk.dir`，该文件被 gitignore。
+- **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数）**：**67 个测试类 / 718 个用例**（26.10.21 实测；`standard` 与 `coexist` 同为 67 suites / 718 tests / 0 失败）。计数方式：`app/build/test-results/testStandardDebugUnitTest/*.xml` 的 `<testcase>` 求和——任务名带 flavor 前缀，`testDebugUnitTest` 已不存在。
-- **本轮已跑通**：26.10.10 的 `minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → `testDebugUnitTest`」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。单测 `app/build/test-results/testDebugUnitTest/*.xml` 汇总 **49 suites / 460 tests / 0 failures / 0 errors / 0 skipped**，最新 XML 时间 `2026-10-09T22:59:04`（晚于本轮 APK 出包时间 22:56:58，覆盖了本轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
-- **用例数一律以机器产出为准**：读 `app/build/test-results/`，队友口述数字不进入文档。
+- **单测（静态计数，26.10.21 合并上游后实测）**：**72 个测试类 / 769 个用例**，两个 flavor 完全相同（同源码），0 失败。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **本轮紧急撤回**：「自动跳过片头片尾」处于**撤回状态**（26.10.10 用户明确要求，非缺陷）——设置入口已隐藏、运行期恒不生效，代码与存档保留。恢复清单 6 步见 §2.2 第一条与 §3.3 末尾。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
   - **24 → 21**：代码侧清掉**四处** API 24 才有的调用：`util/AsyncLayoutInflaterX.java` 的 `java.util.function.BooleanSupplier` → 工程内 `CancelledChecker`；`util/SharedPreferencesUtil.java:167` 的 `java.util.function.Consumer` → 工程内 `EditorAction`；`activity/reply/WriteReplyActivity.kt:177` 的 `Map.getOrDefault` → `msgMap[k] ?: 默认值`；`util/VideoPreloadManager.kt:12` 的 `ConcurrentHashMap.newKeySet<Int>()` → `Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())`（**这一处是会真崩的**：类一初始化就 `NoSuchMethodError`，且已确认留在 release dex 里）。两个调用点（`activity/base/BaseActivity.kt:435`、`util/AccountManager.java:202`）走 SAM 转换，未改。
@@ -31,7 +35,6 @@
   - `:app:lintRelease` 另外两类输出**不改**：`InlinedApi`（常量已内联进字节码，旧系统只是忽略，如 `FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS` / `MotionEvent.AXIS_SCROLL`）与 `ObsoleteSdkInt`（现在恒真的 `SDK_INT` 分支）。`activity/player/PlayerActivity.kt:1981` 的 `MediaSession.Callback` 是 **lint 假阳性**——所在 `private fun initMediaSession()` 第一行就是 `if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return`。
   - **只对 release 包负责**：`jvmTarget 17` 下 Kotlin 会给 21 个数据类的 `hashCode()` 生成 `java/lang/Long.hashCode(J)` 之类的 API 24 调用，release 里被 R8 全部消除（dex 零命中），**debug 包才有**。本分支只发 release，故不动；要发 debug 包必须先处理这一条。
   - **完整兼容清单（含「再往下调会硬失败」的依赖下限、dex 级审计出的第三方库 API 24 引用与为什么可以不管）见 `docs/architecture-map.md` §1.1**，本文件不复述。
-
 
 ## 2. 未完成待办
 
@@ -218,16 +221,18 @@
 - **用户原话**：「将跳过片头片尾的功能紧急撤回，直接关闭且隐藏此设置，立刻发新版本26.10.10 2610102 tag打新的」，追加「更新公告追加一条说明即可」。要求是**撤回而非删除**：代码与设置项保留，只让它不生效、入口不可见。
 - **为什么必须新加开关，而不是把默认值改成 false**：`SharedPreferences.getBoolean(key, def)` 里的 `def` 只在**键不存在**时生效，而老用户从 26.10.09 起就已被写入 `true`（首次读取即落盘），改默认值对这些人一点作用都没有。
 - **撤回否决位（逐字，恢复时只改这一行）** —— `app/src/main/java/com/RobinNotBad/BiliClient/player/SkipOpEdPrefs.kt`：
+
   ```kotlin
   const val DEFAULT_ENABLED = true   // 保持 true，恢复后行为与本补丁前完全一致
   const val FEATURE_ENABLED = false  // 26.10.10 撤回；恢复时只改这一行
   fun isEnabled(prefValue: Boolean): Boolean = FEATURE_ENABLED && prefValue
   ```
+
 - `DEFAULT_ENABLED` **必须保持 `true`**：`app/src/test/java/com/RobinNotBad/BiliClient/player/SkipOpEdPrefsTest.kt:41` 的 `默认值是开启` 断言钉着它（那是用户上一轮明确要求的「默认必须是开启」）。改它既撤回不了老用户，还会弄红测试。
 - **撤回四处落点**（`isEnabled` 组合是运行期闸门，另三处是可见性 / 白拉接口的收口）：
 
   | 位置 | 改动 |
-  |---|---|
+  | --- | --- |
   | `player/SkipOpEdPrefs.kt` | 新增 `FEATURE_ENABLED` + `isEnabled(prefValue)` 纯函数；object 头注释加「26.10.10 已紧急撤回」 |
   | `activity/player/PlayerActivity.kt` `skipOpEdEnabled()` | 改为 `SkipOpEdPrefs.isEnabled(getBoolean(PLAYER_SKIP_OP_ED, DEFAULT_ENABLED))`，即运行期恒 `false` |
   | 同上 `maybeShowSkipGuide()` | 开头 `if (!SkipOpEdPrefs.FEATURE_ENABLED) return`（引导里「开启」按钮会写回存档） |
@@ -397,7 +402,6 @@
 
 **仍未覆盖**：真手表（圆屏/表冠）、Android 10 及以下、`http` 命令在真实登录态下的表现、`run-as am broadcast` 这条兜底路径。
 
-
 ### 3.15 线上崩溃两条：WebView 建不出来 / 系统设置页不存在（26.10.14）
 
 同一台设备（`xiaomi grasslte M2505W1`，SDK 34，即小米手表）在 2026-10-13 23:15 连报两条，**都是「设备能力缺失」却把整个应用带崩**，本可优雅降级。
@@ -465,6 +469,7 @@
 **关键成本结论（推翻了先前的判断）**：这件事**零额外请求**。`PlayerActivity.switchToOnlinePage` 的虚拟合集分支本来就要调 `VideoInfoApi.getVideoInfo(aid)` 拿首个 cid，而它内部的 `getInfoByJson` **已经解析了 `ugc_season` → `videoInfo.collection`**（`VideoInfoApi.java:41-48 → :118 → :244-246`）。原来这份数据解析完就扔，只用 `cids[0]`。收藏夹入口 `playFavoriteVirtualCollection` 同理。
 
 **实现**（4 处）：
+
 - `model/Collection.toPlaylist(Collection)`：**纯函数 + 6 例 JVM 单测**。跨节展平成有序 `(aid, cid, title)`；`sections` 为空时退回 `cards`（"收藏的合集"只填 cards）；aid/cid 缺失的脏数据跳过。
 - `PlayerData` 加 `collectionId` / `collectionTitle` / `returnPlaylist`（一层返回栈），三者都进 Parcelable。
 - `PlayerActivity`：`switchToOnlinePage` 里检测 `collection` → `enterCollectionPlaylist()` 整体换播放列表并压栈；`returnToCallerPlaylist(advance)` 弹栈；合集播完在 `onCompletion` 里自动弹栈（受 `auto_next_enabled` 管，与"自动下一P"同一档语义）。
@@ -476,6 +481,7 @@
 **踩到的坑（真机复现后修）**：点「返回主合集」会**立刻又被切回合集**——返回的位置正是触发切换的那条合集视频。加 `suppressedCollectionId` 按**合集**抑制（不是全局抑制，否则别的合集也永远切不进去了）。显式操作压过隐式自动化。
 
 **真机验证（26.10.15 15:00~15:07，MuMu Nebula）**：
+
 | 场景 | 结果 |
 | --- | --- |
 | 收藏夹点「这次把荧妹也调小了一点」（属《原神》合集 336 集，位于合集第 336 集） | `jumpToPlayer: 视频标题>原神`，选集卡片标题 `合集 · 原神（336/336）` + 「← 返回主合集」 |
@@ -484,17 +490,16 @@
 
 **未覆盖**：`returnPlaylist` 只存一层，多层嵌套（合集里的视频又在另一个合集里）不处理；`PageSelectorAdapter` 对合集仍显示「P1/P2…」而不是「第 1 集」（纯文案，未改）；没有开关能关掉这个自动切换（用户明确要求"遇到就切"，若要开关需另加）。
 
-
-
-
 ### 3.19 线上崩溃：账号切换页「销毁后启动图片加载」（26.10.16）
 
 **现场（用户提供的混淆栈）**：
-```
+
+```text
 java.lang.IllegalArgumentException: You cannot start a load for a destroyed activity
   at R1.l.d(SourceFile:83)      ← Glide RequestManagerRetriever.assertNotDestroyed
   at Q0.b.run(SourceFile:53)    ← 主线程 Handler 里的 Runnable
 ```
+
 设备 Android 5.0.2（API 21），**打开账号切换页后等几秒即触发**，弱网 / 低性能设备更易复现。
 
 **根因（已在源码定位，唯一命中点）**：`activity/settings/login/AccountSwitchActivity.kt` 的 `createAccountCard()`。账号没有缓存过昵称/头像时，走 `CenterThreadPool.run { UserInfoApi.getUserInfo(mid) → runOnUiThread { Glide.with(this)… } }`。`UserInfoApi.getUserInfo` 是一次真实网络请求，**请求期间用户完全可以离开这个页面**——点左上角标题 `finish()`、点另一个账号切走（`startActivity(SplashActivity)` + `finish()`）、或低内存设备上被系统回收。请求回来时 `runOnUiThread` 的 Runnable 才落到主线程，`Glide.with(activity)` 一进来就 `assertNotDestroyed` → 抛异常 → 无人捕获 → 应用崩溃。**弱网只是把这个时间窗从几十毫秒拉长到几秒**，低性能设备只是更容易在后台被回收——都不是原因本身。
@@ -502,6 +507,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 **为什么本工程比原生 Glide 更容易踩**：`activity/base/BaseActivity.kt:473` 重写了 `isDestroyed()`，语义是「已销毁 **或** 正在 finish」。Glide 的判活是虚调用，因此**连「只是正在 finish、还没 onDestroy」的窗口也会崩**。另外 `Glide.with(view)` 会沿 View 的 Context 往上找宿主 Activity，最后走同一个判断——所以「传 View」的写法（`GlideUtil.request/requestRound`）同样会崩，不止传 Activity 才会。
 
 **修法（三处，`AccountSwitchActivity.kt`）**：
+
 1. **异步回调内部判活**：`runOnUiThread {}` 里第一行 `if (isDestroyed) return@runOnUiThread`。**必须在 Runnable 内部判**，只在 post 之前判是错的——判完到 Runnable 真正执行之间，主线程完全可能已经跑完 `onDestroy`。请求起跑前也补了一次 `if (isDestroyed) return@run`，省掉一次注定无用的网络往返。
 2. **页级 `RequestManager`**：新增字段 `requestManager`，所有头像加载统一走 `loadAvatar()`（内含判活），不再每张卡各写一次 `Glide.with(this)`。
 3. **`onDestroy` 收尾**：新增 `override fun onDestroy()`，在 `super.onDestroy()` **之前**调 `clearAvatarRequests()`（`super` 一跑，Glide 挂在生命周期上的 RequestManager 已进入 destroyed，再 clear 属于事后补救），随后置空 `requestManager`。
@@ -521,23 +527,27 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 四块一起做。**技术口径与取舍统一记在 `docs/architecture-map.md` §6.5（日志能力 / 我的反馈），这里只记现状与待办。**
 
 **一、日志基建（客户端，新增）**
+
 - `util/Logu.java` 新增**内存环形缓冲**：`ArrayDeque<String>` + 累计字符数，上限 `RING_MAX_CHARS = 65536`（约 128KB），超限从头部逐条淘汰；读写一律 `synchronized (RING)`。API：`ringSnapshot()` / `ringChars()` / `ringClear()`。
 - **只记 W/E/F 级别**（`w/e/wtf` 本来就恒执行、本来就调 `getCaller()`，故**不新增开关、不新增栈遍历，release 行为零变化**）；**不落盘**（release `LOG_TO_FILE` 恒 false，内存缓冲是 release 下唯一能拿到历史日志的手段）。
 - 新增 `util/LogSanitizer.kt`（object + `@JvmStatic`）：按 `键=值` 脱敏、**不解析 URL**、有快速路径、正则按键名长度降序拼接；键名复用 `NetWorkUtil.SENSITIVE_QUERY_KEYS` / `NOISE_QUERY_KEYS`（二者由 `private` 改 `public`，`maskUrl()` 未动）。
 - `Logu.toFile()` 顺序改为**先脱敏 → 再 `shorten()` → 同时进缓冲与落盘**（先截断再脱敏会让超长行凭证只被截掉一半）。
 
 **二、崩溃报告附带日志**
+
 - `ErrorCatch.java` 崩溃瞬间多塞 `intent.putExtra("ring_log", Logu.ringSnapshot())`（与既有 `trail` 同一条路，只取值不做采集）；`util/CrashReporter.kt` 的 `buildPayload` / `upload` 加 `ringLog` 参数，`mergeLog()` 把轨迹与应用日志合并进**同一个 `log` 字段**（服务端零改动，老数据与新数据同构）。
 - **`CatchActivity` 跑在 `:error_activity` 独立进程，那边的 `Logu` 缓冲恒为空**，只能读 Intent extra、**不能**调 `ringSnapshot()`。
 - 崩溃页（`activity_catch.xml` + `CatchActivity.kt`）加「附带应用日志」勾选框，**默认勾选**；缓冲为空时置灰并改文案「本次没有可附带的日志」。
 
 **三、反馈附带日志 + 本地导出**
+
 - `FeedbackActivity` 加「附带应用日志」勾选框，**默认不勾选、不持久化**（与崩溃页相反：反馈是用户主动行为）。
 - 新增 `util/LogExporter.kt`：子线程把 `ringSnapshot()` 写成应用私有 `cache/terminal/rebili-log-yyyyMMdd-HHmmss.txt`，经 FileProvider + `ACTION_SEND` 分享。
 - `TerminalApi.buildFeedbackPayload` / `submitFeedback` 加 `log` 参数（服务端该字段**可选**，老客户端不发就是空串）。
 - **`ringClear()` 只在「勾选 + 提交成功」时清空**：没勾选就没送出去、失败要留着重试。
 
 **四、服务端（HK，已上线）+「我的反馈」页面**
+
 - 新增 `GET /terminal/feedback/mine`（`X-Install-Id` 认领 + 可选 `X-Mid` 头）；`feedback` 表加 `log` 列（`SCHEMA_VERSION` 1 → 2）；`/terminal/feedback/submit` 收可选 `log`。
 - `/admin/api/feedback` 与 `/admin/api/crash` 列表都改回 `LENGTH(log) AS log_len`（**不回全文**），新增 `/admin/api/feedback/detail?id=` 与 `/admin/api/crash/detail?id=` 拉全文；`console.html` 反馈 / 崩溃详情抽屉都能显示日志（异步拉 detail，用 `textContent` 写入而非拼 HTML）。**管理台此前根本看不到 `crash.log`**（列表 SELECT 里没有、详情也不显示），本次补上。
 - 客户端新增「我的反馈」列表 + 只读详情（`activity/feedback/`），入口在设置页「反馈与统计」分组（`SettingGroupActivity` + `SettingsIndex` 搜索索引，不新增菜单项）；状态文案用「**待受理 / 已受理**」——`handled` 是开发者待办状态，**不写「已处理」**。
@@ -658,6 +668,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 **修法**（`api/FavoriteApi.java`）：新增常量 `MAX_COUNT_DEFAULT_FOLDER` / `MAX_COUNT_CUSTOM_FOLDER` 与纯函数 `resolveMaxCount(serverMaxCount, isDefault)`——**只采信「非 999 且 > 0」的服务端值**，其余（999 / 字段缺失 / 非法）回落约定值。`getFavoriteFolders` 改用它（顺带把 `getInt("max_count")` 换成 `optInt(..., 0)`，字段缺失不再整页失败）；`parseFavoriteState` 的 `50000 / 1000` 改用同一对常量。取舍：不直接无视服务端字段，是为了服务端将来放宽上限并同步字段时能自动跟随。
 
 **验证**
+
 - 新增 3 个 JVM 用例（`FavoriteApiTest.resolveMaxCount_*`）。两 flavor 单测 **60 suites / 596 tests / 0 failures / 0 errors / 0 skipped**（机器产出），`assembleDebug` 通过。
 - **模拟器实测（MuMu Nebula，Android 12 / SDK 32，共存 debug 包）**：`uiautomator dump` 取回 `1912/50000`、`22/1000`、`777/1000`、`90/1000`、`1000/1000`、`115/1000` —— 与用户截图的六个数字一一对应，`/999` 全部消失，默认收藏夹不受影响。
 - 结论沉淀：`docs/architecture-map.md` §7.34（口径）、`docs/bilibili-api-notes.md` §6（实测字段）。
@@ -668,7 +679,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 
 **背景（用户的心智模型）**：这不是"两种并列类型"，而是**一棵目录树**——
 
-```
+```text
 收藏夹（虚拟合集）= 根目录
 ├── 单视频 / 合集里的单视频.mp4   ← 直接播
 ├── 分P视频/                     ← 文件夹：进去看各分P，退出来回根目录
@@ -684,12 +695,14 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - 播完层内最后一个分P/剧集 → 自动弹回根目录（受 `auto_next_enabled` 管）
 
 **实现**（4 处）：
+
 - `PlayerActivity` 加 `enterableCollection` / `enterableMultiPage` 与统一重算函数 `updateEnterable(videoInfo)`（合集优先于分P）；`enterCurrentNestLayer()` 由那一行的点击触发；`enterMultiPageLayer()` / `enterCollectionPlaylist()` 换列表 + 压返回栈；`returnToCallerPlaylist()` 弹栈
 - 分P层的 `cids` 是**真 cid**（同一个 aid 的多个分P），所以 `virtualCollection = false`，切页走普通多P 分支；`aid` 必须换成该视频的 aid
 - 顺带修文案：根目录层标题原本用 `videoTitle`，而它会被 `doSwitchPage` 改成当前条目名，从嵌套层返回后会显示成「黑马程序员Java…（1/20）」（像文件夹名其实是某一条）→ 新增 `rootTitle`（返回时取自返回栈的 `title`）
 - **`PlayerData` 只剩 `virtualCollection` 一个层相关字段**：层状态全在播放器内部，不再走 Intent。唯一例外是**起播那一条**——它的播放列表由构建方直接拼、不走 `switchToOnlinePage`，所以播放器拿不到它的 videoInfo；构建方把已经请求过的 `VideoInfo` 通过 `PlayerData.enterableInfo` 带过去（零额外请求）。注：`putExtra` 处必须显式转 `Parcelable`，`VideoInfo` 同时实现了 `Parcelable`/`Serializable`，不转会报"引用不明确"
 
 **真机验证（26.10.16 22:2x~23:0x，MuMu Nebula）**：
+
 | 场景 | 结果 |
 | --- | --- |
 | 点「黑马程序员Java」（105 分P） | 标题停在 `重要收藏夹（虚拟合集）（1/20）`，**没有**被换列表；多出一行「进入分P（105 个）」（`手动入口-进入分P.png`） |
@@ -704,11 +717,13 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 **动机**：需要一份**正式签名**的 release APK 去传应用商店 / 自己装，但**不想产生 Release**——Release 会进 `releases/latest`（客户端更新检查读它）、会被中转服务同步到 Gitee、并消耗一个不可复用的 tag（release immutability）。原先唯一「只出包」的办法是手工触发时把 `tag` 留空，但那条路仍会执行「计算发行 tag 与发布说明」，于是**只要 `update_log_current` 抽不出条目就会 `::error::` 退出**——为拿一个包而被迫先写好当版更新日志，不合理。
 
 **实现**（`.github/workflows/build-release.yml`，5 处）：
+
 - `workflow_dispatch` 新增 `build_only`（boolean，默认 `false`）
 - job 级 `env.BUILD_ONLY` 归一化：`${{ github.event_name == 'workflow_dispatch' && inputs.build_only }}`。**必须显式判 `event_name`**——推 tag 时 `inputs.*` 恒空（与发布说明那条坑同源）
 - 「计算发行 tag 与发布说明」「生成发行版直链清单」「生成给老客户端的一次性 config.json」「创建 GitHub Release」「Notify relay」五步的 `if` 前置 `env.BUILD_ONLY != 'true'`
 
 **两个刻意的取舍**：
+
 1. **比较字符串而非布尔**。`type: boolean` 的输入在表达式里是真布尔，但 `env` 渲染后是字符串 `"true"`／`"false"`，混用布尔与 `'true'` 是这类开关最经典的翻车点（类型强转方向一变，开关就静默失效）。
 2. **跳过「计算发行 tag」这一步本身**，所以 `steps.tag.outputs.tag` 为空 → 下游 `if: steps.tag.outputs.tag != ''` 天然为假。五处条件里既有显式判 `BUILD_ONLY`（自解释、防后人删了 tag 判空），又有 tag 为空这层兜底（**双保险**：任一层失效都不会误建 Release）。
 
@@ -721,10 +736,12 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 **现象**（用户反馈，未附日志）：旋转表圈无反应；开「表冠适配」并把灵敏度调到 1.0 后，**只有在「偏好设置」那一页里能用**，退出即失灵；数值与开关确认已持久化。官方客户端与另一 RE 版本正常。
 
 **根因（源码可证，两处叠加）**：
+
 1. **旋转编码器事件只沿焦点路径分发**。`RotaryRecyclerView` / `RotaryScrollView` / `RotaryNestedScrollView` 三个控件把监听器挂**自己身上**，而列表页的 `RecyclerView` 默认不抢焦点——页面上没有任何控件获焦时事件没人接。之所以「设置页里能用」：用户点过输入框，`EditText` 拿了焦点，事件恰好沿焦点链经过外层的 `RotaryRecyclerView`；退回上一页后焦点没了，于是又失灵。
 2. **灵敏度在 `onAttachedToWindow` 里只读一次**（`multiple <= 0` 就连监听器都不挂）。返回栈里的页面只是不可见、不会重新 attach，所以「改完设置、旧页面不生效」——这正是设置页文案里那句「打开新页面才能生效」的来历。
 
 **改动**：
+
 - `ui/widget/RotaryEncoderSupport.kt`：三份重复实现归并后新增页面级入口 `handlePage(root, event)`——找本页第一个「可见且当前能上下滚」的竖直容器并滚动它（横向 `ViewPager2` / 横向 `RecyclerView` 的 `canScrollVertically` 恒 false，天然不抢翻页手势）。
 - `activity/base/BaseActivity.kt`：`onCreate` 末尾 `installRotaryFallback()`，把 `handlePage` 挂在 **DecorView** 的 generic motion 监听器上。DecorView 只在**所有子 View 都没处理**时才会走到自己的监听器，所以不会与控件级监听器重复滚动。**不要改回覆写 `Activity.dispatchGenericMotionEvent`**：generic motion 不是那条路（ViewRootImpl 直接派给 DecorView）。
 - 三个 `Rotary*` 控件 + `tutorial/TutorialPagerActivity`：监听器改为构造/创建时无条件挂上，**每次事件现读开关与灵敏度**（SP 是内存 Map，热路径无性能问题）；教程翻页额外在 DecorView 上兜一层（先翻页，翻不动再交给页面级滚动）。
@@ -740,6 +757,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 **根因（源码可证）**：`app/src/main/java/com/RobinNotBad/BiliClient/adapter/SettingsAdapter.kt` 的 `InputHolder.bind()` 原本三个分支各自 `input.addTextChangedListener(object : TextWatcher {...})`，旧监听器**既不摘除、又闭包捕获了旧的 `settingSection`**。RecyclerView 复用 holder 时，`bind()` 里的 `setText` 会逐个触发全部历史监听器，把**新行**的值写进**旧行**的键——跨键污染。首次进入所有键都还是默认值，互相覆盖看不出来；改过一个值之后错位才暴露，所以「只在首次设置出现」。滚到底后受害的是弹幕字号 / 弹幕不透明度 / 弹幕速度 / 字幕校准（被写成最后一行的 `17.0`），而「互动选项字体大小」被前一行的 `1.0` 顶掉。
 
 **改动**：
+
 - `adapter/SettingsAdapter.kt`：`InputHolder` 的监听器改为只在 `init` 装一次，写回目标由 `private var boundSection` 决定；`bind()` 里先 `boundSection = null`（灌值 / 切 `inputType` 期间不落盘，保住「不改就不写」的语义），`setText` 之后再绑定。顺带把 `input.inputType` 提到 `setText` 之前（数字键盘过滤器不会再吃掉已填文本）。
 - `adapter/InteractionDebugAdapter.kt`：`removeTextChangedListener` 移到 `setText` 之前（同一类 bug 的第二处：旧监听器会先用本行值污染上一行的 `var.value`）。
 - **`17.0` 是合法默认值，不是脏值**：`app/src/main/res/layout/cell_interaction_choice.xml` 的 `android:textSize="17sp"` 与播放器里的 `getFloat(..., 17.0f)` 本来就一致。为免再出现「两处真相」，新增 `SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE_DEFAULT = 17f`（`util/SettingsKeys.kt:147`），`activity/settings/SettingTerminalPlayerActivity.kt:170` 的 `defaultValue` 与 `activity/player/PlayerActivity.kt:3672` 的 `createChoiceView()` 都改读它。**要换默认值只改这一个常量 + 布局里的 `17sp`**（XML 读不到 Kotlin 常量，必须两处一起看）。
@@ -837,8 +855,6 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **单测**：新增 `app/src/test/java/com/RobinNotBad/BiliClient/player/PlayerGesturePoliciesTest.kt`（9 例）：未缩放放行、双轴/单轴缩放一律否决、缩放复位后恢复、浮点噪声不算缩放、其余开关各自仍生效。
 - **验证**：`:app:assembleDebug`（standard + coexist 各 4 ABI debug 包）`BUILD SUCCESSFUL`；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 各 **64 suites / 649 testcases / 0 failures / 0 errors**（较 §3.30 的 62/629 增加 2 套 20 例，其中本次新增 1 套 9 例）。命令带 `--offline --no-configuration-cache`，无 res 文件集合变化故未 clean。
 - **未覆盖 / 残留**：① **无真机**（本机 `adb devices` 为空），判据单测锁的是「读实际 scaleX」这条契约，**覆盖不到 ACTION_UP 之后的手势分发**，复测条目见 §2.1；② 关掉「缩放时可移动」时，放大后的单指拖动现在完全不动画面，松手仍可能被当成一次点击把控制栏收起/唤出——与「未开启滑动调进度」时的既有行为一致，本轮不改。
-
-
 
 ### 3.33 长按顶栏改成三模式，让「不响应」真正罩住视频详情页（26.10.20）
 
@@ -993,7 +1009,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **根因**：`activity/DownloadActivity.kt` 的 `handleDownloadComplete()` 里图片分支**只弹一句「下载完成」**，下载本身用裸 `File`/`FileOutputStream` 写公共 `Pictures/哔哩终端/`，全仓**没有任何 MediaStore 写入或 `MediaScannerConnection`**。Android 10 起（本应用 `targetSdk 34`）用文件路径写进公共目录的文件**不会被媒体库自动索引**，于是文件在、相册没有。成功提示又是通用的 `text_update_download_complete`（「下载完成」，不含路径），用户连去哪儿翻都不知道。
 - **修法**：
   - 新增 `app/src/main/java/com/RobinNotBad/BiliClient/util/PictureMediaStore.kt`：`mimeTypeOf(fileName)`（纯函数，按后缀判 `image/*`，认不出返回 null 就不登记，免得把错误页塞进相册）、`displayFolder(folderPath, externalRoot)` / `displayFolder(file)`（纯函数 + 便捷重载，把绝对路径裁成 `Pictures/哔哩终端` 这种能对上文件管理器的层级）、`scan(context, file)`（`MediaScannerConnection.scanFile`，异步回调里 `uri == null` 记日志；**吞异常只落日志**——文件已经落盘、下载确实成功，扫描失败最坏是相册晚点出现，不该反过来判下载失败）。
-  - `DownloadActivity.handleDownloadComplete()` 图片分支（`type == 0`，入口只有 `ImageViewerActivity`）先 `PictureMediaStore.scan(this, downloadedFile)`，提示改成 `R.string.msg_picture_saved` =「图片已保存：%1$s\n可在相册中查看」（`%1$s` 就是上面裁出来的目录）。视频/APK 两条分支不动（视频目录是应用专属 `Android/media/`，且 `save_ban_gallery` 本来就把 `.nomedia` 写进去刻意不进相册）。
+  - `DownloadActivity.handleDownloadComplete()` 图片分支（`type == 0`，入口只有 `ImageViewerActivity`）先 `PictureMediaStore.scan(this, downloadedFile)`，提示改成 `R.string.msg_picture_saved` =「图片已保存：%1$s\n可在相册中查看」（`%1$s` 就是上面裁出来的目录）。视频/APK 两条分支不动（视频目录是应用专属 `Android/media/`，且`save_ban_gallery` 本来就把 `.nomedia` 写进去刻意不进相册）。
 - **构建 / 单测**：`:app:clean` 后 `:app:testStandardDebugUnitTest :app:assembleDebug` 通过；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 各 **70 个测试类 / 747 例 / 0 失败 0 错误 0 跳过**（两个 flavor 同源码；`PictureMediaStoreTest` 各 7 例）；`app/build/outputs/apk/` 下两个 flavor 的 debug 四个 ABI 分包都在。
 - **真机验证（模拟器，`MediaStore` 实测，已通过）**：`adb install -r` 装新包后连下两张图（`Pictures/哔哩终端/verify/`、`verify2/`），`content query --uri content://media/external/images/media` **不靠手动扫描**就直接出现 `_id=465 relative_path=Pictures/哔哩终端/verify/`、`_id=467 … /verify2/`（全表 160→161→162 行）；`am start -a android.intent.action.VIEW -d content://media/external/images/media/467 -t image/jpeg` 由系统相册 `com.android.gallery3d` 正常渲染出该图 → **相册里确实能看到**。提示文案实测为「图片已保存：Pictures/哔哩终端/verify3\n可在相册中查看」（`displayFolder` 已把绝对路径裁成相对层级）。
 - **残留**：Android 11+ 上「应用能不能用文件路径写公共 `Pictures/`」本身取决于是否拿到「所有文件访问」（`FileUtil.ensureDirectoryWritable` 会在不可写时拉起授权页并直接结束页面，所以这里不会出现「没权限却假装成功」）；更彻底的写法是 API 29+ 直接走 `MediaStore.Images` 的 `IS_PENDING` 插一条再写流（免权限、天然登记），本次没做，属可选后续。`getFileNameFromLink` 不去 query 串、重名覆盖等既有问题不在本次范围。
@@ -1086,14 +1102,28 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **修复**：`SwipePageLayout` 增加 `pendingDrag` 累加器与 `ViewCompat.postOnAnimation` 的帧回调，MOVE 只累加、每帧统一 `fakeDragBy` 一次（`queueDrag()`/`flushPendingDrag()`）；松手、`ACTION_CANCEL`、`onDetachedFromWindow` 前调 `flushDragNow()` 立即提交残余量，避免最后几像素被吞。顺带确认 `ViewPager2` 没有 `setItemAnimator`（反编译 `viewpager2-1.1.0` 无该 API），所以没有从动画器这条线动。
 - **验证**：`assembleDebug` + 两 flavor 单测各 71 类 / 759 例全绿；真机上慢速拖动仍跟手、四页翻页与退出正常。**手感是否变顺滑需要用户在自己手机上复验**（本机无法复现）。
 
-## 4. 历史章节索引
+### 3.51 弹幕突然消失 / 拖进度条后闪一下就没了（26.10.21）
 
+- **现象（用户描述）**：有时看到某处弹幕突然整屏消失；拖进度条或快进快退后弹幕消失；消失后偶尔又出现零点几秒再消失。
+- **根因一（清屏机制，代码级确证）**：`DrawHandler.SEEK_POS` → `DrawTask.seek()` → **`reset()`**（`danmakus = new Danmakus()` + `mRenderer.clear()`），屏上弹幕被清空，再由 `CacheManagingDrawTask.CacheHandler.SEEK` 的 `prepareCaches(true)` 重建缓存（零点几秒后才回来）。也就是说 **`seekTo` 天生就是"清屏 + 重建"**。而 `PlayerActivity.progressChange` 里原来的纠偏是「偏差 > 400ms 且距上次 > 1s 就 seekTo」——只要漂移持续（缓冲/卡顿时弹幕时钟按墙钟走、播放位置停住），就**每秒清一次屏**，正好是「闪现零点几秒又消失」。
+- **根因二（跳转没更新判据，真 bug）**：拖进度条（`onStopTrackingTouch`）与快进后退键（`seekToPosition`）只调 `ijkPlayer.seekTo` + `mDanmakuView.seekTo`，**没有更新 `video_now`**。下一次采样用旧位置比新时钟，算出几百秒"偏差"，纠偏立刻把弹幕视图 seek 回**旧位置** → 用户看到"拖完弹幕就没了"。
+- **根因三（分段空洞，解释"不拖动也会消失"）**：`DanmakuApi.getAllVideoDanmaku` 并发拉 6 分钟一段的弹幕，任一段失败**不重试且完全不报**，那 6 分钟就是零弹幕（不是"少几条"）；`segmentCount = duration/360 + 1` 在时长恰好整除时还会多发一次空请求；`duration` 未就绪时回落 3600 秒 → 每次都按 11 段请求。
+- **修法**：
+  - `player/DanmakuSync.kt` 判据改为 `decide()`：阈值 **1.5s**（`SNAP_THRESHOLD_MS`）、吸附后冷静 **1.5s**（`SETTLE_MS`）、连续 3 次不收敛退避 **30s**（`BACKOFF_MS`）、收敛后计数清零；`posMs < 0` 仍不吸附。
+  - `PlayerActivity`：`seekToVideo()` 成为拖进度条/快进后退的**唯一入口**，内部 `markSeekTarget()` 同步 `video_now`、强制刷新进度（`video_now_last = -1`）、清零纠偏计数、给冷静期；重播路径也调 `markSeekTarget(0)`。`ShortVideoPlayerActivity` 的同一处判据同步改 `decide()`。
+  - `api/DanmakuApi.java`：新增纯函数 `segmentCountFor(sec)`（`ceil`，≤0 视为 1 段）与 `SEGMENT_SECONDS`；每个分段失败重试 1 次（`fetchSegmentWithRetry`）；拿不满时**按区间打缺口日志**（"分段 3~5，720~1080 秒无弹幕"），事后能区分"数据缺失"和"渲染问题"。
+- **单测**：`DanmakuSyncTest` 重写为 9 例（稳态不吸附、小偏差反复采样也不吸附、大跳吸附、冷静期挡住第二次、连续 3 次退避、退避期满恢复、收敛清零、位置不可信不吸附、阈值远大于采样间隔）；新增 `DanmakuSegmentCountTest` 6 例（未知时长 1 段、刚满一段仍是 1 段、整倍数不多发、361 秒必须 2 段、2 小时 20 段、`SEGMENT_SECONDS=360`）。
+- **验证（本机构建/单测，26.10.21；数字为合并上游后的实测）**：`:app:assembleDebug`（两个 flavor 各 4 个 ABI 包，`BUILD SUCCESSFUL in 6m 3s`）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 各 **72 suites / 769 tests / 0 failures**。
+- **真机待验**：本机 `adb devices` 为空，上面三条根因全部来自 vendored DFM 源码与调用链，**必须真机复测**：① 正常播放中人为卡顿/切后台再回来，`adb logcat -s "弹幕纠偏"` 只应在 >1.5s 大跳时打一条，**不应每秒一条**；② 反复拖进度条/快进后退，弹幕应立即恢复且不闪；③ 长视频后半段不应出现整段无弹幕，`adb logcat -s "新版弹幕API"` 里"弹幕缺口"应为零。
+- **仍未做（另立项）**：`duration` 未就绪时按 3600 秒硬算 11 段——正确做法是先只取第 1 段、`onPrepared` 拿到真实时长后再补拉剩余分段（涉及二次加载时序，风险比本批大）。
+
+## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
 > §一~§三十 的「收尾状态」按归档正文与 §五 / §十 的登记推断：批次类记「已闭环」，正文明确登记遗留的记「部分遗留」，总览 / 明细 / 建议 / 验证记录类记「纯历史」。
 
 | §编号 | 标题 | 一句话内容 | 收尾状态 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 一 | 修复总览 | 286 条基线（Critical 23 / High 52 / Medium 105 / Low 106）+ 2026-09-24 深度审查新增 严重 10 / 中等 13 组 / 轻微 11 | 纯历史 |
 | 二 | 已修复问题明细 | 逐轮修复记录，逐条 file:line（第一~四轮表格为主） | 纯历史 |
 | 三 | 审查前已修复（本次核查确认，无需改动） | 审查前已完成、本次核查确认无需改动的项 | 纯历史 |

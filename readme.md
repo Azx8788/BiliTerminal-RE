@@ -164,13 +164,11 @@
 | 崩溃自动上报 | 崩溃页给出报错编号，可在独立进程自动上报堆栈（可关闭），也可手动上传 |
 | 隐私说明 | 关于页提供隐私说明与同意确认，与上述三个开关的默认值保持一致 |
 
-
 ## 附：说明
 
 - 本文档由源码逐文件审查整理而来，力求一个按钮、一个手势、一个隐藏功能都不遗漏。
 - 个别"占位/未实现"功能（如私信表情发送、收藏夹公开/私密开关等）已如实标注。
 - 「功能特性」栏目中的新增条目以应用内更新日志（`app/src/main/res/values/strings.xml` 的 `update_log_current` / `update_history_log`）与源码核对为准；技术细节与历史台账见 [docs/README.md](docs/README.md)（现用文档 `docs/`，已过期的审查报告在 `docs/archive/`）。
-
 
 ---
 
@@ -200,7 +198,6 @@
 
 ./gradlew.bat :app:assembleRelease   # 编译正式包（R8 + 资源压缩，ABI 分包 arm64-v8a / armeabi-v7a）
 ./gradlew :app:testDebugUnitTest     # 单元测试
-
 
 > 开发以 `main` 分支为准，功能与修复走 `feat/*`、`fix/*` 分支合并回 `main`（例如 `feat/gitee-release`、`fix/issue-1-swipe-seek-back`）。欢迎提交 pr。
 

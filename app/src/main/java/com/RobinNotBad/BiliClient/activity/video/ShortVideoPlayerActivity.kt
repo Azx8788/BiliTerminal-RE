@@ -397,6 +397,9 @@ class ShortVideoPagerAdapter(
         private var isActive = false         // 当前页面是否为活跃状态
         private var isLoadingDanmaku = false // 是否正在加载弹幕
         private var isDanmakuVisible = true  // 弹幕是否可见
+        // 弹幕时钟吸附的时间与连续次数（见 DanmakuSync.decide：吸附会清屏，必须限频+退避）
+        private var danmakuSnapMs = 0L
+        private var danmakuSnapCount = 0
 
         private val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         private var currentSpeedIndex = 2
@@ -919,10 +922,17 @@ class ShortVideoPagerAdapter(
                         if (pos != videoNowLast) {
                             videoNowLast = pos
                             videoNow = pos
-                            // 弹幕时钟对齐（与 PlayerActivity 同源，见 docs/review/fix-progress.md §3.6）：
-                            // 只有 seekTo 会重设 DFM 的 mTimeBase；只改 timer 会被 DFM 下一帧拽回旧基准。
+                            // 弹幕时钟对齐（与 PlayerActivity 同源，见 DanmakuSync 的类注释）：
+                            // 只有 seekTo 会重设 DFM 的 mTimeBase，但**seekTo 会清空屏上弹幕**，
+                            // 所以只在 >1.5s 的大跳时做，并且带冷静期与退避——否则就是"弹幕闪一下又没了"。
                             danmakuView?.let { dv ->
-                                if (DanmakuSync.shouldResync(pos.toLong(), dv.currentTime)) {
+                                val now = android.os.SystemClock.elapsedRealtime()
+                                val decision = DanmakuSync.decide(
+                                    pos.toLong(), dv.currentTime, now, danmakuSnapMs, danmakuSnapCount
+                                )
+                                danmakuSnapCount = decision.consecutive
+                                if (decision.snap) {
+                                    danmakuSnapMs = now
                                     dv.seekTo(pos.toLong())
                                 }
                             }

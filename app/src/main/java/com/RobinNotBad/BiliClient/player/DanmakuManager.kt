@@ -191,7 +191,7 @@ class DanmakuManager(
                 // 片尾/重播场景偏差高达 199 秒，每轮就是一次肉眼可见的硬跳（用户报的「弹幕一抖一抖」）。
                 //
                 // 正确做法是让**基准**跟着视频走，放在主线程做（见 PlayerActivity.progressChange）：
-                // 用 [DanmakuSync.shouldResync] 判定，命中则 `IDanmakuView.seekTo(pos)` —— seekTo 走
+                // 用 [DanmakuSync.decide] 判定，命中则 `IDanmakuView.seekTo(pos)` —— seekTo 走
                 // DrawHandler 的 SEEK_POS 分支，会 `mTimeBase -= deltaMs`，基准才是真的对齐。
                 //
                 // 另外：本回调运行在 DanmakuView 的渲染线程上，绝不能在这里调
