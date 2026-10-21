@@ -112,8 +112,11 @@
 
 - `control_layout`：沿用现有布局；锁定时整体 `GONE`。
 - `lock_overlay`：全屏透明、`clickable=true`，默认 `gone`；锁定时 `visible`，拦截所有触摸；点击 → 按状态机浮现按钮。
-- `lock_btn`：单个 `ImageButton`，28dp，`alignParentLeft` + `centerVertical` + `marginStart 4dp`，`src` 按状态切换闭锁/开锁图标；点击 → 按状态机锁定/解锁。它是**同一个按钮**，不复制第二份。
-- `text_speed` 的 `marginStart` 从 4dp 调到 36dp 避让（3x 倍速文字显示在锁定按钮右侧；`btn_debug` 位置不变）。
+- `left_control`（第四轮新增）：`LinearLayout` wrap×wrap、`alignParentLeft` + `centerVertical` + `marginStart 4dp`、`gravity=center`、`orientation=vertical`，**与 `right_control` 的竖排图标列对称**（右侧同 28dp 图标、同 4dp 边距、上下居中）；内部放 `lock_btn`。现在这一列只有锁定按钮一个，后续再加左侧按钮直接往这个容器里塞。
+- `lock_btn`：单个 `ImageButton`，28dp、`adjustViewBounds=true`、`scaleType="fitXY"`、`background=?android:attr/selectableItemBackground`（与右侧三个竖排按钮同规格），`src` 按状态切换闭锁/开锁图标；点击 → 按状态机锁定/解锁。它是**同一个按钮**，不复制第二份，只是换了容器。
+- `text_speed` 的 `marginStart` 从 4dp 调到 36dp 避让（3x 倍速文字显示在左侧按钮列右侧；`btn_debug` 位置不变）。
+- 两个图标（`res/drawable/icon_player_lock.xml` / `icon_player_unlock.xml`）是矢量图，路径**尽量铺满 960×960 视口**（锁体占宽 ~73%、锁梁顶到 y≈55）：同一 28dp 方框里，右侧 PNG 图标是满幅位图，矢量图若在视口内留白就会显得明显偏小（26.10.21 真机反馈后按视口修正）。
+- **`text_subtitle` 从 `control_layout` 里搬出来**，改成 `root_layout` 的直接子节点（`alignParentBottom` + `centerHorizontal` + `marginBottom 76dp`＝底部控制栏 59dp + 进度文字约 17dp，视觉位置与原先「进度文字之上」等价）。原因：锁定时 `control_layout` 整体 `GONE` 会把字幕一起藏掉——这就是用户报的「锁定模式下不显示字幕」的根因；搬到外面后锁定/控制栏自动隐藏时字幕都照常显示。
 
 ### 4.3 触摸屏蔽
 
@@ -183,4 +186,6 @@ adb shell run-as com.RobinNotBad.BiliClient cat shared_prefs/*.xml | grep player
   → 取消"屏幕正中浮现独立锁图标"的方案，改为**同一个左侧锁定按钮**在锁定后被点出、再点即解锁；按钮位置固定在左侧，不居中。
 - **修订（2026-10-20 第三轮）**：`锁定按钮同时禁用播放器顶栏的退出功能`
   → 锁定期间顶栏（含左上角返回/退出图标）整体隐藏、不可达，并且 `onBackPressed` + `finish()` 双重拦截，任何路径都无法在锁定时离开播放页（见 §2.3 / §2.5 / §4.4）。
+- **修订（2026-10-20 第四轮，真机验收后）**：`你看看这右边是怎么放图标的，再看看你放的，另外修复所模式下不显示字幕的bug` → 追问「要竖着排」后选择 `左侧单独一列，与右侧按钮组对称`
+  → ① 锁定按钮不再直接挂在根布局上，改成左侧竖排容器 `left_control`（对齐右侧 `right_control` 的竖列范式：28dp 图标、4dp 边距、上下居中、`fitXY`）；② 字幕 `text_subtitle` 搬出 `control_layout`，修掉「锁定后字幕消失」（见 §4.2）。
 - 仍待确认：§2.3 表冠/方向键是否也在锁定时屏蔽（当前按"屏蔽"写）；§2.4 浮现期间再点画面是否重置 3 秒计时（当前按"重置"写，即"每次点画面都刷新计时"）。

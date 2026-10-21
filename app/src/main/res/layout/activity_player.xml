@@ -66,6 +66,27 @@
 
     </RelativeLayout>
 
+    <!--
+        字幕：必须放在 control_layout 之外，否则锁定时整条控制栏置 GONE 会把字幕一起藏掉
+        （用户反馈的「锁定后不显示字幕」）。位置与原先「进度文字之上」等价：底边离屏幕底 76dp
+        ＝底部控制栏 59dp + 进度文字约 17dp。
+    -->
+    <TextView
+        android:id="@+id/text_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="76dp"
+        android:alpha="0.8"
+        android:background="@drawable/background_grey_cardview"
+        android:gravity="center"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="3dp"
+        android:text="@string/text_default_subtitle"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
     <RelativeLayout
         android:id="@+id/control_layout"
         android:gravity="bottom"
@@ -101,21 +122,6 @@
                 android:textStyle="bold"
                 tools:text="01:23 / 05:00 (27%)" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/text_subtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_above="@+id/text_progress"
-            android:layout_centerHorizontal="true"
-            android:alpha="0.8"
-            android:background="@drawable/background_grey_cardview"
-            android:gravity="center"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="3dp"
-            android:text="@string/text_default_subtitle"
-            android:textSize="11sp"
-            android:visibility="gone" />
 
         <TextView
             android:id="@+id/text_progress"
@@ -770,17 +776,30 @@
         android:focusable="true"
         android:visibility="gone" />
 
-    <ImageButton
-        android:id="@+id/lock_btn"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
+    <!--
+        左侧按钮列：与 right_control 的竖排图标列对称（同 28dp 图标、同 4dp 边距、上下居中）。
+        现在只有锁定按钮一个；锁定后控制栏整体隐藏，这一列仍留着 lock_btn。
+    -->
+    <LinearLayout
+        android:id="@+id/left_control"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_alignParentLeft="true"
         android:layout_centerVertical="true"
         android:layout_marginStart="4dp"
-        android:adjustViewBounds="true"
-        android:background="?android:attr/selectableItemBackground"
-        android:contentDescription="@string/desc_player_lock_locked"
-        android:scaleType="fitCenter"
-        android:src="@drawable/icon_player_lock" />
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <ImageButton
+            android:id="@+id/lock_btn"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:adjustViewBounds="true"
+            android:background="?android:attr/selectableItemBackground"
+            android:contentDescription="@string/desc_player_lock_locked"
+            android:scaleType="fitXY"
+            android:src="@drawable/icon_player_lock" />
+
+    </LinearLayout>
 
 </RelativeLayout>
