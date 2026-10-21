@@ -5,9 +5,14 @@ import com.RobinNotBad.BiliClient.util.UiText
 import android.os.Handler
 import android.os.Looper
 import com.RobinNotBad.BiliClient.api.ShortVideoFeedApi
+import com.RobinNotBad.BiliClient.api.StoryFeedPager
 import com.RobinNotBad.BiliClient.model.ShortVideoItem
 
 class VideoPreloadManager(private val preloadCount: Int = 2) {
+
+    // 分页状态（display_id / track_id / 已出现的 aid）跟着管理器的生命周期走：
+    // 页面销毁、管理器被替换时一并丢弃，避免旧实现里 object 上的静态页码跨页面泄漏。
+    private val pager = StoryFeedPager()
 
     // 后台线程写入、主线程读取，用写时复制列表避免并发读写的数据竞争
     private val allItems = java.util.concurrent.CopyOnWriteArrayList<ShortVideoItem>()
@@ -26,8 +31,18 @@ class VideoPreloadManager(private val preloadCount: Int = 2) {
     @Volatile
     private var released = false
 
+    // 相关推荐请求进行中（与普通翻页互斥的意义不同：播完续接只允许一个在飞）
+    @Volatile
+    private var isLoadingRelated = false
+
     var onItemsLoaded: ((List<ShortVideoItem>) -> Unit)? = null
     var onLoadError: ((String) -> Unit)? = null
+
+    /**
+     * 相关推荐拉取结束：成功时参数是非空列表（已追加到列表末尾），失败/没续接上时是空列表。
+     * 播完自动接续靠这个回调决定「切下一条」还是「停下」。
+     */
+    var onRelatedLoaded: ((List<ShortVideoItem>) -> Unit)? = null
 
     fun loadInitial() {
         // 检查并置位放在调用方线程（主线程）完成，避免 check-then-act 竞态
@@ -35,7 +50,7 @@ class VideoPreloadManager(private val preloadCount: Int = 2) {
         isLoading = true
         CenterThreadPool.run {
             try {
-                val items = ShortVideoFeedApi.fetchFeedPage()
+                val items = pager.fetchPage()
                 if (released) return@run
                 if (items.isNotEmpty()) {
                     allItems.addAll(items)
@@ -56,7 +71,7 @@ class VideoPreloadManager(private val preloadCount: Int = 2) {
         isLoading = true
         CenterThreadPool.run {
             try {
-                val items = ShortVideoFeedApi.fetchFeedPage()
+                val items = pager.fetchPage()
                 if (released) return@run
                 if (items.isNotEmpty()) {
                     allItems.addAll(items)
@@ -70,6 +85,31 @@ class VideoPreloadManager(private val preloadCount: Int = 2) {
 
     fun getItem(index: Int): ShortVideoItem? {
         return allItems.getOrNull(index)
+    }
+
+    fun isLoadingRelated(): Boolean = isLoadingRelated
+
+    /**
+     * 列表已经刷到底时，以 [anchorAid]（通常是刚播完的那条）为锚点拉一批相关推荐。
+     *
+     * 与 [loadMore] 的区别：相关推荐不推进分页游标、也没有 track_id 语义，只是给
+     * 「播完自动接下一条」续命。结果一律通过 [onRelatedLoaded] 回主线程，空列表表示没接上。
+     */
+    fun loadRelated(anchorAid: Long) {
+        if (isLoadingRelated) return
+        isLoadingRelated = true
+        CenterThreadPool.run {
+            try {
+                val items = pager.fetchRelated(anchorAid)
+                if (released) return@run
+                if (items.isNotEmpty()) {
+                    allItems.addAll(items)
+                }
+                mainHandler.post { onRelatedLoaded?.invoke(items) }
+            } finally {
+                isLoadingRelated = false
+            }
+        }
     }
 
     fun getCurrentIndex(): Int = currentIndex

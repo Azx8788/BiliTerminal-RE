@@ -58,6 +58,7 @@ class SearchBangumiFragment : SearchFragment() {
                     SearchApi.getBangumiFromSearchResult(resultArray, list)
                     if (list.size == 0) bottom = true
                     else CenterThreadPool.runOnUiThread {
+                        if (!isAdded || view == null) return@runOnUiThread
                         val lastSize = bangumiCardList.size
                         bangumiCardList.addAll(list)
                         bangumiCardAdapter!!.notifyItemRangeInserted(lastSize, bangumiCardList.size - lastSize)
@@ -73,6 +74,7 @@ class SearchBangumiFragment : SearchFragment() {
 
     override fun refreshInternal() {
         CenterThreadPool.runOnUiThread {
+            if (!isAdded || view == null) return@runOnUiThread
             page = 1
             if (this.bangumiCardAdapter == null)
                 this.bangumiCardAdapter = VideoCardAdapter(this.requireContext(), this.bangumiCardList)

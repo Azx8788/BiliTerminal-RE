@@ -1,0 +1,228 @@
+package com.RobinNotBad.BiliClient.activity.video
+
+import android.media.AudioManager
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
+import androidx.fragment.app.Fragment
+import androidx.viewpager2.widget.ViewPager2
+import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.model.ShortVideoItem
+import com.RobinNotBad.BiliClient.ui.widget.SwipePageLayout
+import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.RobinNotBad.BiliClient.util.UiText
+import com.RobinNotBad.BiliClient.util.VideoPreloadManager
+
+/**
+ * 短视频信息流（外壳横向 pager 的第 0 页）。
+ *
+ * 从 `ShortVideoPlayerActivity` 里拆出来，是为了让短视频流能作为横向 pager 的一页，
+ * 和右侧的「视频详情 / 评论 / 相关推荐」连成一条线（见 `activity_short_video_player.xml`）。
+ *
+ * 这一页自己管全部播放逻辑：取流与预加载（[VideoPreloadManager]）、竖向翻页、
+ * 播放器生命周期、播完自动接下一条。外壳只负责横向翻页与「当前这条视频是谁」的同步，
+ * 需要时读 [currentShortVideo]。
+ *
+ * 片段生命周期与播放的关系：横向滑到详情页时，`FragmentStateAdapter` 会把这一页
+ * 降到 STARTED，[onPause] 里暂停播放；滑回来 [onResume] 再续播。因此这里不需要
+ * 让外壳额外通知「现在在第几页」。
+ */
+class ShortVideoFeedFragment : Fragment() {
+
+    private lateinit var viewPager: ViewPager2
+    private lateinit var loadingLayout: View
+    private lateinit var errorLayout: View
+    private lateinit var loadingText: TextView
+    private lateinit var errorText: TextView
+    private lateinit var audioManager: AudioManager
+
+    private val preloadManager = VideoPreloadManager(preloadCount = 3)
+
+    private var currentPageIndex = 0
+    private var wasPlayingWhenPaused = false
+
+    /** 「播完且列表已到底」时等相关推荐回来再切页；用户中途自己滑走的作废。 */
+    private var pendingAdvanceAfterRelated = false
+
+    private val host: ShortVideoPlayerActivity
+        get() = requireActivity() as ShortVideoPlayerActivity
+
+    /** 当前这条短视频；右侧详情/评论/相关推荐按它渲染。 */
+    val currentShortVideo: ShortVideoItem?
+        get() = preloadManager.getItem(currentPageIndex)
+
+    private val feedAdapter: ShortVideoPagerAdapter?
+        get() = viewPager.adapter as? ShortVideoPagerAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        audioManager = requireContext().getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View = inflater.inflate(R.layout.fragment_short_video_feed, container, false)
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        viewPager = view.findViewById(R.id.viewPager)
+        loadingLayout = view.findViewById(R.id.loadingLayout)
+        errorLayout = view.findViewById(R.id.errorLayout)
+        loadingText = view.findViewById(R.id.loadingText)
+        errorText = view.findViewById(R.id.errorText)
+
+        // 横滑交给本页根布局判方向：满足「明确横向」才驱动外壳 pager 的 fakeDrag，
+        // 竖向刷视频/斜滑都放给里面的竖向 pager
+        (view as? SwipePageLayout)?.apply {
+            pagerProvider = { host.shellPager() }
+            onSwipe = { direction -> host.handleSwipe(direction) }
+        }
+
+        view.findViewById<TextView>(R.id.retryButton).setOnClickListener { loadFeed() }
+
+        preloadManager.onItemsLoaded = { items ->
+            if (items.isNotEmpty()) {
+                loadingLayout.visibility = View.GONE
+                errorLayout.visibility = View.GONE
+
+                val adapter = feedAdapter
+                if (adapter == null) {
+                    viewPager.adapter = ShortVideoPagerAdapter(host, preloadManager, audioManager)
+                } else {
+                    // 用范围插入代替 notifyDataSetChanged：避免 ViewPager2 重建全部页面并跳回第一页
+                    val start = preloadManager.getItemCount() - items.size
+                    if (start >= 0) adapter.notifyItemRangeInserted(start, items.size)
+                }
+                // 第一批内容到位后，右侧详情页才有 aid 可用
+                host.onFeedAnchorChanged()
+            }
+        }
+
+        preloadManager.onLoadError = { msg ->
+            if (preloadManager.getItemCount() == 0) {
+                loadingLayout.visibility = View.GONE
+                errorLayout.visibility = View.VISIBLE
+                errorText.text = msg
+            } else {
+                MsgUtil.showMsg(msg)
+            }
+        }
+
+        // 播到列表末尾时用相关推荐续接：成功后追加并切到下一条，失败就停住并提示
+        preloadManager.onRelatedLoaded = { items ->
+            if (items.isEmpty()) {
+                pendingAdvanceAfterRelated = false
+                MsgUtil.showMsg(getString(R.string.text_shortvideoplayer_no_more))
+            } else {
+                val start = preloadManager.getItemCount() - items.size
+                if (start >= 0) feedAdapter?.notifyItemRangeInserted(start, items.size)
+                if (pendingAdvanceAfterRelated) {
+                    pendingAdvanceAfterRelated = false
+                    val next = currentPageIndex + 1
+                    if (next < preloadManager.getItemCount()) {
+                        viewPager.setCurrentItem(next, true)
+                    }
+                }
+            }
+        }
+
+        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                // 用户在等相关推荐回来时自己滑走了：取消自动接续，免得稍后又被强制跳页
+                if (pendingAdvanceAfterRelated && position != currentPageIndex) {
+                    pendingAdvanceAfterRelated = false
+                }
+                currentPageIndex = position
+                preloadManager.onSwipeToIndex(position)
+                host.onFeedAnchorChanged()
+
+                val adapter = feedAdapter
+                if (adapter != null) {
+                    val prevPos = adapter.lastVisiblePosition
+                    if (prevPos >= 0 && prevPos != position) {
+                        adapter.pausePlayer(prevPos)
+                    }
+                    adapter.lastVisiblePosition = position
+                    adapter.setupPlayerAtPosition(position)
+                }
+            }
+
+            override fun onPageScrollStateChanged(state: Int) {
+                if (state == ViewPager2.SCROLL_STATE_IDLE) {
+                    feedAdapter?.playAtPosition(currentPageIndex)
+                }
+            }
+        })
+
+        loadFeed()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (wasPlayingWhenPaused) {
+            feedAdapter?.resumeCurrent()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        feedAdapter?.let { adapter ->
+            wasPlayingWhenPaused = adapter.isCurrentPlaying()
+            adapter.pauseCurrent()
+        }
+    }
+
+    override fun onDestroyView() {
+        // 播放器是 native 资源，视图销毁必须释放；onDestroyView 之后不会再回到这一页，
+        // 需要续播时会在新的视图里重新初始化
+        feedAdapter?.releaseAll()
+        viewPager.adapter = null
+        super.onDestroyView()
+    }
+
+    override fun onDestroy() {
+        preloadManager.release()
+        super.onDestroy()
+    }
+
+    /**
+     * 当前这条视频播完了（由 [ShortVideoPagerAdapter.PageHolder] 的完成回调转来）。
+     *
+     * 与 B 站手机版一致：**不再循环当前条**。
+     * - 列表还有下一条 → 直接切过去；
+     * - 已经到底 → 以刚播完的这条为锚点拉一批相关推荐（relate/story），回来后切过去；
+     * - 相关推荐也拿不到 → 停住并提示，不反复重试。
+     *
+     * @param position 播完那页的 position，用于过滤「切换瞬间旧页的迟到回调」
+     */
+    fun handleVideoCompleted(position: Int) {
+        if (position != currentPageIndex || !isAdded) return
+        if (feedAdapter == null) return
+
+        val next = currentPageIndex + 1
+        if (next < preloadManager.getItemCount()) {
+            viewPager.setCurrentItem(next, true)
+            return
+        }
+
+        val anchorAid = preloadManager.getItem(currentPageIndex)?.aid ?: 0L
+        if (anchorAid <= 0) {
+            MsgUtil.showMsg(getString(R.string.text_shortvideoplayer_no_more))
+            return
+        }
+        pendingAdvanceAfterRelated = true
+        preloadManager.loadRelated(anchorAid)
+    }
+
+    private fun loadFeed() {
+        loadingLayout.visibility = View.VISIBLE
+        errorLayout.visibility = View.GONE
+        loadingText.text = UiText.of("加载短视频...")
+        preloadManager.loadInitial()
+    }
+}

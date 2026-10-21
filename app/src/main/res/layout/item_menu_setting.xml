@@ -3,7 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="@dimen/activity_padding_horizontal"
-    android:layout_marginVertical="2dp">
+    android:layout_marginVertical="2dp"
+    android:foreground="?attr/selectableItemBackground">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -28,6 +29,19 @@
             android:text="@string/desc_menu_fixed"
             android:textColor="?android:attr/textColorSecondary"
             android:textSize="12sp"
+            android:visibility="gone" />
+
+        <!-- 启动页单选标记：本身不接收点击，点整行即可选中（避免复选框与整行两套点击区） -->
+        <com.google.android.material.checkbox.MaterialCheckBox
+            android:id="@+id/item_check"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:clickable="false"
+            android:focusable="false"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="0dp"
             android:visibility="gone" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

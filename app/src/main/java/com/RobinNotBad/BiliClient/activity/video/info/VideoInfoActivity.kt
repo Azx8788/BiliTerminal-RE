@@ -22,6 +22,7 @@ import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.TerminalContext
+import com.RobinNotBad.BiliClient.util.TopbarLongPressPrefs
 import com.bumptech.glide.Glide
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
@@ -183,9 +184,16 @@ class VideoInfoActivity : BaseActivity() {
         }
     }
 
+    /** 顶栏长按由本页自己接管（「关闭所有详情页」），基类不再安装「打开菜单」的通用监听器。 */
+    override fun handlesTopbarLongPress(): Boolean = true
+
     private fun setupLongPressToRoot() {
         val topBar = findViewById<View>(R.id.top)
         topBar?.setOnLongClickListener {
+            // 三模式：只有「不响应」模式才吞掉手势。这里同样必须返回 true 而不是 false——
+            // 返回 false 时 Android 会在抬手时把长按回落成一次单击，而本页顶栏单击是「退出当前页」，
+            // 用户要的是「长按什么都不做」（OPPO 系手表的长按顶部是系统控制中心手势）。
+            if (!TopbarLongPressPrefs.isEnabledForVideoPages()) return@setOnLongClickListener true
             MsgUtil.showMsg(UiText.of("已返回初始页面"))
             EventBus.getDefault().post(CloseAllVideoPagesEvent())
             true

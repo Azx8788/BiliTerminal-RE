@@ -48,9 +48,16 @@ object SettingsKeys {
      */
     const val LONG_PRESS_PANEL_ENABLE = "long_press_panel_enable"
     /**
-     * 长按顶部标题栏是否打开菜单列表页。
+     * 长按顶部标题栏的手势模式（三态字符串：`off` / `video_only` / `all`）。
      *
-     * 默认值与判据见 `util/TopbarLongPressPrefs`，不要在别处写死默认值。
+     * 取值常量、默认值与判据统一在 `util/TopbarLongPressPrefs`，不要在别处写死字符串或默认值。
+     */
+    const val TOPBAR_LONG_PRESS_MODE = "topbar_long_press_mode"
+    /**
+     * 26.10.19 的旧布尔开关（开 = 普通页面打开菜单、视频详情页照旧；关 = 只有视频详情页照旧）。
+     *
+     * **只用于迁移，不要再写这个键**：新键读不到时 `util/TopbarLongPressPrefs.mode()` 按它回退
+     * （true → `all`，false → `video_only`），保证老用户升级后行为不变。写入一律写 [TOPBAR_LONG_PRESS_MODE]。
      */
     const val TOPBAR_LONG_PRESS_MENU_ENABLE = "topbar_long_press_menu_enable"
     const val CREATIVE_ENABLE = "creative_enable"
@@ -100,6 +107,8 @@ object SettingsKeys {
     const val PLAYER_LONGCLICK = "player_longclick"
     const val PLAYER_DOUBLETAP_SEEK = "player_doubletap_seek"
     const val PLAYER_SWIPE_SEEK = "player_swipe_seek"
+    /** 播放页触摸锁定的首次提示是否已经展示过（纯记账，不出现在设置页）。 */
+    const val PLAYER_LOCK_HINT_SHOWN = "player_lock_hint_shown"
     /** 双击有缩放时优先复位；保留旧键兼容已保存的开关，不再还原屏幕方向。 */
     const val PLAYER_DOUBLETAP_RESTORE_SCREEN = "player_doubletap_restore_screen"
     const val PLAYER_DOUBLETAP_SEEK_SECONDS = "player_doubletap_seek_seconds"

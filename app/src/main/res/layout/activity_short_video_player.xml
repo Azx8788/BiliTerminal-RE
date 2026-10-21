@@ -1,66 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  短视频页外壳：一个横向 ViewPager2，把「短视频流 → 视频详情 → 评论 → 相关推荐」串成一条线。
+
+  - 第 0 页：fragment_short_video_feed（竖向短视频流，懒加载、循环续接都在这里）
+  - 第 1 页：视频详情（复用 VideoInfoFragment）
+  - 第 2 页：评论（复用 ReplyFragment）
+  - 第 3 页：相关推荐（复用 VideoRcmdFragment；设置里关掉相关推荐时没有这一页）
+
+  外壳只负责横向翻页与「当前这条视频是谁」的同步，短视频的播放逻辑全在 feed fragment 里。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/root_layout"
+    android:id="@+id/short_video_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
     <androidx.viewpager2.widget.ViewPager2
-        android:id="@+id/viewPager"
+        android:id="@+id/pager"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical" />
-
-    <LinearLayout
-        android:id="@+id/loadingLayout"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:visibility="visible">
-
-        <ProgressBar
-            android:id="@+id/loadingIndicator"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:indeterminate="true" />
-
-        <TextView
-            android:id="@+id/loadingText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="@string/text_activitymyspace_01"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="14sp" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/errorLayout"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/errorText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/text_load_failed"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/retryButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:paddingHorizontal="24dp"
-            android:paddingVertical="8dp"
-            android:text="@string/text_activityshortvideoplayer_01"
-            android:textColor="?android:attr/textColorPrimary"
-            android:textSize="14sp" />
-    </LinearLayout>
+        android:orientation="horizontal" />
 
 </FrameLayout>

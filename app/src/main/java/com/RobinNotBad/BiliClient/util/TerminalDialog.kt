@@ -9,17 +9,21 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.text.InputFilter
 import android.text.InputType
+import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.util.TypedValue
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.util.view.DialogSizing
 
 /**
  * 弹窗的唯一构造入口（终端列表方案 B，设计稿 `docs/archive/design/dialog-redesign-v2.html`）。
@@ -50,7 +54,10 @@ import com.RobinNotBad.BiliClient.R
  * - 不要在业务代码里裸写 `AlertDialog.Builder(...).setItems(...)`，见 `AGENTS.md` 禁令。
  * - 不要把按钮行加回菜单/单选：手表 300×300 表盘上纵向空间比一个「确定」值钱。
  *
- * 纯视图构造，无网络、无持久化，不持有 Context 引用（Dialog 自己持有）。
+ * 纯视图构造，无网络、不持有 Context 引用（Dialog 自己持有）。会**读**（不写）用户的两项界面
+ * 设置：`SettingsKeys.PADDING_H/PADDING_V`（「界面边距」，与宿主页面同一套安全区，见
+ * [Sheet.prepareLayout]）。尺寸预算的算术在 `util/view/DialogSizing.kt`（纯函数，有 JVM 单测）
+ * ——「低分辨率设备上弹窗显示不全」（26.10.20 用户反馈）的根因就在那几行。
  */
 object TerminalDialog {
 
@@ -100,6 +107,7 @@ object TerminalDialog {
         }
 
         sheet.setHint(UiText.of("点空白处取消"))
+        sheet.prepareLayout()
         return sheet.dialog
     }
 
@@ -129,6 +137,7 @@ object TerminalDialog {
         }
         sheet.paintSelection(checked.coerceIn(0, (items.size - 1).coerceAtLeast(0)))
         sheet.setHint(UiText.of("点空白处取消"))
+        sheet.prepareLayout()
         return sheet.dialog
     }
 
@@ -166,6 +175,7 @@ object TerminalDialog {
             onConfirm()
         }
 
+        sheet.prepareLayout()
         return sheet.dialog
     }
 
@@ -183,8 +193,10 @@ object TerminalDialog {
      * 按钮顺序与 [confirm] 一致：[secondaryText] 在左、[primaryText] 在右。
      * 调用方若想禁止返回键/点空白关掉，自己 `setCancelable(false)`。
      *
-     * <p>按钮用**固定底栏**（滚动区外面）：这个方法的正文通常偏长，而滚动区高度被钉在屏高的
-     * 45%，按钮跟着正文滚就会被顶到看不见的地方。配上 `setCancelable(false)` 就是死锁。
+     * <p>按钮用**固定底栏**（滚动区外面）：这个方法的正文通常偏长，按钮跟着正文滚就会被顶到
+     * 看不见的地方。配上 `setCancelable(false)` 就是死锁——用户既关不掉弹窗也点不到按钮。
+     * 滚动区的高度由 [Sheet.prepareLayout] 按「屏幕装得下」算（26.10.20 之前是硬钉屏高 45%，
+     * 小屏上标题 + 45% + 底栏 + 提示行必然超屏，正是「低分辨率设备弹窗显示不全」的成因之一）。
      */
     fun choice(
         context: Context,
@@ -209,6 +221,7 @@ object TerminalDialog {
         // 内容超出滚动区时给一句提示：滚动条是隐藏的（scrollbars="none"），
         // 不提示的话用户只会看到一段被截断的文字。
         if (!hint.isNullOrEmpty()) sheet.setHint(hint)
+        sheet.prepareLayout()
         return sheet.dialog
     }
 
@@ -223,6 +236,7 @@ object TerminalDialog {
      * 按钮跟在正文后面会被顶出可视区，而这时用户正打着字。
      *
      * @param maxLength 0 表示不限
+     * @param digitsOnly 只允许输入数字（内测码等纯数字输入用）；会同时换数字键盘并过滤粘贴内容
      * @param onConfirm 回调拿到的是**已 trim 过**的内容；内容为空时既不回调也不关窗
      */
     fun input(
@@ -231,12 +245,30 @@ object TerminalDialog {
         hint: String? = null,
         initialText: String = "",
         maxLength: Int = 0,
+        digitsOnly: Boolean = false,
         confirmText: String = UiText.of("发送"),
         cancelText: String = UiText.of("取消"),
         onConfirm: (String) -> Unit
     ): AlertDialog {
         val sheet = Sheet(context, title, bottomButtonBar = true)
         val edit = sheet.addInput(hint, initialText, maxLength)
+
+        if (digitsOnly) {
+            // 数字键盘只能挡住软键盘，粘贴/外接键盘照样能进非数字字符，所以要再加一层 InputFilter。
+            edit.inputType = InputType.TYPE_CLASS_NUMBER
+            val filters = ArrayList<InputFilter>(2)
+            if (maxLength > 0) filters.add(InputFilter.LengthFilter(maxLength))
+            filters.add(InputFilter { source, start, end, _, _, _ ->
+                val kept = StringBuilder(end - start)
+                for (i in start until end) {
+                    val c = source[i]
+                    if (c in '0'..'9') kept.append(c)
+                }
+                // 返回 null 表示原文照收；有字符被过滤掉才返回新串
+                if (kept.length == end - start) null else kept.toString()
+            })
+            edit.filters = filters.toTypedArray()
+        }
 
         if (cancelText.isNotEmpty()) {
             sheet.addButton(cancelText, sheet.secondaryColor()) { sheet.dialog.dismiss() }
@@ -249,6 +281,9 @@ object TerminalDialog {
             onConfirm(text)
         }
 
+        sheet.prepareLayout()
+        // 输入型不走「钉高度」那套：内容只有一个输入框，钉死会在下面留一大片空白。
+        // prepareForTyping 会把滚动区改回 wrap_content（输入框自身 maxLines = 6 兜底）。
         sheet.prepareForTyping(edit)
         return sheet.dialog
     }
@@ -282,8 +317,8 @@ object TerminalDialog {
          *
          * <p>默认 false = 老行为：按钮跟在正文末尾、随正文一起滚。菜单/单选/确认框的正文
          * 都很短，用不着改。true 给 [TerminalDialog.choice] 这类「正文很长 + 按钮必须能点到」
-         * 的场景用——滚动区被 [capScrollHeight] 钉成屏高的 45%，长正文会把按钮顶到看不见的
-         * 地方，而这类弹窗又不允许返回键关掉，点不到按钮就是用户彻底卡住。
+         * 的场景用——长正文会把按钮顶到看不见的地方，而这类弹窗又不允许返回键关掉，
+         * 点不到按钮就是用户彻底卡住。
          */
         private val bottomButtonBar: Boolean = false
     ) {
@@ -301,6 +336,9 @@ object TerminalDialog {
         private val hintView: TextView = content.findViewById(R.id.terminal_dialog_hint)
         private val buttonBar: LinearLayout = content.findViewById(R.id.terminal_dialog_buttons)
 
+        /** 输入型弹窗的输入框；非空 = 「打字模式」，滚动区不钉高度（见 [prepareForTyping]）。 */
+        private var typingEdit: EditText? = null
+
         init {
             // 只让**窗口背景**承担圆角描边（来自 overlay 的 android:background =
             // @drawable/dialog_background），这里必须把窗口自带的那层底衬清成透明 ——
@@ -311,7 +349,12 @@ object TerminalDialog {
             // 各画一次描边，两层之间还隔着 dialog 默认 padding，看上去就是弹窗外面又套了一圈线。
             dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             dialog.setView(content, 0, 0, 0, 0)
-            capScrollHeight()
+            dialog.setCanceledOnTouchOutside(true)
+            // 只调 setCanceledOnTouchOutside 不够：窗口除了 DIM_BEHIND 没有 WATCH_OUTSIDE_TOUCH，
+            // 系统根本不会把「点窗口外」的 ACTION_OUTSIDE 送进来，等于点空白处永远没反应。
+            // 这句有意义的前提是**窗口真的比屏幕窄**——宽度由 prepareLayout() 负责收窄。
+            // （26.10.20 加了这句，可当时窗口仍是整屏宽，提示行「点空白处取消」成了空话。）
+            dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH)
             buttonBar.visibility = if (bottomButtonBar) View.VISIBLE else View.GONE
 
             if (title.isNullOrEmpty()) {
@@ -322,21 +365,223 @@ object TerminalDialog {
                 titleView.visibility = View.VISIBLE
                 divider.visibility = View.VISIBLE
             }
+            // 先按「空列表」算一次：宽度立刻落地；工厂方法加完条目后会再算一次高度。
+            prepareLayout()
+
+            // **真正生效的是 show() 之后这一次**：appcompat 的 AlertDialog 在 onCreate 里
+            // installContent() 会把自定义视图重新 addView 进 customPanel（MATCH_PARENT×MATCH_PARENT），
+            // 把 init 里落的宽度覆盖回整屏宽 —— 380×380 实测 show() 之前 `dumpsys window` 一直是
+            // `mAttrs=(wrapxwrap)`、content 仍是 380 宽，`setLayout()` 写了等于没写。
+            // onShowListener 在窗口 attach 完、第一帧 layout 之前回调，这里再落一次同一个尺寸，
+            // 第一帧就是对的（不会先画一帧整屏宽再跳回来）。
+            dialog.setOnShowListener {
+                prepareLayout()
+                // 输入型：弹窗显示前 View 还没 attach，init 里那次 requestFocus 不一定生效，
+                // 表现为「弹窗出来了但键盘不弹、光标也不在框里」。
+                typingEdit?.let { edit ->
+                    edit.requestFocus()
+                    edit.setSelection(edit.text?.length ?: 0)
+                }
+            }
         }
 
         /**
-         * 给条目区设高度上限。
+         * 量一次、把尺寸落下去：窗口宽度 + 滚动区高度 + 该舍哪几行。
          *
-         * `ScrollView` 没有 `android:maxHeight` 这个属性（那是 ImageView 一类的），
-         * 光靠 `wrap_content` 会被内容撑到超出表盘 —— 300×300 的表盘上一条动态最多能带 10 个
-         * 菜单项，不封顶就直接顶出屏幕。
+         * **调用时机**：`TerminalDialog` 的每个工厂方法在 `return` 前都会调一次（条目、按钮、
+         * 提示行都加完之后）。`init` 里也先调一次，只为让宽度立刻生效。
          *
-         * 上限取屏幕可用高度的 45%：比原来裸 Builder 的默认高度克制，又能让常见 3~5 项一屏放下。
+         * **为什么不等 `show()` 之后再调**：那时窗口早已被系统裁到屏幕内，量出来的固定行高度是
+         * 被挤过的（380×380 上提示行只剩 6px 那种），按它算预算必然少算；而且第一帧会先画出被切
+         * 的界面，低端手表上那一帧能停几百毫秒。View 在 attach 之前就能 `measure()`，不必等 show。
          */
-        private fun capScrollHeight() {
-            val metrics = dialog.context.resources.displayMetrics
-            val cap = (metrics.heightPixels * 0.45f).toInt()
-            scroll.layoutParams = scroll.layoutParams.apply { height = cap }
+        internal fun prepareLayout() {
+            val screen = screenSizePx(dialog.context)
+            val frame = DialogSizing.available(
+                screen[0],
+                screen[1],
+                SharedPreferencesUtil.getInt(SettingsKeys.PADDING_H, 0),
+                SharedPreferencesUtil.getInt(SettingsKeys.PADDING_V, 0)
+            )
+            val winW = DialogSizing.width(frame)
+            // 高度只给预算（可用高度 × 94%），上下各留一点能「点外面取消」的空白。
+            val budget = DialogSizing.Frame(frame.width, DialogSizing.heightBudget(frame))
+            applyPlan(winW, DialogSizing.plan(budget, naturalScrollHeight(winW), measureParts(winW)))
+        }
+
+        private fun applyPlan(winW: Int, plan: DialogSizing.Plan) {
+            // 宽度**必须**落在 content 自己的 layoutParams 上：窗口是 WRAP_CONTENT，会跟着收窄。
+            // 光调 `window.setLayout()` 不够 —— appcompat 会把它重置回 wrap×wrap（见 init 里的说明），
+            // 所以 init 里落一次、`onShowListener` 里再落一次，两次都是同一个宽度。
+            val current = content.layoutParams
+            if (current is FrameLayout.LayoutParams) {
+                current.width = winW
+                current.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            } else {
+                content.layoutParams =
+                    FrameLayout.LayoutParams(winW, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+            content.requestLayout()
+            // 双保险：show() 之后 `setLayout()` 是有效的，窗口不会再被撑成整屏宽。
+            dialog.window?.setLayout(winW, ViewGroup.LayoutParams.WRAP_CONTENT)
+
+            if (plan.hideHint) hintView.visibility = View.GONE
+            if (plan.hideTitle) {
+                titleView.visibility = View.GONE
+                divider.visibility = View.GONE
+            }
+            // 打字模式下滚动区按内容收着（输入框自己 maxLines = 6 兜底），不钉高度。
+            val target = if (typingEdit != null) {
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            } else {
+                plan.scrollHeight ?: ViewGroup.LayoutParams.WRAP_CONTENT
+            }
+            scroll.layoutParams = scroll.layoutParams.apply { height = target }
+            scroll.requestLayout()
+            fitButtonBars(winW)
+        }
+
+        /**
+         * 按钮行的兜底：放不下就把按钮缩回去。
+         *
+         * 这不是「难看」问题而是「点不到」问题——每个按钮都带 15dp 左右内边距与 44dp 的
+         * `minimumWidth`，把「界面大小」调到 1.8 倍后单个三字按钮就 234px 宽，两个「不同意 /
+         * 同意」合计 468px > 窗口 342px，右对齐的那个会被整个挤出屏幕。隐私说明弹窗
+         * `setCancelable(false)`，主按钮点不到 = 用户在闪屏彻底卡死（26.10.20 实测）。
+         *
+         * 只对**按钮行**生效，不动列表项与正文：那两处的字号是排版的一部分，缩了就难读。
+         */
+        private fun fitButtonBars(winW: Int) {
+            val bars = ArrayList<LinearLayout>(2)
+            if (bottomButtonBar) bars.add(buttonBar)
+            for (i in 0 until container.childCount) {
+                val child = container.getChildAt(i)
+                if (child is LinearLayout && child.tag == BUTTON_BAR_TAG) bars.add(child)
+            }
+            for (bar in bars) fitButtonBar(bar, winW)
+        }
+
+        private fun fitButtonBar(bar: LinearLayout, winW: Int) {
+            if (bar.childCount == 0) return
+            // 两条按钮行的横向内边距都是 `dialog_item_padding_h`（底栏在 XML 里、滚动区内的行在
+            // 代码里）。**不能读 `paddingLeft`**：`onShowListener` 跑在第一次测量之前，XML 里的
+            // `paddingStart` 还没解析到 `paddingLeft` 上，读到 0 就会少算 30dp、按钮缩不到位。
+            val inner = winW - dimen(R.dimen.dialog_item_padding_h) * 2
+            if (inner <= 0) return
+            // 下限 9sp：再小就点不准了（按钮高度仍是 44dp 级，触控区不受影响）。
+            val floor = 9f * dialog.context.resources.displayMetrics.scaledDensity
+            var relaxed = false
+            repeat(6) {
+                if (barDesiredWidth(bar) <= inner) return
+                var shrunk = false
+                for (i in 0 until bar.childCount) {
+                    val label = bar.getChildAt(i) as? TextView ?: continue
+                    if (!relaxed) {
+                        // 内边距与 44dp 最小宽度也得一起松：只缩字号的话，这两项还把宽度钉在原地。
+                        val pad = dimen(R.dimen.dialog_item_padding_h) / 2
+                        label.setPadding(pad, 0, pad, 0)
+                        label.minimumWidth = 0
+                    }
+                    // 注意 `TextView.textSize` 的 setter 走的是 **sp**（`setTextSize(float)` 的隐藏语义），
+                    // 而 getter 返回 **px** —— 想按像素缩必须显式指定 COMPLEX_UNIT_PX。
+                    if (label.textSize > floor) {
+                        label.setTextSize(TypedValue.COMPLEX_UNIT_PX, label.textSize * 0.9f)
+                        shrunk = true
+                    }
+                }
+                relaxed = true
+                if (!shrunk) {
+                    // 字号到了 9sp 还放不下（1.8 倍界面 + 两个三字按钮就是这种）：改成均分宽度。
+                    // 比继续压字号好读，也不会像「把内边距清零」那样让两个按钮贴在一起。
+                    shareBarWidth(bar)
+                    return
+                }
+            }
+            shareBarWidth(bar)
+        }
+
+        /** 按钮行里所有按钮按单行排开需要的宽度之和（px）。 */
+        private fun barDesiredWidth(bar: LinearLayout): Int {
+            var total = 0
+            for (i in 0 until bar.childCount) {
+                val child = bar.getChildAt(i)
+                child.measure(
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                )
+                total += child.measuredWidth
+            }
+            return total
+        }
+
+        /** 放不下时的最终兜底：按钮均分整行宽度，内边距清零（否则半个格子的宽度还不够三个字）。 */
+        private fun shareBarWidth(bar: LinearLayout) {
+            for (i in 0 until bar.childCount) {
+                val child = bar.getChildAt(i)
+                val lp = child.layoutParams as? LinearLayout.LayoutParams ?: continue
+                if (lp.width == 0 && lp.weight == 1f) continue
+                lp.width = 0
+                lp.weight = 1f
+                (child as? TextView)?.setPadding(0, 0, 0, 0)
+            }
+            bar.requestLayout()
+        }
+
+        /** 滚动区内容按最终宽度量出来的自然高度（px）。 */
+        private fun naturalScrollHeight(winW: Int): Int {
+            val inner = (winW - content.paddingLeft - content.paddingRight -
+                scroll.paddingLeft - scroll.paddingRight).coerceAtLeast(0)
+            container.measure(
+                View.MeasureSpec.makeMeasureSpec(inner, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+            )
+            return container.measuredHeight + scroll.paddingTop + scroll.paddingBottom
+        }
+
+        /** 除滚动区以外的固定行各有多高（px）。GONE 的一律算 0。 */
+        private fun measureParts(winW: Int): DialogSizing.Parts {
+            val inner = (winW - content.paddingLeft - content.paddingRight).coerceAtLeast(0)
+            val widthSpec = View.MeasureSpec.makeMeasureSpec(inner, View.MeasureSpec.EXACTLY)
+            fun heightOf(view: View): Int {
+                if (view.visibility == View.GONE) return 0
+                view.measure(
+                    widthSpec,
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                )
+                return view.measuredHeight
+            }
+            return DialogSizing.Parts(
+                padding = content.paddingTop + content.paddingBottom,
+                title = heightOf(titleView),
+                divider = heightOf(divider),
+                buttonBar = heightOf(buttonBar),
+                hint = heightOf(hintView),
+                minScroll = dimen(R.dimen.dialog_item_min_height)
+            )
+        }
+
+        /**
+         * 物理屏幕尺寸（px）。
+         *
+         * **不能只用 `resources.displayMetrics`**：用户在设置里把「界面大小」调大时，
+         * `BaseActivity.setDensity()` 会走 `resources.updateConfiguration(configuration, displayMetrics)`，
+         * 有的接口版本只改 `density` 不重算 `widthPixels`/`heightPixels`（本机 SDK 32 实测：
+         * 密度放大 1.8 倍、像素尺寸不变），有的会重算——重算的那类 ROM 上「屏宽 × 0.9」
+         * 就会算出比屏幕更宽的值，低分辨率设备上弹窗右半边被切掉正是这么来的。
+         * `getRealMetrics()` 读的是显示器物理尺寸，不受应用侧密度改动影响；再与 `resources`
+         * 的窗口尺寸取小值，顺带兜住多窗口 / 系统栏。
+         */
+        @Suppress("DEPRECATION")
+        private fun screenSizePx(context: Context): IntArray {
+            val metrics = DisplayMetrics()
+            val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            if (windowManager != null) windowManager.defaultDisplay.getRealMetrics(metrics)
+            else metrics.setTo(context.resources.displayMetrics)
+            val window = context.resources.displayMetrics
+            return intArrayOf(
+                minOf(metrics.widthPixels, window.widthPixels),
+                minOf(metrics.heightPixels, window.heightPixels)
+            )
         }
 
         /** 加一个条目。返回行对象，方便调用方改引导符/文字。 */
@@ -392,7 +637,7 @@ object TerminalDialog {
                 gravity = Gravity.TOP or Gravity.START
                 textSize = 13f
                 // minLines 给足打字时的视野；maxLines 是**弹窗不被撑出屏幕**的保证
-                // （配合 prepareForTyping 取消滚动区高度上限，见那里的说明）
+                // （配合 prepareForTyping 把滚动区改回 wrap_content，见那里的说明）
                 minLines = 3
                 maxLines = 6
                 setTextColor(onSurfaceColor())
@@ -417,29 +662,24 @@ object TerminalDialog {
         }
 
         /**
-         * 打字前的准备：取消滚动区高度上限 + 弹起软键盘 + 聚焦到文末。
+         * 打字前的准备：把滚动区改回 `wrap_content` + 弹起软键盘 + 聚焦到文末。
          *
-         * **为什么取消上限**：`capScrollHeight()` 把滚动区钉死在屏高的 45%，那是为「条目多到
-         * 撑破表盘」准备的；输入型弹窗的内容只有一个输入框，钉死会在下面留一大片空白。
-         * 改成 `wrap_content` 的安全性由输入框自身的 `maxLines = 6` 保证 —— 内容再多也是
+         * **为什么改回 wrap**：[prepareLayout] 会把滚动区钉成「屏幕装得下」的固定高度，那是为
+         * 「条目/正文多到撑破表盘」准备的；输入型弹窗的内容只有一个输入框，钉死会在下面留一大片
+         * 空白。改回 `wrap_content` 的安全性由输入框自身的 `maxLines = 6` 保证 —— 内容再多也是
          * 输入框内部滚动，不会把弹窗撑出屏幕。
          */
         internal fun prepareForTyping(edit: EditText) {
-            scroll.layoutParams = scroll.layoutParams.apply {
-                height = ViewGroup.LayoutParams.WRAP_CONTENT
-            }
+            typingEdit = edit
+            // 重新落一次尺寸：此时 typingEdit 非空，applyPlan 会把滚动区改回 wrap_content。
+            prepareLayout()
             dialog.window?.setSoftInputMode(
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE or
                     WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
             )
             edit.requestFocus()
             edit.setSelection(edit.text?.length ?: 0)
-            // show 之后再补一次：弹窗显示前 View 还没 attach，那一次 requestFocus 不一定生效，
-            // 表现为「弹窗出来了但键盘不弹、光标也不在框里」。
-            dialog.setOnShowListener {
-                edit.requestFocus()
-                edit.setSelection(edit.text?.length ?: 0)
-            }
+            // show() 之后的那次再补一遍焦点，在 init 的 onShowListener 里统一处理（见那里）。
         }
 
         /** 加一个右对齐的文字按钮（确认型用）。 */
@@ -487,6 +727,9 @@ object TerminalDialog {
         internal fun setHint(hint: String) {
             hintView.text = hint
             hintView.visibility = View.VISIBLE
+            // 提示行本身也点得动：表盘上弹窗左右两侧留给「点外面」的空白只有二十来像素，
+            // 用户更可能直接点这句「点空白处取消」，点它就当取消。
+            hintView.setOnClickListener { dialog.dismiss() }
         }
 
         /** 重绘单选态：选中项 `▸` + 主色 + 右侧 ✓，未选中 `›` + 次级灰。 */

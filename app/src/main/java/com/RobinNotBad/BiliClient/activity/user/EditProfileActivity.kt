@@ -7,7 +7,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
 import android.widget.ImageView
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
@@ -66,6 +65,21 @@ class EditProfileActivity : BaseActivity() {
         findViewById<android.view.View>(R.id.pageName).setOnClickListener { finish() }
     }
 
+    /**
+     * 选图。**禁止用 `ACTION_PICK` + `content://media/external/images/media`**：
+     * 部分手表 / 定制 ROM 的系统相册不声明 `ACTION_PICK`，点击即抛
+     * `ActivityNotFoundException: No Activity found to handle Intent { act=android.intent.action.PICK … }`
+     * （线上崩溃 #63，XTC monaco_go Z10 / SDK 30，版本 26.10.19）。
+     *
+     * 改用 `ACTION_GET_CONTENT`（type 设成 image 通配 MIME）：文件管理器与相册都能响应，兼容性更好
+     * （与 [com.RobinNotBad.BiliClient.activity.message.PrivateMsgActivity]、
+     * [com.RobinNotBad.BiliClient.activity.reply.WriteReplyActivity]、
+     * [com.RobinNotBad.BiliClient.activity.settings.SettingGroupActivity] 的结论一致）。
+     * 设备上一个选图应用都没有时只提示、不崩。
+     *
+     * **注意 Kotlin 块注释可以嵌套**：本注释里别原样写「image 加斜杠加星号」（会开一个嵌套注释，
+     * 把整份文件的后半段吞掉、报 Unclosed comment），那个 MIME 串只写在下面的字符串字面量里。
+     */
     private fun selectImage() {
         if (isUploading) {
             MsgUtil.showMsg(UiText.of("正在上传中..."))
@@ -75,8 +89,15 @@ class EditProfileActivity : BaseActivity() {
             MsgUtil.showDialog(getString(R.string.text_cannot_upload), getString(R.string.msg_cookie_refresh_failed), -1)
             return
         }
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        startActivityForResult(intent, REQUEST_CODE_PICK_IMAGE)
+        try {
+            val intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.type = "image/*"
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+            startActivityForResult(intent, REQUEST_CODE_PICK_IMAGE)
+        } catch (e: Exception) {
+            // 精简手表 ROM 可能连 GET_CONTENT 都没人处理，抛 ActivityNotFoundException
+            MsgUtil.showMsg(getString(R.string.msg_no_image_picker))
+        }
     }
 
     @Deprecated("Deprecated in Java")

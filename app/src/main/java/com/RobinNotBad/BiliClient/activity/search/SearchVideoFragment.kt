@@ -47,6 +47,7 @@ class SearchVideoFragment : SearchFragment() {
                     SearchApi.getVideosFromSearchResult(result, list, page == 1)
                     if (list.size == 0) bottom = true
                     else CenterThreadPool.runOnUiThread {
+                        if (!isAdded || view == null) return@runOnUiThread
                         // 26.10.04 批次 3（B5）：起点写成了 lastSize + 1，第 2 页起会多算 1 格，
                         // RecyclerView 直接抛 IndexOutOfBoundsException。正确起点就是插入前的 size。
                         val lastSize = videoCardList.size
@@ -64,6 +65,7 @@ class SearchVideoFragment : SearchFragment() {
 
     override fun refreshInternal() {
         CenterThreadPool.runOnUiThread {
+            if (!isAdded || view == null) return@runOnUiThread
             page = 1
             if (this.videoCardAdapter == null)
                 this.videoCardAdapter = VideoCardAdapter(this.requireContext(), this.videoCardList)

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 缓存页分区的空态提示行：某个分区（未分类视频 / 某个文件夹）一个视频都没有时占位。
+     以前用的是盖住整页、居中的 emptyTip 浮层，会和顶部「下载列表 / 新建文件夹」两行重合，
+     而且不参与滚动（26.10.20 用户反馈）。现在改成列表里的一行，跟着列表走。
+     颜色只读 ?android:attr/，不写死色值。 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/text"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="28dp"
+    android:paddingBottom="28dp"
+    android:text="@string/text_list_empty"
+    android:textColor="?android:attr/textColorSecondary"
+    android:textSize="14sp" />

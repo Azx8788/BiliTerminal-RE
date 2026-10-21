@@ -11,10 +11,10 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.constraintlayout.widget.Guideline
-import androidx.fragment.app.Fragment
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.SplashActivity
+import com.RobinNotBad.BiliClient.activity.base.BaseFragment
 import com.RobinNotBad.BiliClient.activity.base.InstanceActivity
 import com.RobinNotBad.BiliClient.api.CookiesApi
 import com.RobinNotBad.BiliClient.api.LoginApi
@@ -32,7 +32,7 @@ import java.io.IOException
 import java.util.Timer
 import java.util.TimerTask
 
-class QRLoginFragment : Fragment() {
+class QRLoginFragment : BaseFragment() {
     private lateinit var qrImageView: ImageView
     private lateinit var scanStat: TextView
     private lateinit var modeSwitchBtn: TextView
@@ -164,11 +164,11 @@ class QRLoginFragment : Fragment() {
 
     private fun updateModeUI() {
         if (isTVMode) {
-            modeSwitchBtn.text = getString(R.string.text_qr_mode_tv)
-            scanStat.text = getString(R.string.text_qr_stat_getting_tv)
+            modeSwitchBtn.text = getAppContext().getString(R.string.text_qr_mode_tv)
+            scanStat.text = getAppContext().getString(R.string.text_qr_stat_getting_tv)
         } else {
-            modeSwitchBtn.text = getString(R.string.text_qr_mode_web)
-            scanStat.text = getString(R.string.text_qr_stat_getting)
+            modeSwitchBtn.text = getAppContext().getString(R.string.text_qr_mode_web)
+            scanStat.text = getAppContext().getString(R.string.text_qr_stat_getting)
         }
     }
 
@@ -181,10 +181,10 @@ class QRLoginFragment : Fragment() {
                 qrImageView.isEnabled = false
 
                 if (isTVMode) {
-                    CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_stat_getting_tv) }
+                    CenterThreadPool.runOnUiThread { scanStat.text = getAppContext().getString(R.string.text_qr_stat_getting_tv) }
                     QRImage = LoginApi.getTVLoginQR()
                 } else {
-                    CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_stat_getting) }
+                    CenterThreadPool.runOnUiThread { scanStat.text = getAppContext().getString(R.string.text_qr_stat_getting) }
                     // checkCookies 失败不应阻塞登录流程，内部捕获异常
                     try {
                         CookiesApi.checkCookies()
@@ -208,21 +208,21 @@ class QRLoginFragment : Fragment() {
                 CenterThreadPool.runOnUiThread {
                     qrImageView.isEnabled = true
                     need_refresh = true
-                    scanStat.text = getString(R.string.text_qr_get_failed_network)
+                    scanStat.text = getAppContext().getString(R.string.text_qr_get_failed_network)
                 }
                 e.printStackTrace()
             } catch (e: JSONException) {
                 CenterThreadPool.runOnUiThread {
                     qrImageView.isEnabled = true
                     need_refresh = true
-                    scanStat.text = getString(R.string.text_qr_api_invalid)
+                    scanStat.text = getAppContext().getString(R.string.text_qr_api_invalid)
                 }
                 e.printStackTrace()
             } catch (e: Exception) {
                 CenterThreadPool.runOnUiThread {
                     qrImageView.isEnabled = true
                     need_refresh = true
-                    scanStat.text = getString(R.string.err_qr_other, e.message)
+                    scanStat.text = getAppContext().getString(R.string.err_qr_other, e.message)
                 }
                 e.printStackTrace()
             }
@@ -254,7 +254,7 @@ class QRLoginFragment : Fragment() {
                     if (isAdded) CenterThreadPool.runOnUiThread {
                         qrImageView.isEnabled = true
                         need_refresh = true
-                        scanStat.text = getString(R.string.err_qr_no_info, e.message)
+                        scanStat.text = getAppContext().getString(R.string.err_qr_no_info, e.message)
                         MsgUtil.err(e)
                     }
                     this.cancel()
@@ -281,14 +281,14 @@ class QRLoginFragment : Fragment() {
             val code = loginJson.getInt("code")
             when (code) {
                 86039 -> CenterThreadPool.runOnUiThread {
-                    scanStat.text = getString(R.string.text_qr_hint_tv)
+                    scanStat.text = getAppContext().getString(R.string.text_qr_hint_tv)
                 }
                 86090 -> CenterThreadPool.runOnUiThread {
-                    scanStat.text = getString(R.string.text_qr_scanned_confirm)
+                    scanStat.text = getAppContext().getString(R.string.text_qr_scanned_confirm)
                 }
                 86038 -> {
                     CenterThreadPool.runOnUiThread {
-                        scanStat.text = getString(R.string.text_qr_expired)
+                        scanStat.text = getAppContext().getString(R.string.text_qr_expired)
                         qrImageView.isEnabled = true
                         need_refresh = true
                     }
@@ -296,7 +296,7 @@ class QRLoginFragment : Fragment() {
                 }
                 0 -> {
                     this@QRLoginFragment.timer?.cancel()
-                    CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_processing_tv) }
+                    CenterThreadPool.runOnUiThread { scanStat.text = getAppContext().getString(R.string.text_qr_processing_tv) }
 
                     val data = loginJson.getJSONObject("data")
                     val accessToken = data.getString("access_token")
@@ -339,26 +339,29 @@ class QRLoginFragment : Fragment() {
                     } catch (ignored: Exception) {
                     }
 
-                    startActivity(Intent(requireContext(), SplashActivity::class.java))
-
-                    if (isAdded) requireActivity().finish()
+                    // TV 扫码成功这段跑在 Timer 线程上：判活之后用户可能已经返回/被 finish，
+                    // requireContext() 在 detach 后会抛 ISE，所以整段导航都放进判活里
+                    if (isAdded) {
+                        startActivity(Intent(requireContext(), SplashActivity::class.java))
+                        requireActivity().finish()
+                    }
                 }
                 else -> CenterThreadPool.runOnUiThread {
-                    scanStat.text = getString(R.string.text_qr_tv_api_changed)
+                    scanStat.text = getAppContext().getString(R.string.text_qr_tv_api_changed)
                 }
             }
         } catch (e: JSONException) {
             if (isAdded) CenterThreadPool.runOnUiThread {
                 qrImageView.isEnabled = true
                 need_refresh = true
-                scanStat.text = getString(R.string.err_qr_tv_api, e.message)
+                scanStat.text = getAppContext().getString(R.string.err_qr_tv_api, e.message)
             }
             this@QRLoginFragment.timer?.cancel()
         } catch (e: IOException) {
             if (isAdded) CenterThreadPool.runOnUiThread {
                 qrImageView.isEnabled = true
                 need_refresh = true
-                scanStat.text = getString(R.string.err_qr_tv_network, e.message)
+                scanStat.text = getAppContext().getString(R.string.err_qr_tv_network, e.message)
             }
             this@QRLoginFragment.timer?.cancel()
         }
@@ -380,11 +383,11 @@ class QRLoginFragment : Fragment() {
 
         val code = loginJson.getJSONObject("data").getInt("code")
         when (code) {
-            86090 -> CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_scanned_login) }
-            86101 -> CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_hint_official) }
+            86090 -> CenterThreadPool.runOnUiThread { scanStat.text = getAppContext().getString(R.string.text_qr_scanned_login) }
+            86101 -> CenterThreadPool.runOnUiThread { scanStat.text = getAppContext().getString(R.string.text_qr_hint_official) }
             86038 -> {
                 CenterThreadPool.runOnUiThread {
-                    scanStat.text = getString(R.string.text_qr_expired)
+                    scanStat.text = getAppContext().getString(R.string.text_qr_expired)
                     qrImageView.isEnabled = true
                     need_refresh = true
                 }
@@ -392,7 +395,7 @@ class QRLoginFragment : Fragment() {
             }
             0 -> {
                 this@QRLoginFragment.timer?.cancel()
-                CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_processing) }
+                CenterThreadPool.runOnUiThread { scanStat.text = getAppContext().getString(R.string.text_qr_processing) }
                 val cookies = SharedPreferencesUtil.getString(SharedPreferencesUtil.cookies, "")
 
                 SharedPreferencesUtil.putLong(SharedPreferencesUtil.mid, NetWorkUtil.getInfoFromCookie("DedeUserID", cookies).toLong())
@@ -420,11 +423,13 @@ class QRLoginFragment : Fragment() {
                     }
                 }
 
-                startActivity(Intent(requireContext(), SplashActivity::class.java))
-
-                if (isAdded) requireActivity().finish()
+                // 同 TV 分支：这段跑在 Timer 线程上，detach 后 requireContext() 会抛 ISE
+                if (isAdded) {
+                    startActivity(Intent(requireContext(), SplashActivity::class.java))
+                    requireActivity().finish()
+                }
             }
-            else -> CenterThreadPool.runOnUiThread { scanStat.text = getString(R.string.text_qr_api_changed) }
+            else -> CenterThreadPool.runOnUiThread { scanStat.text = getAppContext().getString(R.string.text_qr_api_changed) }
         }
     }
 }

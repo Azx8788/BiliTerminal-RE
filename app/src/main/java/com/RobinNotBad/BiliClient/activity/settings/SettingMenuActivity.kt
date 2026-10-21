@@ -20,16 +20,29 @@ class SettingMenuActivity : BaseActivity() {
         findViewById<View>(R.id.top).setOnClickListener { finish() }
 
         val enabled = SharedPreferencesUtil.loadMenuEnabled()
+        // 启动页：缺省为「推荐」；已存值若已被移入未启用，会在读取时立即改回默认并写回
+        val start = SharedPreferencesUtil.loadMenuStart(enabled)
+        val helpHidden = SharedPreferencesUtil.getBoolean(
+            SharedPreferencesUtil.MENU_HELP_HIDDEN, false
+        )
 
         val recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
         recyclerView.layoutManager = LinearLayoutManager(this)
 
-        val adapter = MenuSettingAdapter(enabled) { key ->
+        val adapter = MenuSettingAdapter(enabled, start, helpHidden) { key ->
             MenuActivity.btnNames[key]?.first ?: key
         }
         adapter.listener = object : MenuSettingAdapter.Listener {
             override fun onChanged(enabled: List<String>) {
                 SharedPreferencesUtil.saveMenuEnabled(enabled)
+            }
+
+            override fun onStartChanged(key: String) {
+                SharedPreferencesUtil.saveMenuStart(key)
+            }
+
+            override fun onHelpHiddenChanged(hidden: Boolean) {
+                SharedPreferencesUtil.putBoolean(SharedPreferencesUtil.MENU_HELP_HIDDEN, hidden)
             }
         }
         recyclerView.adapter = adapter

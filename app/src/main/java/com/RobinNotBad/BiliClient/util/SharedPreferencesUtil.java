@@ -11,6 +11,10 @@ public class SharedPreferencesUtil {
     public static final String RCMD_API_NEW_PARAM = "rcmd_api_new_param";
     public static final String MENU_SORT = "menu_sort";
     public static final String MENU_ENABLED = "menu_enabled";
+    /** 启动时直接进入的菜单页 key（缺省 = 推荐）。 */
+    public static final String MENU_START = "menu_start";
+    /** 菜单设置页顶部的使用说明是否已被用户长按隐藏。 */
+    public static final String MENU_HELP_HIDDEN = "menu_help_hidden";
     public static final String SEARCH_CATEGORY_SORT = "search_category_sort";
     public static final String SEARCH_CATEGORY_ARTICLE_SHOW = "search_category_article_show";
     public static final String SEARCH_CATEGORY_USER_SHOW = "search_category_user_show";
@@ -146,6 +150,20 @@ public class SharedPreferencesUtil {
     /** 保存菜单启用列表。 */
     public static void saveMenuEnabled(java.util.List<String> enabled) {
         MenuConfig.INSTANCE.saveEnabled(enabled, (key, value) -> { SharedPreferencesUtil.putString(key, value); return kotlin.Unit.INSTANCE; });
+    }
+
+    /** 读取启动页 key（缺省=推荐；已存值失效时立即改回默认并写回）。 */
+    public static String loadMenuStart(java.util.List<String> enabled) {
+        return MenuConfig.INSTANCE.loadStart(
+                enabled,
+                key -> getString(key, ""),
+                (key, value) -> { SharedPreferencesUtil.putString(key, value); return kotlin.Unit.INSTANCE; }
+        );
+    }
+
+    /** 保存启动页 key。 */
+    public static void saveMenuStart(String key) {
+        MenuConfig.INSTANCE.saveStart(key, (k, value) -> { SharedPreferencesUtil.putString(k, value); return kotlin.Unit.INSTANCE; });
     }
 
     /** 读取「我的」页面功能布局（非法或缺失时回退默认并写回），供 MySpaceActivity / MySpaceMoreActivity / SettingMySpaceActivity 使用。 */

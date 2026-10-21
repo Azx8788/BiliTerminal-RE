@@ -46,6 +46,7 @@ class SearchArticleFragment : SearchFragment() {
                     SearchApi.getArticlesFromSearchResult(result, list)
                     if (list.size == 0) bottom = true
                     CenterThreadPool.runOnUiThread {
+                        if (!isAdded || view == null) return@runOnUiThread
                         // 26.10.04 批次 3（B5）：起点 lastSize + 1 → lastSize（原写法第 2 页越界）
                         val lastSize = articleCardList.size
                         articleCardList.addAll(list)
@@ -61,6 +62,7 @@ class SearchArticleFragment : SearchFragment() {
 
     override fun refreshInternal() {
         CenterThreadPool.runOnUiThread {
+            if (!isAdded || view == null) return@runOnUiThread
             page = 1
             if (this.articleCardAdapter == null)
                 this.articleCardAdapter = ArticleCardAdapter(this.requireContext(), this.articleCardList)

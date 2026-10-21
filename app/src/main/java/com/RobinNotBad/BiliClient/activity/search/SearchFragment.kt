@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
+import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.listener.OnLoadMoreListener
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomGridManager
@@ -128,7 +129,12 @@ open class SearchFragment : Fragment() {
     }
 
     fun runOnUiThread(runnable: Runnable) {
-        if (isAdded) requireActivity().runOnUiThread(runnable)
+        // 判活必须写在 Runnable 内部：post 是无条件投递，投递时刻的 isAdded 到执行时可能已经失效，
+        // detach 后再碰 view/context 就会抛 Fragment not attached to a context（#62 同族）
+        val host = activity ?: return
+        host.runOnUiThread {
+            if (isAdded && view != null) runnable.run()
+        }
     }
 
     fun showEmptyView(empty: Boolean) {
@@ -148,7 +154,8 @@ open class SearchFragment : Fragment() {
 
     fun loadFail() {
         page--
-        MsgUtil.showMsgLong(getString(R.string.text_load_failed))
+        // application context 取文案：失败回调常常发生在 fragment 已 detach 之后
+        MsgUtil.showMsgLong(BiliTerminal.context!!.getString(R.string.text_load_failed))
         setRefreshing(false)
     }
 

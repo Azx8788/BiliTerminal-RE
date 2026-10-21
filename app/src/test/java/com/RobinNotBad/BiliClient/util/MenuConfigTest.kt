@@ -126,4 +126,78 @@ class MenuConfigTest {
         assertEquals(MenuConfig.DEFAULT_ENABLED, result)
         assertEquals(MenuConfig.serialize(MenuConfig.DEFAULT_ENABLED), written)
     }
+
+    // ---- 启动页（打开应用时直接进入的菜单页） ----
+
+    @Test
+    fun resolveStart_noStored_returnsRecommend() {
+        assertEquals("recommend", MenuConfig.resolveStart(MenuConfig.DEFAULT_ENABLED, null))
+    }
+
+    @Test
+    fun resolveStart_storedStillEnabled_keepsItEvenIfReordered() {
+        assertEquals("search", MenuConfig.resolveStart(MenuConfig.DEFAULT_ENABLED, "search"))
+        assertEquals("local", MenuConfig.resolveStart(listOf("settings", "local", "recommend"), "local"))
+    }
+
+    @Test
+    fun resolveStart_storedDisabled_fallsBackToRecommend() {
+        assertEquals("recommend", MenuConfig.resolveStart(MenuConfig.DEFAULT_ENABLED, "precious"))
+        assertEquals("recommend", MenuConfig.resolveStart(MenuConfig.DEFAULT_ENABLED, "not_a_key"))
+    }
+
+    @Test
+    fun resolveStart_recommendMissing_fallsBackToFirstEnabled() {
+        // 推荐是固定项，正常不会缺失；这里只验证表达式本身的兜底顺序
+        assertEquals("search", MenuConfig.resolveStart(listOf("search", "local"), null))
+        assertEquals("recommend", MenuConfig.resolveStart(emptyList(), "search"))
+    }
+
+    @Test
+    fun loadStart_neverSet_returnsDefaultWithoutWrite() {
+        var wrote = false
+        val result = MenuConfig.loadStart(
+            enabled = MenuConfig.DEFAULT_ENABLED,
+            readString = { null },
+            writeString = { _, _ -> wrote = true }
+        )
+        assertEquals("recommend", result)
+        assertEquals(false, wrote)
+    }
+
+    @Test
+    fun loadStart_blankStored_treatedAsNeverSet() {
+        var wrote = false
+        val result = MenuConfig.loadStart(
+            enabled = MenuConfig.DEFAULT_ENABLED,
+            readString = { "" },
+            writeString = { _, _ -> wrote = true }
+        )
+        assertEquals("recommend", result)
+        assertEquals(false, wrote)
+    }
+
+    @Test
+    fun loadStart_validStored_returnsWithoutWrite() {
+        var wrote = false
+        val result = MenuConfig.loadStart(
+            enabled = MenuConfig.DEFAULT_ENABLED,
+            readString = { "myspace" },
+            writeString = { _, _ -> wrote = true }
+        )
+        assertEquals("myspace", result)
+        assertEquals(false, wrote)
+    }
+
+    @Test
+    fun loadStart_storedDisabled_rewritesDefault() {
+        var written: String? = null
+        val result = MenuConfig.loadStart(
+            enabled = MenuConfig.DEFAULT_ENABLED,
+            readString = { key -> if (key == SharedPreferencesUtil.MENU_START) "timeline" else null },
+            writeString = { key, value -> if (key == SharedPreferencesUtil.MENU_START) written = value }
+        )
+        assertEquals("recommend", result)
+        assertEquals("recommend", written)
+    }
 }

@@ -7,9 +7,9 @@
     terminal_dialog_list    —— 条目容器（ScrollView 包 LinearLayout）
     terminal_dialog_hint    —— 底部提示行（如「› 点空白处取消」）
 
-  ScrollView 存在的理由：300×300 表盘上条目多了会撑破表盘，
-  滚动把可见高度钉在上限内。注意 android:layout_height 写 wrap_content 只是占位，
-  实际高度由 util/TerminalDialog.kt 的 Sheet.capScrollHeight() 改成屏幕高度的 45%
+  ScrollView 存在的理由：300×300 表盘上条目多了会撑破表盘，滚动把可见高度钉在预算内。
+  注意 android:layout_height 写 wrap_content 只是占位：实际高度由
+  util/TerminalDialog.kt 的 Sheet.prepareLayout() 按「屏幕装得下」算出来写回
   —— ScrollView 没有 android:maxHeight 属性，光靠 XML 封不了顶。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -58,8 +58,9 @@
       菜单/单选/确认框的正文都很短，用不着它。
 
       启用时（见 TerminalDialog.Sheet 的 bottomButtonBar 参数）按钮挪到滚动区**外面**，
-      因为滚动区被 capScrollHeight() 钉成屏高的 45%，正文一长按钮就被顶到看不见的地方，
-      而这类弹窗（启动时的隐私说明）又不允许返回键关掉，点不到按钮 = 用户彻底卡住。
+      因为正文一长按钮就会被顶到看不见的地方，而这类弹窗（启动时的隐私说明）又不允许
+      返回键关掉，点不到按钮 = 用户彻底卡住。底栏在滚动区外，滚动区高度不够时由
+      Sheet.prepareLayout() 先舍提示行再舍标题行，底栏本身**永远不参与压缩**。
     -->
     <LinearLayout
         android:id="@+id/terminal_dialog_buttons"

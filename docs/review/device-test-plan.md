@@ -464,7 +464,7 @@ $adb = 'D:\Program Files\android-sdk\platform-tools\adb.exe'
 | D7-1 | 保持**默认下载目录**下载一个视频 | 成功（默认目录已被新 `file_paths.xml` 覆盖） |
 | **D7-2** | 把下载目录改成**外置卡 / SD 卡**上的自定义路径 ★ | 能下载成功 |
 | D7-3 | 若 D7-2 失败 | **这是已知风险**——`file_paths.xml` 删掉了 `<root-path path="" />`，自定义目录不再被 FileProvider 覆盖。**把具体路径发出来**，我加对应的 `<path>` 条目 |
-| D7-4 | 图片保存（`Pictures/哔哩终端/`） | 保存成功 |
+| D7-4 | 图片保存（`Pictures/哔哩终端/`） | 保存成功，**相册/图库里能看到这张图**（26.10.21 前只落盘不登记媒体库，相册里没有，见 `docs/review/fix-progress.md` §3.44） |
 | D7-5 | 应用内更新（检查更新 → 下载 APK） | APK 能下载并唤起安装 |
 | D7-6 | 读取已下载的本地视频 | 能读到 |
 

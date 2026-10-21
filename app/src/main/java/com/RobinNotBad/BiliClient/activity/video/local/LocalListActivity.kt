@@ -11,7 +11,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.RobinNotBad.BiliClient.R
-import com.RobinNotBad.BiliClient.activity.ConfirmDialogActivity
 import com.RobinNotBad.BiliClient.activity.InputDialogActivity
 import com.RobinNotBad.BiliClient.activity.ListDialogActivity
 import com.RobinNotBad.BiliClient.activity.video.QualityChooserActivity
@@ -30,6 +29,7 @@ import com.RobinNotBad.BiliClient.util.FolderManager
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
+import com.RobinNotBad.BiliClient.util.TerminalDialog
 import com.RobinNotBad.BiliClient.util.VideoMetaManager
 import java.io.File
 
@@ -37,23 +37,16 @@ class LocalListActivity : InstanceActivity() {
 
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private lateinit var recyclerView: RecyclerView
-    private lateinit var emptyTip: TextView
 
     private val folderList = ArrayList<VideoFolder>()
     private val videoList = ArrayList<LocalVideo>()
     private var adapter: CacheListAdapter? = null
 
     // 对话框回调存储
-    private var pendingConfirmCallback: (() -> Unit)? = null
     private var pendingListCallback: ((Int) -> Unit)? = null
     private var pendingInputCallback: ((String) -> Unit)? = null
 
     // Activity 结果启动器
-    private val confirmLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val cb = pendingConfirmCallback
-        pendingConfirmCallback = null
-        if (result.resultCode == RESULT_OK) cb?.invoke()
-    }
     private val listLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val cb = pendingListCallback
         pendingListCallback = null
@@ -71,10 +64,6 @@ class LocalListActivity : InstanceActivity() {
         }
     }
 
-    // RecyclerView滚动状态
-    var isRecyclerViewScrolling: Boolean = false
-        private set
-
     private var started: Boolean = false
 
     @SuppressLint("MissingInflatedId")
@@ -85,7 +74,6 @@ class LocalListActivity : InstanceActivity() {
         recyclerView = findViewById(R.id.recyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
         swipeRefreshLayout.setOnRefreshListener { refresh() }
-        emptyTip = findViewById(R.id.emptyTip)
 
         val pageName = findViewById<TextView>(R.id.pageName)
         pageName.text = UiText.of("缓存")
@@ -254,40 +242,64 @@ class LocalListActivity : InstanceActivity() {
         // 文件夹操作回调
         adapter!!.onFolderClick = { idx -> enterFolder(idx) }
         adapter!!.onNewFolderClick = { showNewFolderDialog() }
-        adapter!!.onFolderRename = { idx -> showRenameDialog(idx) }
-        adapter!!.onFolderDisband = { idx -> showDisbandConfirmDialog(idx) }
+        adapter!!.onFolderMenu = { idx -> showFolderMenu(idx) }
         adapter!!.onBackFromFolder = { exitFolder() }
 
-        adapter!!.onVideoUpdateDanmaku = { idx -> updateDanmaku(idx) }
-        adapter!!.onVideoSwitchQuality = { idx -> switchQuality(idx) }
-        adapter!!.onVideoDelete = { idx -> deleteVideo(idx, false) }
-        adapter!!.onVideoMoveToFolder = { idx -> showMoveToFolderDialog(idx) }
-        adapter!!.onVideoRemoveFromFolder = { idx -> removeVideoFromFolder(idx) }
-        adapter!!.onVideoLongClick = { idx -> showDeleteHint() }
-        adapter!!.onVideoViewDetail = { idx -> viewVideoDetail(idx) }
+        adapter!!.onVideoMenu = { idx -> showVideoMenu(idx) }
         adapter!!.onVideoPlayInVirtualCollection = { folderName, videoIdx -> playVirtualCollection(folderName, videoIdx) }
-        adapter!!.isRecyclerViewScrolling = { isRecyclerViewScrolling }
 
         adapter!!.setData(folderList, videoList)
 
         runOnUiThread {
             recyclerView.layoutManager = getLayoutManager()
             recyclerView.adapter = adapter
-            
-            // 添加滚动监听器
-            recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                    isRecyclerViewScrolling = when (newState) {
-                        RecyclerView.SCROLL_STATE_IDLE -> false
-                        RecyclerView.SCROLL_STATE_DRAGGING, RecyclerView.SCROLL_STATE_SETTLING -> true
-                        else -> false
-                    }
-                }
-            })
-            
             swipeRefreshLayout.setRefreshing(false)
-            checkEmpty()
         }
+    }
+
+    /**
+     * 弹窗标题用的短标题。
+     *
+     * 表盘上一行只放得下十来个字，视频标题动辄三四十字，直接当标题会把整个弹窗撑到屏幕外
+     * （菜单项被挤到看不见）。这里只截前 12 个字，超出的用省略号。
+     */
+    private fun menuTitle(title: String): String =
+        if (title.length <= 12) title else title.take(12) + "…"
+
+    /** 长按文件夹：重命名 / 拆散。 */
+    private fun showFolderMenu(folderIndex: Int) {
+        if (folderIndex < 0 || folderIndex >= folderList.size) return
+        val folder = folderList[folderIndex]
+        val items = listOf(UiText.of("重命名"), UiText.of("拆散文件夹"))
+        TerminalDialog.menu(this, menuTitle(folder.name), items) { which ->
+            when (which) {
+                0 -> showRenameDialog(folderIndex)
+                1 -> showDisbandConfirmDialog(folderIndex)
+            }
+        }.show()
+    }
+
+    /** 长按视频：原来的右滑设置面板改成一次长按弹出功能菜单，删除也并进菜单。 */
+    private fun showVideoMenu(videoIndex: Int) {
+        if (videoIndex < 0 || videoIndex >= videoList.size) return
+        val video = videoList[videoIndex]
+        val isInFolder = adapter?.currentFolderName?.isNotEmpty() == true
+        val items = listOf(
+            UiText.of("更新弹幕"),
+            UiText.of("切换分辨率"),
+            if (isInFolder) UiText.of("移出文件夹") else UiText.of("添加到文件夹"),
+            UiText.of("查看详情"),
+            UiText.of("删除视频")
+        )
+        TerminalDialog.menu(this, menuTitle(video.title), items, danger = setOf(items.lastIndex)) { which ->
+            when (which) {
+                0 -> updateDanmaku(videoIndex)
+                1 -> switchQuality(videoIndex)
+                2 -> if (isInFolder) removeVideoFromFolder(videoIndex) else showMoveToFolderDialog(videoIndex)
+                3 -> viewVideoDetail(videoIndex)
+                4 -> deleteVideo(videoIndex)
+            }
+        }.show()
     }
 
     // ===================== 文件夹操作 =====================
@@ -298,12 +310,16 @@ class LocalListActivity : InstanceActivity() {
         adapter?.setData(folderList, videoList, folder.name)
         val pageName = findViewById<TextView>(R.id.pageName)
         pageName?.text = folder.name
+        // 进文件夹后顶栏那个箭头点下去是"退出文件夹"，用返回箭头表达。
+        pageName?.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.arrow_back, 0, 0, 0)
     }
 
     private fun exitFolder() {
         adapter?.setData(folderList, videoList, "")
         val pageName = findViewById<TextView>(R.id.pageName)
         pageName?.text = UiText.of("缓存")
+        // 回到顶层：箭头点下去打开菜单，恢复成朝下的箭头。
+        pageName?.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.arrow_down, 0, 0, 0)
     }
 
     private fun showNewFolderDialog() {
@@ -344,10 +360,14 @@ class LocalListActivity : InstanceActivity() {
 
     private fun showDisbandConfirmDialog(folderIndex: Int) {
         if (folderIndex < 0 || folderIndex >= folderList.size) return
-        val folder = folderList[folderIndex]
-        showConfirmDialog(UiText.of("拆散文件夹"), "确定要拆散「${folder.name}」吗？\n文件夹内的视频将移回未分类区域。") {
+        TerminalDialog.confirm(
+            this,
+            UiText.of("拆散文件夹"),
+            "视频会移回未分类区域。",
+            UiText.of("拆散")
+        ) {
             disbandFolder(folderIndex)
-        }
+        }.show()
     }
 
     private fun disbandFolder(folderIndex: Int) {
@@ -425,16 +445,15 @@ class LocalListActivity : InstanceActivity() {
     }
 
     private fun downloadDanmakuFile(url: String, file: File) {
-        try {
-            val response = NetWorkUtil.get(url)
-            val body = response.body
-            if (body != null) {
-                val data = NetWorkUtil.decompress(body.bytes())
-                file.writeBytes(data)
-            }
-            response.close()
-        } catch (e: Exception) {
-            throw e
+        NetWorkUtil.get(url).use { response ->
+            // 不判状态码时，404/412 的错误页会被当成弹幕正文写进 danmaku.xml，
+            // 用户看到的是「更新成功」但播放时依旧没有弹幕 —— 和下载服务里的
+            // 审计 M11-f 是同一类坑，改成失败即抛出、由上层提示「弹幕更新失败」。
+            if (!response.isSuccessful) throw java.io.IOException("HTTP " + response.code)
+            val body = response.body ?: throw java.io.IOException("empty body")
+            val data = NetWorkUtil.decompress(body.bytes())
+            if (data.isEmpty()) throw java.io.IOException("empty danmaku")
+            file.writeBytes(data)
         }
     }
 
@@ -543,22 +562,18 @@ class LocalListActivity : InstanceActivity() {
         }
     }
 
-    private fun showDeleteHint() {
-        MsgUtil.showMsg(UiText.of("再长按一次删除"))
-    }
-
-    private fun deleteVideo(videoIndex: Int, showConfirm: Boolean = true) {
+    private fun deleteVideo(videoIndex: Int) {
         if (videoIndex < 0 || videoIndex >= videoList.size) return
         val video = videoList[videoIndex]
 
-        if (showConfirm) {
-            showConfirmDialog(UiText.of("删除视频"), "确定要删除「${video.title}」吗？\n此操作不可恢复。") {
-                performDelete(video)
-            }
-        } else {
-            // 二次长按确认，直接删除
+        TerminalDialog.confirm(
+            this,
+            UiText.of("删除视频"),
+            "此操作不可恢复。",
+            UiText.of("删除")
+        ) {
             performDelete(video)
-        }
+        }.show()
     }
 
     private fun performDelete(video: LocalVideo) {
@@ -621,16 +636,6 @@ class LocalListActivity : InstanceActivity() {
         return VideoMetaManager.readMeta(videoDir)
     }
 
-    private fun checkEmpty() {
-        runOnUiThread {
-            if (videoList.isEmpty() && folderList.isEmpty()) {
-                emptyTip.visibility = View.VISIBLE
-            } else {
-                emptyTip.visibility = View.GONE
-            }
-        }
-    }
-
     fun refresh() {
         if (!started) return
         CenterThreadPool.run {
@@ -641,7 +646,6 @@ class LocalListActivity : InstanceActivity() {
             runOnUiThread {
                 adapter?.setData(folderList, videoList, currentFolder)
                 swipeRefreshLayout.setRefreshing(false)
-                checkEmpty()
             }
         }
     }
@@ -656,14 +660,6 @@ class LocalListActivity : InstanceActivity() {
     }
 
     // ===================== 对话框辅助方法 =====================
-
-    private fun showConfirmDialog(title: String, message: String, onConfirm: () -> Unit) {
-        pendingConfirmCallback = onConfirm
-        val intent = Intent(this, ConfirmDialogActivity::class.java)
-            .putExtra("title", title)
-            .putExtra("content", message)
-        confirmLauncher.launch(intent)
-    }
 
     private fun showListDialog(title: String, items: List<String>, onSelect: (Int) -> Unit) {
         pendingListCallback = onSelect

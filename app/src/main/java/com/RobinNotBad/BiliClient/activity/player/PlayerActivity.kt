@@ -83,6 +83,7 @@ import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
+import com.RobinNotBad.BiliClient.util.view.EditorEnterKeyGuard
 import com.google.android.material.snackbar.Snackbar
 import master.flame.danmaku.controller.IDanmakuView
 import okhttp3.OkHttpClient
@@ -163,6 +164,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private lateinit var btn_quality: ImageButton
     private lateinit var btn_viewpoint: ImageButton
     private lateinit var btn_debug: ImageButton
+    private lateinit var lock_btn: ImageButton
+    private lateinit var lock_overlay: View
+    private lateinit var left_control: LinearLayout
     private lateinit var seekbar_progress: HighEnergyProgressBar
     private lateinit var seekbar_speed: SeekBar
     private lateinit var text_progress: TextView
@@ -200,10 +204,24 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var isSeeking: Boolean = false
     private var isDanmakuVisible: Boolean = false
     private var menu_opened = false
+
+    /** 播放页触摸锁定的当前状态（状态转移见 [PlayerLockPolicy]）。 */
+    private var lockPhase = PlayerLockPolicy.Phase.UNLOCKED
+
+    /** 锁定期间被拦下的 [finish]，解锁后补执行，避免系统主动的退出请求被永久吞掉。 */
+    private var pendingFinish = false
     private var isAudioOnlyMode = false
     private var isLocalAudioFile = false
     private var audioTrackUrl: String? = null // DASH外部音频轨道
     private var audioPlayer: android.media.MediaPlayer? = null // 外部音频播放器
+
+    /**
+     * 外部音频轨道的「seek 冷却截止时刻」（`SystemClock.elapsedRealtime()`）。
+     * `MediaPlayer.seekTo` 是异步的：seek 还没落地时 `currentPosition` 仍停在旧位置，
+     * 此时若继续按 800ms 偏差校正就会对同一次拖动再 seek 一遍，听感是"拖完停两次"。
+     * 由 [seekToPosition] 写入，[progressChange] 的音频校正读取。
+     */
+    private var audioResyncSuppressMs: Long = 0L
 
     companion object {
         /** `onSaveInstanceState` 保存的播放位置（毫秒），用于系统重建本页后回到原位 */
@@ -214,6 +232,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         /** 两次自动恢复之间的最小间隔，避免刚重建完又被判停滞 */
         private const val STALL_RETRY_COOLDOWN_MS = 15_000L
+
+        /**
+         * seek 之后外部音频轨道偏差校正的冷却时长（毫秒）。
+         * 要盖住 `MediaPlayer.seekTo` 的异步窗口：seek 完 currentPosition 才会跳到新位置，
+         * 冷却太短仍会在 seek 落地前触发二次校正（重复 seek 造成可闻停顿）。
+         */
+        private const val AUDIO_RESYNC_COOLDOWN_MS = 1_200L
 
         /** 恢复后位置又前进了这么多毫秒，才算"真的播起来了"，恢复计数清零 */
         private const val STALL_RECOVERED_MS = 5_000
@@ -254,6 +279,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var previousX: Float = 0f
     private var previousY: Float = 0f
     private var gesture_moved: Boolean = false
+    // 只表示「这一轮触摸里捏合过」，仅用于吞掉手势结束时的那次点击（ACTION_UP 一到就复位）。
+    // 判断「画面现在是否仍缩放」一律走 isVideoZoomed()，别再用这个标志。
     private var gesture_scaled: Boolean = false
     private var gesture_click_disabled: Boolean = false
     private var video_origX: Float = 0f
@@ -467,6 +494,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var subtitle_selected = -1
 
     override fun onBackPressed() {
+        // 触摸锁定期间不允许离开播放页：先把锁定按钮点出来作为反馈（再点它才解锁）
+        if (interceptLockedExit()) return
         // 开启「左右滑动控制进度」时视频页屏蔽返回键：否则系统返回 / 手表自带右滑返回会在滑动调进度时
         // 直接退出播放器（issue #1）。蓝牙/表冠的返回键、系统级返回都走这里。
         if (swipeSeekEnabled) return
@@ -661,6 +690,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         mainHandler = Handler(Looper.getMainLooper())
 
         setVideoGestures()
+        initLockUi()
         autohideReset()
 
         initSeekbars()
@@ -769,6 +799,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         text_newspeed = findViewById(R.id.text_newspeed)
         bottom_buttons = findViewById(R.id.bottom_buttons)
         btn_debug = findViewById(R.id.btn_debug)
+        lock_btn = findViewById(R.id.lock_btn)
+        lock_overlay = findViewById(R.id.lock_overlay)
+        left_control = findViewById(R.id.left_control)
 
         text_subtitle = findViewById(R.id.text_subtitle)
         text_audio_title = findViewById(R.id.audio_title)
@@ -820,11 +853,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             })
         }
 
-        if (SharedPreferencesUtil.getBoolean("player_scale", true)) {
+        if (SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SCALE, true)) {
             scaleGestureListener = ViewScaleGestureListener(layout_video)
             scaleGestureDetector = ScaleGestureDetector(this, scaleGestureListener!!)
 
-            val doublemove_enabled = SharedPreferencesUtil.getBoolean("player_doublemove", true)
+            val doublemove_enabled = SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_DOUBLEMOVE, true)
 
             layout_control.setOnTouchListener { v, event ->
                 if (doubleTapSeekEnabled && doubleTapGestureDetector != null) {
@@ -845,7 +878,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         if (singleTouch) {
                             if (gesture_scaling) {
                                 videoMoveBy(0f, 0f)
-                            } else if (!handleSwipeSeekTouch(event) && !(gesture_scaled && !doublemove_enabled)) {
+                            } else if (!handleSwipeSeekTouch(event) &&
+                                (!isVideoZoomed() || doublemove_enabled)
+                            ) {
+                                // 单指拖动只为查看放大后的画面：未缩放时 videoMoveBy 会被夹回原位，
+                                // 缩放后则取决于「缩放时可移动」。以前这里判 gesture_scaled，
+                                // 那个标志松手就复位，导致关掉「缩放时可移动」后仍能拖动。
                                 val currentX = event.getX(0)
                                 val currentY = event.getY(0)
                                 val deltaX = currentX - previousX
@@ -991,6 +1029,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     @SuppressLint("SetTextI18n")
     private fun showcon() {
+        // 锁定期间控制栏必须整体保持隐藏，任何「显示控制栏」的路径都在这里被挡掉
+        if (PlayerLockPolicy.isLocked(lockPhase)) return
         right_control.visibility = View.VISIBLE
         layout_top.visibility = View.VISIBLE
         bottom_buttons.visibility = View.VISIBLE
@@ -1010,12 +1050,17 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             if (onlineTimer != null) text_online.visibility = View.VISIBLE
         }
 
+        // 锁定按钮在 control_layout 之外（锁定时要把整条控制栏一起藏掉），显隐要跟控制栏同步
+        lock_btn.visibility = View.VISIBLE
+
         autohideReset()
     }
 
     private val progressbarEnable = Runnable { seekbar_progress.isEnabled = true }
 
     private val hidecon = Runnable {
+        // 锁定期间由锁定状态自己管显隐，别让自动隐藏去动控制栏（会顶掉浮现中的锁定按钮）
+        if (PlayerLockPolicy.isLocked(lockPhase)) return@Runnable
         right_control.visibility = View.GONE
         layout_top.visibility = View.GONE
         bottom_buttons.visibility = View.GONE
@@ -1024,12 +1069,129 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             text_speed.visibility = View.GONE
             btn_debug.visibility = View.GONE
         }
+        lock_btn.visibility = View.GONE
         if (screen_round) {
             text_progress.gravity = Gravity.CENTER
             text_progress.setPadding(0, 0, 0, ToolsUtil.dp2px(8f))
             if (onlineTimer != null) text_online.visibility = View.GONE
         }
         if (menu_opened) btn_menu.performClick()
+    }
+
+    // ==================== 播放页触摸锁定（防误触） ====================
+
+    /**
+     * 接线锁定相关的两个控件。
+     *
+     * 布局层级（`activity_player.xml` 末尾）：`lock_overlay` 全屏盖住 `control_layout` 与各种弹层，
+     * `lock_btn` 声明在它之后、画在它上面——所以锁定时只有左下/左侧这个按钮可点。
+     */
+    private fun initLockUi() {
+        lock_overlay.setOnClickListener { onLockScreenTap() }
+        lock_btn.setOnClickListener { onLockButtonClick() }
+        alignLeftControlToRight()
+    }
+
+    /**
+     * 把左侧按钮列对齐到右侧竖列（弹幕/旋转/更多）的竖向中线。
+     *
+     * 右列的上下锚点（`top` 与 `bottom_control`）都在 `control_layout` 内部，位于 root 层的
+     * `left_control` 够不到它们，所以这里量一次两条列的中线差、用 translationY 平移。
+     * 一旦量到就不再重复——顶栏/底栏高度变化会触发重新布局，那时会重新量。
+     */
+    private fun alignLeftControlToRight() {
+        left_control.post {
+            if (left_control.height <= 0 || right_control.height <= 0) return@post
+            val dy = (right_control.top + right_control.bottom) / 2f -
+                    (left_control.top + left_control.bottom) / 2f
+            left_control.translationY = dy
+        }
+    }
+
+    /** 浮现中的锁定按钮到点自动隐去。 */
+    private val hideLockIcon = Runnable {
+        applyLockPhase(PlayerLockPolicy.phaseAfterTimeout(lockPhase))
+    }
+
+    private fun onLockButtonClick() {
+        val before = lockPhase
+        val next = PlayerLockPolicy.phaseAfterLockButtonClick(before)
+        applyLockPhase(next)
+        if (before == PlayerLockPolicy.Phase.UNLOCKED) {
+            Logu.d("锁定", "锁定播放画面")
+            showLockHintIfNeeded()
+        } else {
+            Logu.d("锁定", "解锁播放画面")
+            // 锁定期间被拦下的 finish（系统重建、外部调用等）在解锁后补执行，别把退出请求吞掉
+            if (pendingFinish) {
+                pendingFinish = false
+                finish()
+            }
+        }
+    }
+
+    private fun onLockScreenTap() {
+        applyLockPhase(PlayerLockPolicy.phaseAfterScreenTap(lockPhase), PlayerLockPolicy.ICON_VISIBLE_MS)
+    }
+
+    /**
+     * 把锁定状态落到视图上；[autoHideMs] > 0 时在这么多毫秒后自动隐去浮现的按钮。
+     *
+     * 状态只由 [PlayerLockPolicy] 决定，这里不重复判断"该不该锁"。
+     */
+    private fun applyLockPhase(phase: PlayerLockPolicy.Phase, autoHideMs: Long = 0L) {
+        lockPhase = phase
+        mainHandler?.removeCallbacks(hideLockIcon)
+        when (phase) {
+            PlayerLockPolicy.Phase.UNLOCKED -> {
+                lock_overlay.visibility = View.GONE
+                // 整条控制栏在锁定时被藏掉，解锁时连 button 组一起恢复，再走既有的 4 秒自动隐藏
+                layout_control.visibility = View.VISIBLE
+                // 图标画的是「当前状态」：未锁定＝开锁，锁定＝闭锁（26.10.21 用户反馈原先把状态画反了）
+                lock_btn.setImageResource(R.drawable.icon_player_unlock)
+                lock_btn.contentDescription = getString(R.string.desc_player_lock_locked)
+                showcon()
+                // 解锁后 control_layout 重新可见，右列位置可能变过，重新对齐左列
+                alignLeftControlToRight()
+            }
+
+            PlayerLockPolicy.Phase.LOCKED_HIDDEN -> {
+                lock_overlay.visibility = View.VISIBLE
+                layout_control.visibility = View.GONE
+                lock_btn.visibility = View.GONE
+                // 倍速文字现在挂在左侧列里，不随 control_layout 一起隐藏，得单独收掉
+                text_speed.visibility = View.GONE
+                lock_btn.setImageResource(R.drawable.icon_player_lock)
+                lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
+            }
+
+            PlayerLockPolicy.Phase.LOCKED_ICON_VISIBLE -> {
+                lock_overlay.visibility = View.VISIBLE
+                layout_control.visibility = View.GONE
+                lock_btn.visibility = View.VISIBLE
+                text_speed.visibility = View.GONE
+                lock_btn.setImageResource(R.drawable.icon_player_lock)
+                lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
+            }
+        }
+        if (autoHideMs > 0L) mainHandler?.postDelayed(hideLockIcon, autoHideMs)
+    }
+
+    private fun showLockHintIfNeeded() {
+        if (SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_LOCK_HINT_SHOWN, false)) return
+        SharedPreferencesUtil.putBoolean(SettingsKeys.PLAYER_LOCK_HINT_SHOWN, true)
+        MsgUtil.showMsg(getString(R.string.msg_player_lock_hint))
+    }
+
+    /**
+     * 锁定期间尝试离开播放页：拦住，并让锁定按钮短暂浮现作为反馈。
+     *
+     * @return true 表示这次退出已被拦下，调用方必须直接返回。
+     */
+    private fun interceptLockedExit(): Boolean {
+        if (!PlayerLockPolicy.shouldSwallowExit(lockPhase)) return false
+        applyLockPhase(PlayerLockPolicy.phaseAfterExitAttempt(lockPhase), PlayerLockPolicy.EXIT_HINT_MS)
+        return true
     }
 
     /**
@@ -1419,15 +1581,20 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (isPrepared && isPlaying && !isSeeking && !destroyed) {
                     // 取不到播放器时保持上次位置，避免进度条突然跳回 0
                     video_now = ijkPlayer?.currentPosition?.toInt() ?: video_now
-                    // 外部音频轨道（DASH分离文件fallback）同步校正：偏差过大时重新对齐，避免音画漂移
+                    // 外部音频轨道（DASH分离文件fallback）同步校正：偏差过大时重新对齐，避免音画漂移。
+                    // seek 的冷却期内不校正：MediaPlayer.seekTo 异步，seek 未完成时 currentPosition
+                    // 还停在旧位置，这时再校正等于同一位置 seek 两遍（用户听到的就是停顿两次）。
+                    val nowElapsed = android.os.SystemClock.elapsedRealtime()
                     audioPlayer?.let { ap ->
-                        try {
-                            val audioPos = ap.currentPosition
-                            if (audioPos >= 0 && Math.abs(audioPos - video_now) > 800) {
-                                ap.seekTo(video_now)
-                                Logu.d("AudioTrack", "音频轨道重新同步: $audioPos -> $video_now")
-                            }
-                        } catch (_: Exception) {}
+                        if (nowElapsed >= audioResyncSuppressMs) {
+                            try {
+                                val audioPos = ap.currentPosition
+                                if (audioPos >= 0 && Math.abs(audioPos - video_now) > 800) {
+                                    ap.seekTo(video_now)
+                                    Logu.d("AudioTrack", "音频轨道重新同步: $audioPos -> $video_now")
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
                     // 弹幕时钟对齐：DFM 的时钟按自身 mTimeBase 自走，只有基准与视频位置一致时才会跟着视频走。
                     //
@@ -1440,7 +1607,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     if ((hasDanmaku || isLiveMode) && mDanmakuView != null &&
                         loading_info.visibility != View.VISIBLE
                     ) {
-                        val nowElapsed = android.os.SystemClock.elapsedRealtime()
+                        // nowElapsed 由上方音频重同步那段统一取（同一帧内两处判定共用同一个时刻）
                         val decision = DanmakuSync.decide(
                             video_now.toLong(),
                             mDanmakuView!!.currentTime,
@@ -2112,6 +2279,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         changeVideoSize()
     }
 
+    /** 画面当前是否处于缩放状态。判据在 [PlayerZoomPolicy]，不要改读手势标志。 */
+    private fun isVideoZoomed(): Boolean =
+        PlayerZoomPolicy.isZoomed(layout_video.scaleX, layout_video.scaleY)
+
     private fun videoMoveBy(dx: Float, dy: Float) {
         var x = dx + layout_video.x
         var y = dy + layout_video.y
@@ -2266,6 +2437,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 且只依赖内存里的 video_now（不碰 ijkPlayer 的 JNI 调用）。正常退出时会被去重拦掉。
         reportProgressNow(true, UiText.of("销毁兜底"))
         destroyed = true
+        // 锁定按钮自动隐去的延时任务要撤掉，别在 Activity 销毁后再去动 View
+        mainHandler?.removeCallbacks(hideLockIcon)
 
         // 无论哪种退出原因（用户返回、被系统回收、后台通知里点"关闭"），
         // 后台播放服务与它的常驻通知都不能留存。
@@ -2617,6 +2790,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             override fun onStopTrackingTouch(seekBar: SeekBar) {
                 isSeeking = false
                 if (isPrepared && !destroyed) {
+                    // 统一走 seekToVideo：它同时 seek 视频、弹幕、外部音频轨，并压住
+                    // progressChange 的偏差校正。原来这里只 seek 了视频（和弹幕），DASH 双文件
+                    // 播放时 audioPlayer 仍停在旧位置，随后被 800ms 偏差校正再 seek 一次 ——
+                    // 用户听到的就是"松手后声音停半秒到一秒"。
                     seekToVideo(seekbar_progress.progress.toLong())
                     autohideReset()
                 }
@@ -2651,7 +2828,26 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         })
     }
 
+    /**
+     * 兜住平台「回车推进焦点」自己抛的 ISE（线上崩溃 #66，成因见 [EditorEnterKeyGuard]）。
+     *
+     * 播放页**不继承 BaseActivity**（直接 extends Activity，见类声明），所以基类那层
+     * dispatchKeyEvent 兜底覆盖不到它；而播放页恰好有单行输入框 `danmaku_send_edit`
+     * （`activity_player.xml`，singleLine + 无 OnEditorActionListener），正是平台那条
+     * `shouldAdvanceFocusOnEnter()` 为真的形态，必须单独兜一次。
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        return try {
+            super.dispatchKeyEvent(event)
+        } catch (e: IllegalStateException) {
+            if (!EditorEnterKeyGuard.swallowFocusSearchFailure("PlayerActivity", e)) throw e
+            true
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // 锁定期间播放器按键（表冠/方向键/确认键）一律不响应，必须先解锁
+        if (PlayerLockPolicy.shouldBlockPlaybackInput(lockPhase)) return super.onKeyDown(keyCode, event)
         if (isPrepared)
             when (keyCode) {
                 KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> controlVideo()
@@ -2666,7 +2862,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     private fun seekToPosition(position: Long) {
         if (ijkPlayer != null && isPrepared) {
-            seekToVideo(position, syncExternalAudio = true)
+            seekToVideo(position)
         }
     }
 
@@ -2674,23 +2870,30 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 用户主动跳转（拖进度条 / 快进快退）的**唯一入口**。
      *
      * 为什么不能各处各写一遍「ijkPlayer.seekTo + mDanmakuView.seekTo」：
-     * `progressChange` 的弹幕纠偏判据比较的是 `video_now` 与弹幕时钟，**跳转后若不立刻更新
+     * ① `progressChange` 的弹幕纠偏判据比较的是 `video_now` 与弹幕时钟，**跳转后若不立刻更新
      * `video_now`**，下一次采样会拿旧位置去比新时钟，算出几百秒的"偏差"并把弹幕视图 seek 回旧位置
      * —— 用户看到的就是「拖完进度条弹幕没了，偶尔闪一下又消失」。
      * 所以这里必须同时做四件事：更新 `video_now`、强制刷新进度显示、清掉纠偏计数、给一段冷静期。
+     *
+     * ② DASH 双文件（video.mp4 + audio.m4a）是视频、音频两个播放器，**只 seek 视频会让音轨留在旧位置**；
+     * 而 `progressChange` 的 800ms 偏差校正随后会再 seek 一次音频，用户听到的是"停顿两次"。
+     * 所以这里一并 seek 音频，并压住校正冷却（[AUDIO_RESYNC_COOLDOWN_MS]）。
      */
-    private fun seekToVideo(position: Long, syncExternalAudio: Boolean = false) {
+    private fun seekToVideo(position: Long) {
         // 用户手动拖进片头/片尾就算「已处理」，否则下一轮定时器会立刻把他弹走
         onUserSeekTo(position)
         markSeekTarget(position)
 
         ijkPlayer?.seekTo(position)
         if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(position)
-        // 同步外部音频轨道
-        if (syncExternalAudio && audioPlayer != null) {
+        // 同步外部音频轨道：DASH 双文件时只 seek 视频会让音轨留在旧位置
+        if (audioPlayer != null) {
             try {
                 audioPlayer!!.seekTo(position.toInt())
             } catch (_: Exception) {}
+            // seek 的冷却期内 progressChange 不再校正音频：MediaPlayer.seekTo 异步，
+            // seek 未完成时 currentPosition 还停在旧位置，这时再校正等于同一位置 seek 两遍。
+            audioResyncSuppressMs = android.os.SystemClock.elapsedRealtime() + AUDIO_RESYNC_COOLDOWN_MS
         }
     }
 
@@ -2811,8 +3014,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 仅在开启设置、未缩放视频、非直播且已准备就绪时生效。
      */
     private fun handleSwipeSeekTouch(event: MotionEvent): Boolean {
-        if (!swipeSeekEnabled || !isPrepared || isLiveMode || ijkPlayer == null) return false
-        if (gesture_scaled) return false   // 已缩放视频时保留单指拖动
+        // 缩放状态取画面的实际比例，不读 gesture_scaled（那个标志在 ACTION_UP 就复位，
+        // 捏合放大松手后会把调进度重新放行——26.10.20 修的正是这个）。
+        val seekAllowed = PlayerSwipeSeekPolicy.isSeekAllowed(
+            swipeSeekEnabled, isPrepared, isLiveMode, ijkPlayer != null,
+            layout_video.scaleX, layout_video.scaleY
+        )
+        if (!seekAllowed) {
+            // 门闸关闭时顺手收掉可能残留的浮层：横滑激活浮层后再捏合缩放，最终 ACTION_UP 会走到
+            // 这里提前返回，ACTIVE 分支的清理永远执行不到；而缩放期间又进不来，浮层就会一直挂着。
+            cancelSwipeSeekIfActive()
+            return false
+        }
         if (event.pointerCount != 1) return false
 
         when (event.actionMasked) {
@@ -2859,6 +3072,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
         }
         return false
+    }
+
+    /** 收掉可能残留的滑动进度浮层；浮层与标志都不存在时不动 UI。 */
+    private fun cancelSwipeSeekIfActive() {
+        if (!swipeSeekActive && swipe_seek_overlay.visibility != View.VISIBLE) return
+        swipeSeekActive = false
+        swipe_seek_overlay.visibility = View.GONE
     }
 
     @SuppressLint("SetTextI18n")
@@ -4294,6 +4514,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     override fun finish() {
+        // 锁定期间拦下一切 finish：手表右滑返回是在窗口层直接 finish 的（不走 onBackPressed），
+        // 只有在这里兜一道，才能真正做到「必须解锁才能离开播放页」。
+        // 不丢请求：先记住，解锁时再补执行（见 onLockButtonClick）。
+        if (interceptLockedExit()) {
+            pendingFinish = true
+            return
+        }
         if (isPlaying) playerPause()
         // 退出前把最后进度报一次。返回 true 说明请求确实发出去了，就用 progressReported 标记告诉
         // 调用页（JumpToPlayerActivity）别再报一遍——否则同一进度会被写两次

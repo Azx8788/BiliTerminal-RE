@@ -3,6 +3,7 @@ package com.RobinNotBad.BiliClient.util;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -36,5 +37,33 @@ public class StringUtilTest {
         assertEquals(13f, StringUtil.lineHeightOf(-3f, 10f), 0.001f);
         assertEquals(13f, StringUtil.lineHeightOf(-10.5f, 2.5f), 0.001f);
         assertTrue("ascent 为负时行高必须为正", StringUtil.lineHeightOf(-12f, 4f) > 0);
+    }
+
+    @Test
+    public void isLongPressGesture_trueOnlyWhenHeldPastThreshold() {
+        int timeout = 500;
+        // 按住 600ms：长按回调已经跑过，不能再补一次链接点击
+        assertTrue(StringUtil.isLongPressGesture(true, 1000L, 1600L, timeout));
+        // 按住 200ms：普通点击，必须点开链接
+        assertFalse(StringUtil.isLongPressGesture(true, 1000L, 1200L, timeout));
+    }
+
+    @Test
+    public void isLongPressGesture_boundaryCountsAsLongPress() {
+        // 恰好等于阈值按长按处理：View 在阈值时刻已经触发了 OnLongClickListener
+        assertTrue(StringUtil.isLongPressGesture(true, 1000L, 1500L, 500));
+        assertFalse(StringUtil.isLongPressGesture(true, 1000L, 1499L, 500));
+    }
+
+    @Test
+    public void isLongPressGesture_notLongClickableNeverBlocksLinkClick() {
+        // 没有长按监听器时长按回调根本不会发生，按住再久抬手也应该点开链接（否则链接点不动）
+        assertFalse(StringUtil.isLongPressGesture(false, 1000L, 9000L, 500));
+    }
+
+    @Test
+    public void isLongPressGesture_missingDownTimeKeepsOldBehavior() {
+        // 没记录到按下时间（从别处滑进链接区域等）：按点击处理，保持旧行为
+        assertFalse(StringUtil.isLongPressGesture(true, -1L, 9000L, 500));
     }
 }

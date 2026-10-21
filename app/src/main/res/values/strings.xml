@@ -136,7 +136,7 @@
     <string name="desc_ban_gallery">打开此选项，缓存的视频将不会出现在系统相册中</string>
     <string name="desc_copy_enable">打开此选项，长按一些文字（如视频描述或评论）可以打开复制界面以复制这些文本</string>
     <string name="desc_long_press_panel_enable">打开此选项，长按评论或动态的正文会弹出操作面板，复制和置顶/删除等都在面板里；关闭则长按直接打开复制界面</string>
-    <string name="desc_topbar_long_press_menu_enable">打开此选项，在任意页面长按顶部标题栏会打开菜单列表；关闭后长按顶部不再跳转，只保留单击行为（退出当前页/打开菜单）</string>
+    <string name="desc_topbar_long_press_mode">长按顶部标题栏时执行什么：\n「不响应」彻底关掉这个手势，长按不再有任何动作（也不会回落成单击）\n「仅视频详情页」只有视频详情页长按会关闭所有详情页，普通页面不响应\n「全部页面」普通页面长按打开菜单列表，视频详情页长按关闭所有详情页（默认）</string>
     <string name="tutorial_cover_play_enabled">从现版本开始，默认状态下，点击封面将会播放视频，长按封面查看大图。\n播放按钮仍可使用，长按播放按钮可切换播放器。\n\n如果不习惯，你可以在 设置-详情页设置 中关闭“点击封面播放”的开关，换回老版本里点击封面查看大图的操作逻辑。</string>
     <string name="tutorial_cover_play_disabled">提示：如果你想要点击封面播放视频，请在 设置-详情页设置 中打开“点击封面播放”的开关。\n\n现版本对于新用户已将此开关默认开启，老用户仍保持原来的偏好设定。</string>
     <string name="desc_img_no_load_onscroll">打开此选项，翻动列表时将不会加载图片，松手后再加载，观感可能有影响，可能增加流畅度。</string>
@@ -158,6 +158,8 @@
     <string name="desc_danmaku_force_r2l">除了高级弹幕以外的弹幕都会被强制以滚动弹幕的形式展示，从而避免顶部弹幕和底部弹幕遮挡画面</string>
     <string name="desc_danmaku_showsender">显示直播聊天弹幕的发送者名称</string>
     <string name="desc_player_high_energy">在进度条下方用折线图展示弹幕密度分布</string>
+    <string name="desc_player_lock_locked">锁定播放画面（防止误触）</string>
+    <string name="desc_player_lock_unlocked">点击解锁播放画面</string>
     <string name="desc_player_skip_op_ed">播放番剧/影视时，进度走到片头或片尾会自动跳过去，并在屏幕下方留一个「撤回」按钮，点一下就能回到被跳过的地方。\n跳过只对 B 站标注了片头片尾的视频生效。</string>
     <string name="desc_subtitle_autoshow">开启后，播放存在字幕的视频时，将会自动弹出字幕选择对话框。</string>
     <string name="desc_subtitle_ai_allowed">打开此选项，如果视频只有一个中文AI字幕，播放时仍然会让你选择。\n可能比较烦人，谨慎开启。</string>
@@ -689,7 +691,11 @@
     <string name="desc_menu_disabled">未启用</string>
     <string name="desc_menu_fixed">固定</string>
     <string name="desc_menu_fixed_hint">此项不可隐藏</string>
-    <string name="desc_menu_footer">长按并拖动可调整菜单顺序\n拖入未启用区域可将其移入未启用列表\n点击未启用项将其放回已启用列表末尾\n推荐、设置、缓存、搜索固定不可隐藏</string>
+    <string name="desc_menu_help_title">使用说明（点按展开）</string>
+    <string name="desc_menu_help_body">启动页：勾选的那一项就是打开应用后直接进入的页面，点按已启用项即可改选（默认「推荐」）\n点按本说明可展开或收起；2 秒内连续长按两次可把它隐藏\n长按并拖动可调整菜单顺序\n拖入未启用区域可将其移入未启用列表，点按未启用项放回末尾\n推荐、设置、缓存、搜索固定不可隐藏</string>
+    <string name="msg_menu_help_hide_hint">再长按一次即可隐藏说明</string>
+    <string name="msg_menu_help_hidden">说明已隐藏，点上方「显示说明」可恢复</string>
+    <string name="btn_menu_help_restore">显示说明</string>
 
     <string name="desc_myspace_main">主列表</string>
     <string name="desc_myspace_more">更多列表</string>
@@ -716,6 +722,22 @@
     <string name="btn_download_update">下载更新</string>
     <string name="btn_cancel_download">取消下载</string>
     <string name="btn_retry_download">重试下载</string>
+
+    <!-- ===== 内测码更新（26.10.21） ===== -->
+    <string name="text_update_beta_code_title">输入内测码</string>
+    <string name="text_update_beta_code_hint">纯数字内测码</string>
+    <string name="msg_update_beta_code_invalid">内测码只能是数字</string>
+    <string name="msg_update_beta_code_wrong">内测码错误</string>
+    <string name="btn_update_beta_download">下载</string>
+    <string name="text_update_beta_checking">正在解析内测包…</string>
+    <string name="text_update_beta_text_loading">正在下载内测文本…</string>
+    <string name="text_update_beta_text_failed">获取内测文本失败：%1$s</string>
+    <string name="text_update_beta_text_title">内测公告</string>
+    <string name="text_update_beta_failed">获取内测包失败：%1$s</string>
+    <string name="text_update_beta_title">内测版更新</string>
+    <string name="text_update_beta_version">%1$s（%2$s）</string>
+    <string name="text_update_beta_default_name">内测包</string>
+    <string name="text_update_beta_desc">内测码：%1$s\n内测包下载完成后直接安装，不比较版本号。</string>
     <!-- ===== 列表空态 / 翻页（12.4 文案迁移：二批） ===== -->
     <string name="text_list_empty">啥都木有~</string>
     <string name="text_list_empty_retry">啥都木有~\n点我重试</string>
@@ -750,6 +772,8 @@
     <string name="text_download_complete_install_tried">下载完成，已尝试安装</string>
     <string name="text_download_complete_install_failed">下载完成，安装失败，已保存到下载文件夹</string>
     <string name="text_download_complete_rename_failed">下载完成，重命名失败</string>
+    <!-- 图片下载完成提示（26.10.21 起带上实际保存目录；登记媒体库的细节见 util/PictureMediaStore.kt） -->
+    <string name="msg_picture_saved">图片已保存：%1$s\n可在相册中查看</string>
     <string name="text_danmaku_download_failed">弹幕下载失败！</string>
     <string name="text_load_failed">加载失败</string>
     <!-- ===== 敏感操作前的 Cookie 检查提示（12.4 文案迁移：五批） ===== -->
@@ -766,6 +790,9 @@
     <string name="text_update_verify_failed">安装包校验失败：%1$s</string>
     <string name="text_update_download_error">下载出错：%1$s</string>
     <string name="text_parse_failed">解析失败！</string>
+
+    <!-- ===== 头像选图（线上崩溃 #63：不再依赖 ACTION_PICK，见 EditProfileActivity.selectImage） ===== -->
+    <string name="msg_no_image_picker">没有可用的相册或文件管理器</string>
 
     <!-- ===== 12.4 B9a: settings messages / page names ===== -->
     <string name="msg_settinggroupactivity_001">自定义字体已应用</string>
@@ -995,7 +1022,10 @@
     <string name="settingtext_settingprefactivity_025">启用表冠适配</string>
     <string name="settingtext_settingprefactivity_026">表冠适配灵敏度（Recycler）</string>
     <string name="settingtext_settingprefactivity_027">表冠适配灵敏度（Scroll）</string>
-    <string name="settingtext_settingprefactivity_028">长按顶部打开菜单</string>
+    <string name="settingtext_settingprefactivity_029">长按顶部标题栏</string>
+    <string name="settingtext_settingprefactivity_030">不响应</string>
+    <string name="settingtext_settingprefactivity_031">仅视频详情页</string>
+    <string name="settingtext_settingprefactivity_032">全部页面</string>
     <string name="settingtext_settingrepliesactivity_001">众生平等</string>
     <string name="settingtext_settingrepliesactivity_002">粉丝铭牌消失术</string>
     <string name="settingtext_settingrepliesactivity_003">昵称不换行显示</string>
@@ -1476,6 +1506,9 @@
     <string name="uitext_shortvideoplayeractivity_002">加载视频失败</string>
     <string name="uitext_shortvideoplayeractivity_003">播放错误</string>
     <string name="uitext_shortvideoplayeractivity_004">加载短视频...</string>
+    <string name="text_shortvideoplayer_no_more">没有更多短视频了</string>
+    <string name="text_shortvideoplayer_detail_not_ready">短视频还没加载好，先滑回去看看</string>
+    <string name="text_shortvideoplayer_speed_boost">3.0x 倍速播放中</string>
     <string name="uitext_timelineactivity_001">时间线</string>
     <string name="uitext_voteinfoactivity_001">已结束</string>
     <string name="uitext_voteinfoactivity_002">已投票</string>
@@ -2195,6 +2228,7 @@
     <string name="text_player_back_to_root">← 返回主合集</string>
     <string name="msg_player_entered_collection">进入合集：%1$s</string>
     <string name="msg_player_entered_multi_page">进入分P：%1$s</string>
+    <string name="msg_player_lock_hint">已锁定：点画面显示锁定按钮，再点按钮解锁</string>
     <string name="uitext_dynamicholder_019">已经删除过了哦~</string>
     <string name="uitext_dynamicholder_020">不是自己的动态！</string>
     <string name="uitext_dynamicholder_021">%1$s人参与</string>

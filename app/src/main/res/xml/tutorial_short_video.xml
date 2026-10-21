@@ -54,7 +54,7 @@
         </item>
         <item>
             <type>0</type>
-            <text>：打开视频详情页面</text>
+            <text>：按住时 3 倍速播放，松手恢复正常倍速</text>
             <style>none</style>
             <color>#ffffff</color>
         </item>
@@ -82,6 +82,30 @@
         <item>
             <type>0</type>
             <text>上下滑动可切换下一个/上一个短视频</text>
+            <style>none</style>
+            <color>#ffffff</color>
+        </item>
+        <item>
+            <type>1</type>
+        </item>
+        <item>
+            <type>0</type>
+            <text>左右滑动</text>
+            <style>bold</style>
+            <color>#4a8eca</color>
+        </item>
+        <item>
+            <type>0</type>
+            <text>：滑到右侧查看视频详情、评论和相关推荐；在短视频页右滑退出</text>
+            <style>none</style>
+            <color>#ffffff</color>
+        </item>
+        <item>
+            <type>1</type>
+        </item>
+        <item>
+            <type>0</type>
+            <text>一条播完会自动切到下一条；刷到底时用相关推荐续接</text>
             <style>none</style>
             <color>#ffffff</color>
         </item>

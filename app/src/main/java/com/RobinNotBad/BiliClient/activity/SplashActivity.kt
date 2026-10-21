@@ -331,13 +331,16 @@ class SplashActivity : Activity() {
         CenterThreadPool.run {
             if (SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.setup, false)) {
                 try {
-                    val firstActivity = SharedPreferencesUtil.loadMenuEnabled().firstOrNull()
+                    // 启动页：菜单设置里勾选的那一项；缺省为「推荐」。
+                    // loadMenuStart 内部会纠正失效配置（选中项已被移入未启用 → 改回默认并写回）
+                    val enabled = SharedPreferencesUtil.loadMenuEnabled()
+                    val startActivityKey = SharedPreferencesUtil.loadMenuStart(enabled)
 
-                    val activityClass = MenuActivity.btnNames[firstActivity]?.second
+                    val activityClass = MenuActivity.btnNames[startActivityKey]?.second
 
                     val intent = Intent()
                     intent.setClass(this@SplashActivity, activityClass ?: RecommendActivity::class.java)
-                    intent.putExtra("from", firstActivity)
+                    intent.putExtra("from", startActivityKey)
 
                     runOnUiThread {
                         stopTypewriter()
