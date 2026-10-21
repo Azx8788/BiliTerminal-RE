@@ -16,7 +16,7 @@
 | `network/api/`（Retrofit + kotlinx-serialization） | 目录**空**，0 个文件 |
 | `di/`（Hilt） | 目录**空**，0 个文件 |
 | `data/repository/` | 目录**空**，0 个文件 |
-| `ui/*`（ViewModel/MVVM） | 只有 `ui/appearance/`（26.09.11 新增，现 5 个文件：`AppearanceManager.kt` / `ColorScheme.kt` / `CornerStyle.kt` / `FontStyle.kt` / `AppearanceApplier.kt`）+ `ui/widget/`（12 个文件）。`ui/theme/` **已并入 `ui/appearance/`**（原 `ThemeManager.kt` → `ColorScheme.kt`）；其余 `ui/base`、`ui/player`、`ui/video/viewmodel` 等子目录**已全部删除** |
+| `ui/*`（ViewModel/MVVM） | 只有 `ui/appearance/`（26.09.11 新增，现 5 个文件：`AppearanceManager.kt` / `ColorScheme.kt` / `CornerStyle.kt` / `FontStyle.kt` / `AppearanceApplier.kt`）+ `ui/widget/`（13 个文件，26.10.21 新增 `SwipePageLayout.kt`）。`ui/theme/` **已并入 `ui/appearance/`**（原 `ThemeManager.kt` → `ColorScheme.kt`）；其余 `ui/base`、`ui/player`、`ui/video/viewmodel` 等子目录**已全部删除** |
 | `BiliTerminalApp.kt`（@HiltAndroidApp）为入口 | **该类已于 26.10.02 整体删除**。Manifest 指向 `.BiliTerminal`（26.09.10 起是 Kotlin，原先为 `.java`）；它从未被实例化，只因 `SplashActivity` 的 UETool 逻辑引用其静态方法与常量而残留，那些已移入 `BiliTerminal.kt` 伴生对象 |
 
 **核实方式**：全工程 `grep '@AndroidEntryPoint|@HiltViewModel|@Inject|@Module|@InstallIn'` → **0 命中**；空目录统计 → **24 个**（26.09.11 已全部删除）。
@@ -1181,7 +1181,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 两条线上崩溃（§3.19 账号切换页、§3.29 用户动态页 + 播放器原生库）根因不同，但**失败位置是同一个：跨线程 / 跨层的入口处没有重新判据**。
 
-1. **后台请求回主线程时必须重新判活**：`CenterThreadPool.run { 网络请求 → runOnUiThread { 用 Activity/View/adapter } }` 是仓库最常见的写法，而请求一起跑，用户随时可能返回、页面随时可能被系统回收。**判活必须写进 `runOnUiThread` 的 Runnable 内部**（判完到 Runnable 真正执行之间，主线程完全可能已经跑完 `onDestroy`），只判 post 之前是错的。`activity/base/BaseActivity.kt` 重写了 `isDestroyed()`（语义含「正在 finish」），所以 Glide 的 `assertNotDestroyed` 在这个窗口里更容易被踩到；`activity/base/BaseFragment.kt:8-10` 的 `runOnUiThread` 只做 `if (isAdded)`，**不保证 view 还在**——`isAdded && view != null` 要自己补。判活谓词的落点：Glide 走 `util/GlideUtil.canLoad(View)`，其它统一用 `isDestroyed` / `isAdded`。
+1. **后台请求回主线程时必须重新判活**：`CenterThreadPool.run { 网络请求 → runOnUiThread { 用 Activity/View/adapter } }` 是仓库最常见的写法，而请求一起跑，用户随时可能返回、页面随时可能被系统回收。**判活必须写进 `runOnUiThread` 的 Runnable 内部**（判完到 Runnable 真正执行之间，主线程完全可能已经跑完 `onDestroy`），只判 post 之前是错的。`activity/base/BaseActivity.kt` 重写了 `isDestroyed()`（语义含「正在 finish」），所以 Glide 的 `assertNotDestroyed` 在这个窗口里更容易被踩到；`activity/base/BaseFragment.kt` 的 `runOnUiThread` 自 26.10.20（#62）起已在 Runnable 内部判 `isAdded && view != null`（`activity/search/SearchFragment.kt` 里那份重复实现同步改过），但**直接 `CenterThreadPool.runOnUiThread { }` 的地方仍然要自己补**——只判 post 之前一律是错的。判活谓词的落点：Glide 走 `util/GlideUtil.canLoad(View)`，其它统一用 `isDestroyed` / `isAdded`。
+   - **fragment 里取界面文案要用 application context**（`getAppContext().getString(...)`）：在 detached fragment 上调 `Fragment.getString(...)` 会抛 `IllegalStateException: Fragment … not attached to a context.`，栈形如 `getString → getResources → requireContext`（#62 的形态）。26.10.19 的文案迁移把一批「detach 后写 `setText("字面量")`」的静默无效改成了 `getString(R.string.…)`，于是登录页扫码轮询在用户点「跳过」后炸出来（`docs/review/fix-progress.md` §3.38）。**纯文案先在后台线程取好再 post**；必须用 activity 的整段（`startActivity(requireContext())` / `requireActivity().finish()`）包进 Runnable 内部的 `if (isAdded)`。
 2. **`Error` 不是 `Exception`**：`UnsatisfiedLinkError`、`NoClassDefFoundError`、`NoSuchFieldError` 都继承 `Error`，工程里那些 `catch (e: Exception)` 一律兜不住——它们会直接冒到主线程把进程带走。原生库（ijk 的 `libijkffmpeg.so` / `libijksdl.so` / `libijkplayer.so`、`DanmakuFlameMaster` 的 `ndkbitmap`、`brotlij` 的 `brotli`）都可能在个别设备上 `dlopen` 失败（#48 的 `Bad file descriptor` 就是设备侧文件读不出来）。**新的原生能力入口必须用 `catch (Throwable)` 兜住并降级**，别在业务代码里裸调 `System.loadLibrary` / `loadLibrariesOnce`。
 3. **ijk 的专用约束**（`player/IjkNativeLibs.kt`，26.10.19 新增）：`IjkMediaPlayer.loadLibrariesOnce` 三个库全成功才置静态 `mIsLibLoaded`，而 `IjkMediaPlayer()` **构造内部会再调一次** → 只包 `loadLibrariesOnce` 不够，构造本身也要 try/catch；失败后 `IjkNativeLibs` 在本进程锁死（不再重试、不再刷日志），并采集 ABI / `nativeLibraryDir` / 每个 `.so` 的存在性·可读性·大小 / 原始栈进 `Logu`，在用户开启崩溃自动上报时上传一次。**改播放相关代码时一律 `IjkNativeLibs.ensureLoaded(context)` + 判返回值**，不要直接 `IjkMediaPlayer()`。`IjkPlayerBridge.createPlayer` / `VideoPlayerCore.createPlayer` 已改为返回 `Boolean`，失败由调用方提示并退出；`PlayerActivity.onCreate` 失败时 `return`，此时 `setDisplay()` 还没被 `postDelayed` 排上，`ijkPlayer!!` 不会被执行。
 
@@ -1198,6 +1199,45 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 7. **`X-Install-Id` 受隐私同意闸控制**（`api/TerminalApi.java:535-547` 的 `headers()`）；反馈链路另走 `feedbackHeaders()`（`:763-778`）在未同意时补回，否则反馈无归属。改这两处前先读注释。
 8. **CI 的 debug APK 路径已适配 flavor**：`.github/workflows/ci.yml:106-108` 是 `app/build/outputs/apk/*/debug/*.apk`；再写死 `apk/debug` 会每次 push 必红。
 9. **minSdk 19 线上不要用 `String.strip()`**（API 33）：`util/PasswordEncryptUtil.java:18` 从 `strip()` 改回 `trim()`，否则 API 19–32 密码登录静默失败（`NoSuchMethodError` 是 `Error`，外层 `catch (Exception)` 兜不住）。同批把 6 处过时 minSdk 注释（写 21/24）统一到 `app/build.gradle:21` 的 19。
+
+### 7.46 弹幕 XML 解析是**懒执行**的：交给 parser 的流不能在 `prepare` 返回后关掉（26.10.20）
+
+`player/DanmakuManager.kt` 的 `createParser()` 只把 `AndroidFileSource(InputStream)` 存进 parser；**真正的 XML 解析发生在 `DanmakuView` 自己的渲染线程**——`DanmakuFlameMaster/src/main/java/master/flame/danmaku/controller/DrawTask.java:283` 的 `parser.setConfig(...).getDanmakus()` → `BiliDanmukuParser.parse()` → `xmlReader.parse(new InputSource(source.data()))`。所以：
+
+- **不能**把 `FileInputStream` 交给 `createParser` 后在 `configureAndPrepare()` 返回时用 `use {}` / `close()` 关掉——懒解析读到的是已关闭流，`BiliDanmukuParser.parse()` 捕获 `IOException` 后 `return null`，**弹幕为空且没有任何提示**。26.10.02 的审计提交 `11ba14a` 正是这么改的，导致 26.10.19 上「所有本地缓存视频都没有弹幕、点『更新弹幕』重下也没用」（文件本身没问题）。修法：先把文件 `readBytes()` 读进内存，再包成 `ByteArrayInputStream`（`close()` 是空操作，晚读也安全）。
+- `DanmakuManager.loadFromXmlInput(inputStream)` 不会关流，短播放器（`activity/video/ShortVideoPlayerActivity.kt` 的 `loadDanmakuFromXml`）一直按这个约定传 `ByteArrayInputStream`，所以只有普通播放器/本地缓存那条路中招。
+- 顺带：**同一份文件的注释也可能自相矛盾**（`createParser` 的 doc 早写明了懒执行，`loadFromXmlFile` 的 use{} 注释却断言同步解析）。改这块前以 `DrawTask` 与 `BiliDanmukuParser` 的实体代码为准，别信注释。
+
+### 7.47 选图一律 `ACTION_GET_CONTENT`：`ACTION_PICK` 在部分手表 ROM 上无人处理（26.10.20，崩溃 #63）
+
+- **判据**：`Intent(ACTION_PICK, content://media/external/images/media)` 只由「声明了 `ACTION_PICK` 的系统相册」响应。XTC monaco_go Z10（SDK 30）这类手表 / 定制 ROM 的图片提供方只接 `ACTION_GET_CONTENT` / `ACTION_OPEN_DOCUMENT`，`startActivityForResult` **同步**抛 `ActivityNotFoundException: No Activity found to handle Intent { act=android.intent.action.PICK … }`（线上 #63：`activity/user/EditProfileActivity.kt` 的 `selectImage()`，当时是全仓唯一一处 `ACTION_PICK`）。
+- **写法**：`Intent(Intent.ACTION_GET_CONTENT)` + `type = "image/*"` + `addCategory(Intent.CATEGORY_OPENABLE)`，外面 `try/catch (e: Exception)`，设备上一个选图应用都没有时提示 `R.string.msg_no_image_picker`。四个既有入口同写法：`PrivateMsgActivity.kt:203`、`WriteReplyActivity.kt:209`、`SendDynamicActivity.kt:168`、`SettingGroupActivity.kt:374`（后者用 `catch (Throwable)`）。选文件（字体 / 播客）同理，只换 MIME。
+- **不要用 `intent.resolveActivity(packageManager)` 判活**：targetSdk ≥ 30 的包可见性限制下，不声明 `<queries>` 时它对真实存在的相册也返回 `null`，等于把崩溃换成「点了没反应」。
+- **顺带的语法坑**：Kotlin 块注释**可以嵌套**，在 KDoc / 块注释里原样写 `image/*` 会被当成开了一个新注释，编译器报 `Unclosed comment` 指着文件末尾、真正出错的地方在注释里。写这类 MIME 串时放进行内 `//` 注释或干脆不写。
+
+### 7.48 `TextView` 既要能点链接又要能长按：`OnTouchListener` 不许在 ACTION_DOWN 返回 true（26.10.20）
+
+- **`util/StringUtil.java` 的 `ClickableSpanTouchListener`** 给所有经 `setLink` 处理的 `TextView`（评论正文、动态正文、简介…）接管 `ClickableSpan` 的点击。`OnTouchListener` 由 `View.dispatchTouchEvent` 在 `TextView.onTouchEvent` **之前**调用，**ACTION_DOWN 返回 true 等于抢走整段手势**：View 收不到按下事件就不 post 长按检测（`View.onTouchEvent` 的 DOWN 分支才 `checkForLongClick`），同一个 TextView 上的 `setOnLongClickListener`（长按复制 / 操作面板）**永远不触发**，而 UP 又是我们手动调的 `span.onClick`。线上观感：正文整段是网址（如一条评论只有 `https://www.bilibili.com/`）时**长按复制没反应、抬手反而打开链接**（26.10.20 用户报告，修法见 `docs/review/fix-progress.md` §3.39）。
+- **正确分工**：DOWN 只记录（命中哪个 span + `getEventTime()`）并 `return false`；UP 时先判「按住时长 ≥ `ViewConfiguration.getLongPressTimeout()`」（`StringUtil.isLongPressGesture`，纯函数、有 JVM 单测）——是则长按已发生，`return false` 交给 View 收尾；否则补发 `span.onClick(widget)`、消费 UP，并**必须 `cancelLongPress()` + `setPressed(false)`**：UP 被消费后 View 收不到收尾事件，不会自己 remove 长按回调，不取消就变成「抬手之后才弹长按面板」。
+- **别用自建 `postDelayed` 长按**（`adapter/video/VideoCardHolder.kt:122-144` 的 200ms 那套还需要配 `suppressClickAfterLongPress` 吞掉补发的 click）：原生长按回调 `return true` 时 View 自己不会补发 click，少一整类竞态；系统「长按延迟」、滑动取消也自动对齐。
+- **同源结论**：任何 `setOnTouchListener` 里让 DOWN 返回 true 的地方，都要先问「这个 View 上还有没有人等着收长按 / 点击」；「DOWN 返回 false 后 View 会在 UP 补发 click」那条反过来也有坑，长期结论见 `docs/review/fix-progress.md` §5 的 `suppressClickAfterLongPress` 条目。
+
+### 7.49 用文件路径往公共目录写图片，必须自己登记媒体库（26.10.21）
+
+- **判据**：Android 10+（本应用 `targetSdk 34`）下，应用用裸 `File`/`FileOutputStream` 写进公共 `Pictures/` 的文件**不会被 MediaStore 自动索引**；而相册/图库、文件管理器的「图片/相册」分类**全都只查 MediaStore**。表现为「下载完成提示有了，文件也确实在 `/storage/emulated/0/Pictures/<应用目录>/`，但用户在相册和文件管理器里都找不到」（26.10.21 用户报告，`docs/review/fix-progress.md` §3.44 有复现与反证：写盘成功但 `content://media/external/images/media` 无该行；补一次 `MEDIA_SCANNER_SCAN_FILE` 立刻出现）。
+- **写法**：写完调 `util/PictureMediaStore.scan(context, file)`（内部 `MediaScannerConnection.scanFile`，MIME 由纯函数 `mimeTypeOf` 判、认不出就不登记）。新写「保存图片到公共目录」的链路必须走它；更彻底的做法是 API 29+ 直接用 `MediaStore.Images` 的 `IS_PENDING` 插一条再写流（免「所有文件访问」、天然登记），目前没做。
+- **提示文案要带目录**：以前图片下载成功只弹通用的「下载完成」（与 APK 更新共用 `text_update_download_complete`），既没说存到哪、也没说去相册看——现在走 `R.string.msg_picture_saved`，`%1$s` 用 `PictureMediaStore.displayFolder(file)` 裁成 `Pictures/哔哩终端`（手表窄屏下绝对路径显示不全）。
+- **别用 `Environment.getExternalStorageDirectory()` 判「有没有权限」**：权限判据一律 `FileUtil.canWriteDirectory` 试写（§7.41 同源结论，issue #42 / `docs/review/fix-progress.md` §3.28）。
+
+### 7.50 回车推进焦点：平台会自己抛 ISE，只能在 Activity 的 `dispatchKeyEvent` 兜（26.10.21，崩溃 #66）
+
+- **崩溃是什么**：`TextView.onKeyUp` 收到 `KEYCODE_ENTER`、`event.hasNoModifiers()`、该 TextView **没有 OnClickListener** 时，只要 `(event.getFlags() & KeyEvent.FLAG_EDITOR_ACTION) != 0` **或** `shouldAdvanceFocusOnEnter()` 为真（= **单行**，或文本类里 variation 为 `EMAIL_ADDRESS`/`EMAIL_SUBJECT`），就 `focusSearch(FOCUS_DOWN)`，随后 `v != null && !v.requestFocus(FOCUS_DOWN)` → **平台自己 throw** `IllegalStateException("focus search returned a view that wasn't able to take focus!")`（8.1 `TextView.java:7424-7477`，throw 在 `7453`；12 `8662-8716`，throw 在 `8690`；`shouldAdvanceFocusOnEnter()` 8.1 `7145-7171` / 12 `8387-8406` 逐字一致）。线上 #66 的栈正好停在 `TextView.onKeyUp`（版本 26.10.16 / SDK 27 / 设置页，明细见 `docs/review/fix-progress.md` §3.45）。
+- **根因是平台前后判据不一致，不是某个输入框写错**：`focusSearch` 侧的候选过滤在触摸模式下只看 `focusableInTouchMode`（`View.addFocusables`，`FOCUSABLES_TOUCH_MODE`），而真正给焦点时 `requestFocusNoSearch()` 还会拒「触摸模式下不是 `focusableInTouchMode`」与「祖先 `descendantFocusability=blocksDescendants` / `shouldBlockFocusForTouchscreen()`」（8.1 `View.java:10850-10870`；12 `13517-13532` 另加 `canTakeFocus()`，连 DISABLED / 零尺寸也拒）。应用侧改不了平台判据 → **只能兜**。
+- **兜底落点**：`util/view/EditorEnterKeyGuard.kt`（`FOCUS_SEARCH_FAILURE_MESSAGE` 原文常量 + 纯函数 `isFocusSearchFailure(Throwable?)` 沿 cause 链找「`IllegalStateException` 且 message 逐字等于原文」+ `swallowFocusSearchFailure(tag, e)` 记 `Logu.e` 后返回 true），接在 `activity/base/BaseActivity.kt` 与 `activity/player/PlayerActivity.kt` 的 `dispatchKeyEvent` 覆写里。**只在 `dispatchKeyEvent` 能 catch 到**：崩溃在 `super.dispatchKeyEvent` 往下调视图树时才发生，`onKeyDown`/`onKeyUp` 那时轮不到；`PlayerActivity` 要单独加是因为它**不继承 `BaseActivity`**（`class PlayerActivity : Activity()`）且带单行 `danmaku_send_edit`。新增带输入框的裸 `Activity` 页面同样要照抄这段。
+- **只认消息原文，别放大成 `IllegalStateException` 一把抓**：同名 ISE 别处可能是真 bug，吞掉等于藏起来；平台这句话是字面量常量（不本地化），可以精确匹配，`EditorEnterKeyGuardTest` 钉着边界（大小写/空白/少末字符/同文案 `RuntimeException`/cause 深度上限）。
+- **不要试图用 `adb shell input keyevent KEYCODE_ENTER` 复现**：物理 ENTER 的 DOWN 会先退出 touch mode（`ViewRootImpl.isNavigationKey` 含 ENTER，`checkForLeavingTouchModeAndConsume` 无 `FLAG_KEEP_TOUCH_MODE` 时 `ensureTouchMode(false)`；12 `7476`/`7497-7532`，8.1 `5816-5874`）→ 到 `onKeyUp` 时两处判据已一致，选中的 view 必能拿到焦点；`focusSearch` 返回 null 时也不抛。380×380 / Android 12 上按此路径试过四个页面全不崩。要人为制造错配只能自己写 `android:nextFocusDown` 指向 `blocksDescendants` 容器里的 view / 零尺寸 view，本仓库 `res/` 里 **0 处** `nextFocus*`/`descendantFocusability`/`touchscreenBlocksFocus`。
+- **软键盘的「完成 / 下一项」也走同一条栈**：`BaseInputConnection.performEditorAction` 不直接调 `TextView.onEditorAction(int)`，而是合成一对带 `FLAG_SOFT_KEYBOARD|FLAG_KEEP_TOUCH_MODE|FLAG_EDITOR_ACTION` 的 ENTER（8.1 `569-582`、12 `665-678`）→ `InputMethodManager.dispatchKeyEventFromInputMethod` → `ViewRootImpl.dispatchKeyFromIme` → 与物理键同一条分发栈。所以崩溃栈里**分不出**是手按还是 IME 按的，上述兜底也一并管住它。
+- **未覆盖（已知缺口，别当成已修）**：`TerminalDialog.input()` 造的 `AlertDialog` 是独立窗口，按键分发不经过 Activity（`Dialog` 虽是 `Window.Callback`，`DecorView` 先 `superDispatchKeyEvent` 再回调，换 callback 拦不到）；改为给输入框装 `setOnEditorActionListener` 会改变多行输入框的回车行为，属未验证变更。线上从未出现弹窗内回车崩溃（全仓 `TerminalDialog.input()` 仅 2 处调用）。另外 `TextView.onEditorAction(IME_ACTION_NEXT/PREVIOUS)` 里也有同一条 ISE（8.1 `5926`/`5936`、12 `7164`/`7174`），框架内仅无障碍 `accessibilityActionImeEnter` 直接调它，未在范围。
 
 ## 8. UI 基建速查（新增页面临摹用）
 
@@ -1395,8 +1435,8 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 > 不做的话 AppCompat 会在圆角 drawable 底下垫一层方角底衬，圆角白做——这正是「像安卓原生的一样」的直接原因。
 
 > **`Sheet` 的固定底栏（`bottomButtonBar`，26.10.09 加，改 `TerminalDialog` 前必读）**：
-> `Sheet.addButton` 原来把按钮加进 `terminal_dialog_list`（**在 ScrollView 内部**），而 `capScrollHeight()`
-> 把滚动区高度**钉死在屏高 45%**、滚动条又是 `scrollbars="none"`；长正文会把按钮顶到看不见，
+> `Sheet.addButton` 原来把按钮加进 `terminal_dialog_list`（**在 ScrollView 内部**），而当时的
+> `capScrollHeight()` 把滚动区高度**钉死在屏高 45%**、滚动条又是 `scrollbars="none"`；长正文会把按钮顶到看不见，
 > 配上必要的 `setCancelable(false)` 就是**用户彻底卡在闪屏上**。修法：`Sheet` 加构造参数
 > `bottomButtonBar: Boolean = false`（默认 false = 原行为，既有 12 处 `confirm/alert/menu` 零影响），
 > 只有 `choice()` 用 `true`，按钮改挂 `layout_dialog_terminal.xml` 的固定底栏 `@id/terminal_dialog_buttons`。
@@ -1409,12 +1449,28 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 >    `TerminalDialog.menu(context, ...) { which -> ... }` 就是「点了完全没反应」——不崩、logcat 也没异常，
 >    只能靠加日志才发现回调已执行、弹窗已建好却没显示。正确写法是链上 `.show()`，参考
 >    `adapter/reply/ReplyAdapter.kt`（`TerminalDialog.menu(...) { ... }.show()`）。
-> 2. **窗口默认整屏宽且不带 `WATCH_OUTSIDE_TOUCH`**，所以底部提示「点空白处取消」根本收不到点击。
->    `Sheet.init` 现在统一 `dialog.window?.addFlags(FLAG_WATCH_OUTSIDE_TOUCH)`（配合既有的
->    `setCanceledOnTouchOutside(true)`）并把菜单容器宽度限到约 90%，表盘两侧才真的存在「窗口外」空白
->    （380×380 上左右各约 24px）。另：`menu` 的提示行本身也接 `dismiss()`，别指望用户去找那 24px。
-> 3. **小屏高度预算**：380×380 上标题 12 字截断（`menuTitle()`）、`confirm` 正文压到一行语义即可，
->    否则按钮行被挤出屏幕（`confirm` 的按钮跟正文一起滚，只有 `choice` 有固定底栏）。
+> 2. **窗口宽度：`show()` 之前写不进去**。appcompat 的 `AlertDialog.onCreate()` 里 `installContent()` 会把
+>    自定义视图**重新** `addView(child, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))`，于是
+>    `show()` 之前写进 `content.layoutParams` 的宽度、以及 `window.setLayout()`，统统被覆盖回整屏宽
+>    ——26.10.20 实测 `dumpsys window` 里该窗口 `mAttrs` 始终是 `(wrapxwrap)`、`mFrame=[0,0][屏宽,屏高]`。
+>    正确时机是 `dialog.setOnShowListener`（窗口 attach 完、第一帧 layout 之前），`Sheet` 在那里再调一次
+>    `prepareLayout()` 落到 `content.layoutParams` 上（`init` 里那次保留，作「不 show 也正确」的兜底）。
+>    宽度与「点外面」的空白由 `util/view/DialogSizing.kt` 算：`width = 可用宽 × 90%`，可用宽 =
+>    屏幕 − 「界面边距」百分比（`SettingsKeys.PADDING_H/PADDING_V`，与宿主页面同一套安全区），
+>    380×380 上 = 342px、两侧各 19px。**旧结论「已把窗口宽度限到约 90%、表盘两侧各约 24px」没有核实过**：
+>    那版代码在真机/模拟器上从未生效（`dumpsys` 里仍是整屏）。
+>    另：`menu` 的提示行本身也接 `dismiss()`，别指望用户去找屏边那二十来像素。
+> 3. **小屏高度预算（`DialogSizing.plan`）**：不再「滚动区钉死屏高 45%」——那等于让
+>    `45% × 屏高 + 标题 + 分割线 + 底栏 + 提示行` 自己去凑屏高（320×320 需 353px、300×300 需 344px，
+>    底部提示行被压到 6px 高，「正文较长，可上下滑动阅读」整行看不见）。现在反过来算：
+>    `预算 = 可用高 × 94%`（上下留出能「点外面取消」的空白、圆屏不切角），再实测「标题 / 分割线 /
+>    底栏 / 提示行」的真实高度（都随「界面大小」缩放，不能写死 dp），`滚动区 = 预算 − 其它部分`；
+>    放不下时**先舍提示行、再舍标题（连分割线）**，滚动区兜底「一行」的最小高度。
+>    `naturalScrollHeight()` 让正文短时按内容收着，不为凑预算把弹窗撑高。
+>    **按钮行还有一层兜底**：1.8 倍界面下两个三字按钮合计 468px > 窗口 342px，右对齐的「同意」会被
+>    整个挤出屏幕（`choice()` 是 `setCancelable(false)`，等于用户卡死在闪屏）——`Sheet.fitButtonBars()`
+>    逐级缩字号（下限 9sp，同时松内边距与 44dp 最小宽度），仍放不下就改成均分宽度。
+>    实测 380×380@1.8、320×320@1.5 两个按钮都在屏内。
 
 > **教训（判断「某属性全工程缺失」的正确姿势）**：必须**同时 grep 相邻属性做对照组**。
 > 本次最初的错误结论是「弹窗层从未接入主题系统」——被「7 族主题都声明了 `colorSurface`」
@@ -1528,9 +1584,9 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 ---
 
-## 9. API 层映射表（43 个类，改功能时定位用）
+## 9. API 层映射表（44 个类，改功能时定位用）
 
-按功能域分组。`api/` 下 41 个 Java + 2 个 Kotlin（`HotSearchApi.kt`、`ShortVideoFeedApi.kt`）（26.10.10 实测；`BilibiliIDConverter` 已删除，见下）。
+按功能域分组。`api/` 下 41 个 Java + 3 个 Kotlin（`HotSearchApi.kt`、`ShortVideoFeedApi.kt`、`StoryFeedQuery.kt`）（26.10.21 实测；`BilibiliIDConverter` 已删除，见下）。
 
 ### 视频与播放
 
@@ -1546,7 +1602,8 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `SearchApi` | 搜索/建议/默认内容 | `search`、`searchType`、`getBangumiFromSearchResult`、`getSearchSuggestions`、`getDefaultSearchContent` |
 | `HistoryApi` | 历史记录 | `getHistory`、`reportHistory`、`deleteHistory` |
 | `WatchLaterApi` | 稍后再看 | `getWatchLaterList`、`add`、`delete` |
-| `ShortVideoFeedApi.kt` | 短视频 Feed | `fetchFeedPage`、`fetchVideoUrl` |
+| `ShortVideoFeedApi.kt` | 短视频 Feed 取流（`StoryFeedPager` 持会话级分页状态） | `fetchVideoUrl`、`StoryFeedPager.fetchPage` |
+| `StoryFeedQuery.kt` | 短视频取流纯逻辑：参数拼装 / 降级判定 / 响应解析与去重（有 JVM 单测） | `buildParams`、`buildUrl`、`parseFeed`、`isDegradedTrackId`、`isClearlyHorizontal` |
 
 ### 动态、专栏与番剧
 

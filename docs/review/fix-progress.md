@@ -18,7 +18,7 @@
   ```
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数）**：**49 个测试类 / 460 个用例**，对 395 个源文件。计数方式：`app/src/test/` 下 49 个 `*Test.kt|java`，`app/build/test-results/testDebugUnitTest/*.xml` 的 `<testcase>` 求和为 460。
+- **单测（静态计数）**：**67 个测试类 / 718 个用例**（26.10.21 实测；`standard` 与 `coexist` 同为 67 suites / 718 tests / 0 失败）。计数方式：`app/build/test-results/testStandardDebugUnitTest/*.xml` 的 `<testcase>` 求和——任务名带 flavor 前缀，`testDebugUnitTest` 已不存在。
 - **本轮已跑通**：26.10.10 的 `minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → `testDebugUnitTest`」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。单测 `app/build/test-results/testDebugUnitTest/*.xml` 汇总 **49 suites / 460 tests / 0 failures / 0 errors / 0 skipped**，最新 XML 时间 `2026-10-09T22:59:04`（晚于本轮 APK 出包时间 22:56:58，覆盖了本轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **用例数一律以机器产出为准**：读 `app/build/test-results/`，队友口述数字不进入文档。
 - **本轮紧急撤回**：「自动跳过片头片尾」处于**撤回状态**（26.10.10 用户明确要求，非缺陷）——设置入口已隐藏、运行期恒不生效，代码与存档保留。恢复清单 6 步见 §2.2 第一条与 §3.3 末尾。
@@ -37,6 +37,7 @@
 
 ### 2.1 真机未验证（无设备 / 无登录态）
 
+- [ ] **登录页扫码中途退出的竞态（§3.38）真机未复现**：修法是「判活搬进 Runnable + 文案走 application context」，判据已由 R8 mapping 还原（崩点 `QRLoginFragment.kt:284`）。真机用例：扫码页在「已扫码，等待手机确认」时点「跳过 / 返回」/ 按表冠退出，反复若干次，不应再出 `Fragment … not attached to a context`。
 - [ ] **缓存页空态行的真机观感（§3.34）**：只在 380×380 表盘模拟器上跑过，未在真手表上确认「未分类视频 0 个 + 啥都木有~」两行的字号/间距是否合适。
 
 - [ ] **缓存页长按菜单的真机手感（§3.35）**：模拟器上长按 400ms 即触发；真手表需确认「长按播放/进文件夹」不会与长按误触冲突、5 项菜单在 45% 滚动区里滑动是否顺手、两侧约 24px 空白点不点得到。
@@ -98,6 +99,8 @@
 - [ ] **缩放后左右滑动调进度（§3.32）待真机确认**：开启「左右滑动控制进度」+「视频可缩放」→ 捏合放大 → 松手 → 单指横滑，应完全不出现进度浮层、不动进度条；双指缩回 1 倍后横滑恢复；再验关掉「缩放时可移动」时放大后单指拖动不再移位。判据单测覆盖不到 ACTION_UP 之后的手势分发。
 
 - [ ] **长按顶栏三模式（§3.33）待真机确认**：①「不响应」下普通页面与视频详情页长按都无动作（OPPO 系手表长按顶部本意是系统控制中心，应用侧至少不能自己再动）；②「仅视频详情页」下普通页面无动作、视频详情页仍关闭所有详情页；③「全部页面」= 旧行为；④ 切档后不用退出页面即时生效；⑤ 26.10.19 显式关过旧开关的老用户，升级后设置页显示「仅视频详情页」（不是「不响应」）。
+
+- [ ] **短视频取流协议修订（§3.41）待真机**：本会话无可用设备，只过了两 flavor 构建 + JVM 单测。真机用例：①进入短视频页首屏能出内容、连续上下滑不出现相邻重复视频；②反复退出再进短视频页，首屏正常（旧实现的静态页码已删）；③飞行模式进入 → 出现「获取视频列表失败」，恢复网络后从页面既有入口重试成功；④观察是否还有明显横屏内容（解析层已丢弃 `dimension` 明确宽>高且 `rotate==0` 的卡片）。
 
 ### 2.2 功能与工程待办
 
@@ -876,7 +879,188 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **构建 / 单测**：删了资源文件，按 AGENTS.md 先 `:app:clean` 再 `:app:assembleDebug`（两 flavor 均 `BUILD SUCCESSFUL`）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` `BUILD SUCCESSFUL`（64 suites / 662 tests，0 失败；本次改动无 JVM 单测覆盖，靠回归）。
 - **不在本次范围**：下载列表页（`DownloadListActivity`）自身的「长按两次删除」未动，仍是旧交互。
 
+### 3.36 用户报告的三条问题：缓存视频弹幕全空 / DASH 拖动音频停顿 / 下载进度 2MB 一跳（26.10.20）
+
+- **用户报告（26.10.19 / versionCode 2610190，手表端）**：①「下载页面进度显示异常」→ 追问后确认是「**分片进度 2MB 一跳而卡顿**」；②「缓存弹幕无法正常下载」→「视频下载成功，但播放缓存视频时没有弹幕」，进一步确认「**所有缓存视频都没弹幕**」「**点『更新弹幕』重下之后仍然没有**」；③「播放 DASH 格式视频拖动进度条音频会卡一下（非 DASH 没有）」→「**松手后声音停顿约半秒到一秒，然后才从新位置继续**」。
+- **② 根因（影响面最大）**：`player/DanmakuManager.kt:64` 的 `loadFromXmlFile` 在 26.10.02 的审计提交 `11ba14a9` 里被改成 `file.inputStream().use { createParser(it); configureAndPrepare(...) }`，注释断言「解析是同步的，返回后流已读完」。**实际 DFM 的 XML 解析是懒执行的**（`DrawTask.java:283` 在渲染线程才 `getDanmakus()`，`AndroidFileSource` 只存流引用），`BiliDanmukuParser.parse()` 读已关闭的流 → `catch (IOException)` → `return null`，**弹幕为空且无任何提示**。所以自 26.10.02 起所有走 XML 的弹幕都没了：本地缓存视频（本地播放只读 `danmaku.xml`）、以及把「新版弹幕获取方式」关掉的在线播放。「更新弹幕」只重写文件、不改变加载方式，故重下也没用。修法：先把文件 `readBytes()` 读进内存，再交给 `ByteArrayInputStream`（`close()` 是空操作）。判据与踩坑记录见 `docs/architecture-map.md` §7.46。
+- **③ 根因**：`activity/player/PlayerActivity.kt` 的进度条 `onStopTrackingTouch` 只 `seekTo` 了 ijkPlayer 与弹幕视图，**没有 seek 外部音轨**（DASH 本地双文件 `video.mp4` + `audio.m4a`，音频是独立的 `android.media.MediaPlayer`）；随后 `progressChange()` 每 250ms 发现音画偏差 > 800ms 才异步 `ap.seekTo(video_now)`，而异步 seek 期间 `currentPosition` 仍是旧值、又会触发一次校正 → 可闻的 0.5–1s 停顿。修法：松手改走统一的 `seekToPosition()`（它本来就 seek 音轨），并在 seek 后设 1.2s 冷却（`AUDIO_RESYNC_COOLDOWN_MS`），冷却期内不做偏差校正，避免重复 seek。
+- **① 根因（两处）**：a）DASH 下载的进度三段各自从 0 走满——附件阶段用 0–1.0、视频 `downFile(..., 0f, 1.0f)`、音频再 `0f→1.0f`，整条进度条来回满三次；b）分片（`downFileSpeedSeg`）的 `totalDownloaded` 只在**整片完成后**才 `addAndGet`，2MB 一片时 200ms 轮询看到的进度每 2MB 才动一次 → 一跳一跳、ETA 虚高。修法：DASH 改单调权重（附件 0.00–0.12 / 视频 0.12–0.55 / 音频 0.55–1.00），`downloadSegment` 改成**写完一块就计入**，失败/重试时按已写字节回滚（`totalDownloaded` 与 `addDownloadedBytes` 同进同退）。
+- **顺手修**：`activity/video/local/LocalListActivity.kt` 的 `downloadDanmakuFile` 原来不判 HTTP 状态码、把错误页直接写进 `danmaku.xml`，改成非 2xx / 空 body 抛 `IOException`（上层提示「弹幕更新失败」）。
+- **构建 / 单测**：`:app:assembleDebug` 两个 flavor `BUILD SUCCESSFUL`（1m 2s）；`:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` 均 **65 suites / 675 tests / 0 失败 / 0 错误 / 0 跳过**（两个 flavor 同源码同结果）。本次三条都无 JVM 单测覆盖（播放器/下载服务依赖 Android），靠回归。
+- **未验证 / 残留**：①③ 未在真机或模拟器上实际拖动/下载验证（本机只有 380×380 MuMu 且无缓存视频）；② 的根因由「懒解析 + 已关闭流」的代码链路确证，装包后打开任一缓存视频即可确认弹幕恢复。合集「更新弹幕」多 P 循环仍沿用 `meta.cid`（各分 P 会写入同一份弹幕），以及 XML 接口对大视频会截断（实测 25564 条只返回 7200 条），两件都不在本次范围，见 §2.2。
+
+### 3.37 线上崩溃 #63：编辑资料点头像 → `ACTION_PICK` 无人处理（26.10.20）
+
+- **现象（用户报告：26.10.20 18:04 / 版本 26.10.19 / XTC monaco_go Z10 / SDK 30）**：`android.content.ActivityNotFoundException: No Activity found to handle Intent { act=android.intent.action.PICK dat=content://media/external/images/media }`，`main` 线程；栈：`Instrumentation.checkStartActivityResult:2073` ← `Activity.startActivityForResult:5341` ← `T0.b.onClick:109`；页面轨迹停在 `EditProfileActivity`（前序 `MySpaceActivity` → `UserInfoActivity`）。
+- **复现 / 预期 / 实际（先问过用户）**：只有特定设备会崩；预期是「弹出系统选图 → 选完上传头像」；实际直接进崩溃页（`CatchActivity`）。该机型预装了文件管理器 / 相册。
+- **根因**：`activity/user/EditProfileActivity.kt` 的 `selectImage()` 用 `Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)`（当时全仓唯一一处）。该 action 只由「声明了 `ACTION_PICK` 的系统相册」响应；这类手表 ROM 的图片提供方只接 `ACTION_GET_CONTENT` / `ACTION_OPEN_DOCUMENT`，于是 `startActivityForResult` **同步**抛异常（`BaseActivity` 无覆写，异常直接冒到点击回调，没人兜）。同类四个入口早已改过：`PrivateMsgActivity.kt:203`、`WriteReplyActivity.kt:209`、`SendDynamicActivity.kt:168`、`SettingGroupActivity.kt:374`。
+- **修法**：改成 `ACTION_GET_CONTENT` + `type = "image/*"` + `CATEGORY_OPENABLE`，并 `try/catch (e: Exception)`：设备上一个选图应用都没有时提示新字符串 `R.string.msg_no_image_picker`（「没有可用的相册或文件管理器」），不再崩。**没有先 `resolveActivity` 判活**——targetSdk ≥ 30 的包可见性限制下它会对真实存在的相册返回 `null`，等于把崩溃换成「点了没反应」。判据与语法坑（Kotlin 块注释可嵌套，KDoc 里写 `image/*` 会吞掉后半份文件）见 `docs/architecture-map.md` §7.47。
+- **构建 / 单测**：`:app:assembleDebug` 两个 flavor `BUILD SUCCESSFUL`（1m 8s，8 个 APK 齐）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 均 **65 suites / 675 tests / 0 失败 / 0 错误 / 0 跳过**。本次改动无 JVM 单测覆盖（依赖真机相册），靠回归。
+- **未验证**：手表真机未复测（本机无该机型、也无登录态，进不到「编辑资料」页）；但改动是「换 intent + 加兜底」，与四个既有的可用入口同写法，且 `ActivityNotFoundException` 已不可能再冒到崩溃页。
+
+### 3.38 线上崩溃 #62：登录页扫码轮询在 fragment detach 后调 `getString`（26.10.20）
+
+- **现象（用户报告：26.10.20 15:47 / 版本 26.10.19 / OPPO OWW202 / SDK 27）**：`java.lang.IllegalStateException: Fragment q{de30e4c} (a1fb2446-1d35-4c0f-b046-34e3a949be9d) not attached to a context.`，`main` 线程；栈 `h0.u.M(SourceFile:18)` ← `h0.u.l(1)` ← `h0.u.m(1)` ← `R0.m.run(477)` ← `Handler.handleCallback` ← `Looper.loop` ← `ActivityThread.main`。页面轨迹：`LoginActivity`(15:46:44) → `SplashActivity`(15:46:56) → `DialogActivity`(15:46:56) → 15:47 崩溃。
+- **复现 / 预期 / 实际（先问过用户）**：用户手上只有别人的崩溃报告，复现步骤不知道；「**偶现，只见过一两次**」；预期/实际都不知道；未能提供应用日志。崩溃前的 `LoginActivity` 是**TV 扫码**流程（扫码页由登录页的「登录方式切换」卡片打开，`isTVMode` 可在运行期切换）。
+- **retrace（R8 下源码行号不可信，必须用 mapping）**：用 26.10.19 tag `ee57bcf` 在独立 worktree 重建 `:app:assembleStandardRelease`，取 `app/build/outputs/mapping/standardRelease/mapping.txt`（25.8 MB，不进版本库）逐帧还原：
+  - `androidx.fragment.app.Fragment -> h0.u`，且 `requireContext() -> M` / `getResources() -> l` / `getString(int) -> m` ⇒ 那三帧就是 `getString → getResources → requireContext`，最后一句抛的正是这条 ISE；
+  - `activity.settings.login.QRLoginFragment$$ExternalSyntheticLambda10 -> R0.m`（R8 把该页所有 lambda 合并成一个合成类，每个 lambda 在 `run` 里占一段行号），崩溃行 477 落在 `470:491 … detectTVLoginState$lambda$13(...):284:284 -> run` 那一段；
+  - ⇒ 崩点 `app/src/main/java/com/RobinNotBad/BiliClient/activity/settings/login/QRLoginFragment.kt:284`（**26.10.19 版本的行号**，修复后该处已改为 `getAppContext().getString(...)`）：`scanStat.text = getString(R.string.text_qr_hint_tv)`，位于 `detectTVLoginState()` 的 `CenterThreadPool.runOnUiThread { … }`（TV 扫码「已扫码，等待手机确认」分支）。
+- **根因**：`util/CenterThreadPool.java:143` 的 `runOnUiThread` 只是无条件 `MAIN_THREAD_HANDLER.post(...)`（主线程调用也入队），而 QR 轮询跑在 `Timer().schedule(task, 500, 1000)` 的 Timer 线程里；`detectTVLoginState()` 在 `if (!isAdded) return` **之后还要读一次网络响应**（`response.body!!.string()`）才 post 那个 Runnable —— **判活与执行之间隔着一整个网络往返**。用户点「跳过」（`from_setup` 分支 `startActivity(SplashActivity)` + `requireActivity().finish()`）使 fragment detach，在飞的 tick 返回后 post 的 Runnable 在 detach 之后才执行，`getString` → `requireContext` 抛 ISE。反向也印证：Timer 线程上的同类异常会被 `CenterThreadPool.run` 的 `catch (Throwable)` 吞掉、不崩，**只有 post 到主 Handler 的那条会带走进程**。
+- **为什么 26.10.19 才炸**：26.10.19 的文案迁移（`3253d9a chore(text): 文案迁移 WIP 基线`）把这批 `setText("正在获取二维码")` 之类的**字面量**换成了 `getString(R.string.…)`。迁移前 detach 后写 TextView 只是「静默无效」，迁移后同一个竞态直接升级成 `IllegalStateException`（`docs/copy-inventory/STRINGS-MIGRATION.md:338` 记二维码状态机 24 处）。
+- **修法（沿用「判活写进 Runnable 内部」这条既有铁律，不再在 post 前判）**：
+  - `activity/base/BaseFragment.kt` 的 `runOnUiThread`：`if (isAdded) requireActivity().runOnUiThread(runnable)` → `val host = activity ?: return; host.runOnUiThread { if (isAdded && view != null) runnable.run() }`；`activity/search/SearchFragment.kt` 里那份重复实现同改，`activity/search/` 的 5 个子 Fragment（Video/Article/Live/Bangumi/User）另在各自 `CenterThreadPool.runOnUiThread` 块首行补 `if (!isAdded || view == null) return@runOnUiThread`。
+  - 登录三碎片（`QRLoginFragment` / `SMSLoginFragment` / `PasswordLoginFragment`）统一继承 `BaseFragment`；**纯文案一律在后台线程用 `getAppContext().getString(...)` 先取好**（application context 不随 detach 失效），post 出去的 Runnable 只做 view 赋值；必须用 activity 的地方（`startActivity(Intent(requireContext(), …))`、`requireActivity().finish()`）整段包进 Runnable 内部的 `if (isAdded)`。
+  - QR 的 TV / Web 两个登录成功分支整段包进 `if (isAdded)`（原先是先 `startActivity(requireContext()…)` 再判活，**顺序反了**，Web 分支还会在 Timer 线程上抛）；`SMSLoginFragment.setStatusText` 的 14 个调用点改成传 `getAppContext().getString(...)`（`setStatusText` 自己的 `if (!isAdded) return` 在求值之后才生效，挡不住 `getString`）；`SMSLoginFragment.handleLoginSuccess` 的落盘 + `requestSSOs()` 从主线程挪进 `CenterThreadPool.run`（原来整段网络请求跑在 UI 线程，顺带修卡顿）。
+  - `activity/base/RefreshListFragment.loadFail()`、`SearchFragment.loadFail()` 的「加载失败」提示改用 application context 取文案（失败回调常发生在 detach 之后）。
+- **构建 / 单测**：`:app:assembleDebug` 两 flavor `BUILD SUCCESSFUL`（58s，135 tasks）；`:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` 均 **675 tests / 0 失败 / 0 错误 / 0 跳过**。本次改动依赖 Android 运行时的 Fragment 生命周期，无 JVM 单测覆盖，靠回归。
+- **未验证 / 残留**：本机无登录态与 TV 端，无法真机复现「扫码中途点跳过」。判据来自 mapping 还原出的崩溃行 + 「判活跨一次网络往返」的代码链路，属确定结论而非猜测。`Timer` 仍不会在 `onDestroy` 取消已在飞的 tick（`util/CenterThreadPool.java` 目前只有 `post`/`postDelayed`、没有 `removeUiCallbacks`），后续要彻底清理可补 API 并在 `onDestroyView` 撤销。
+
+### 3.39 正文整段是一个链接时长按复制失效（26.10.20）
+
+- **现象（用户报告）**：用户贴了两张评论区截图——评论正文只有一行 `https://www.bilibili.com/`，「管理员 纯洁のkekewhere」在下面回复「**如果评论的内容只有网站是将无法长按复制**」。即：正文只要整段是网址，长按不弹「操作面板 / 复制」，抬手反而把链接打开；更一般地，**手指落在链接字符上长按就无效**，落在同一段文字的非链接字符上则正常。影响不止评论——动态正文、专栏正文等所有经 `StringUtil.setLink` 处理的文本同理。
+- **根因**：`util/StringUtil.java` 的 `ClickableSpanTouchListener`（改动前在 `onTouch` 的 ACTION_DOWN 命中 `ClickableSpan` 时**直接 `return true`**）。OnTouchListener 由 `View.dispatchTouchEvent` 在 `TextView.onTouchEvent` **之前**调用，DOWN 返回 true 即把整段触摸从 View 手里拿走：View 收不到按下事件就**不会启动长按检测**（长按检测只在 `View.onTouchEvent` 的 DOWN 分支里 post），于是同一个 TextView 上的 `setOnLongClickListener`——`adapter/ReplyAdapter.kt:246` 的「长按操作面板」、`util/StringUtil.java:220` 的 `setCopy` 复制——**永远不会触发**；旧实现还在 ACTION_UP 里直接把 `span.onClick(widget)` 打开链接，所以观感是「长按没反应、抬手跳走了」。评论正文由 `model/Reply.java:167` 的 `StringUtil.setLink(messageSpannable)` 自动打链接 span，正文只有网址时整块文字都被同一个 span 覆盖，于是整块长按都失灵。同一个监听器同时挂在 `StringUtil.setLink(TextView...)`（`:291`）、`setAtLink(TextView...)`（`:429`）与动态正文（`adapter/dynamic/DynamicHolder.kt:749`）上。
+- **修法（`util/StringUtil.java`，不再消费 ACTION_DOWN，改成「DOWN 只记录 + UP 判定」）**：
+  - DOWN：记下命中的 span 与 `event.getEventTime()`，**return false**，把事件交还 View 正常启动长按判定；
+  - UP：先用新纯函数 `StringUtil.isLongPressGesture(widget.isLongClickable(), downTime, event.getEventTime(), ViewConfiguration.getLongPressTimeout())`（`:541`）判「按住时长是否已达到系统长按阈值」。是 → 长按回调已经处理过这次手势（`ReplyAdapter` / `setCopy` 的回调都 `return true`，View 不会补发 click），直接 return false 什么都不做；
+  - 判抬手点是否仍命中**同一个** span（新增私有 `findLinkAt(TextView, Spanned, MotionEvent)`，`:640`；判空 layout、clamp 行号、`getSpans(off, off, ClickableSpan.class)`），不命中就 return false（滑动不该被当成点击）；
+  - 命中则 `widget.cancelLongPress()` + `widget.setPressed(false)` + `span.onClick(widget)` + return true。**`cancelLongPress()` 不能省**：UP 被我们消费后 View 收不到收尾事件，它 post 出去的长按任务不会自己消失，会在抬手之后把长按面板弹出来；
+  - CANCEL 清状态。没走自建 `postDelayed` 计时（`adapter/video/VideoCardHolder.kt:122-144` 的 `suppressClickAfterLongPress` 那套）——这里复用 View 原生长按机制，阈值、滑动取消、系统「长按延迟」设置全都跟系统一致。
+- **单测**：`app/src/test/java/com/RobinNotBad/BiliClient/util/StringUtilTest.java` 新增 4 例覆盖 `isLongPressGesture`：阈值内 / 超阈值、边界（时长恰好等于阈值算长按）、TextView 不可长按时**永远**不判长按（否则链接点不动）、没有 DOWN 时间记录时保持旧的「抬手即点链接」行为。
+- **构建 / 单测**：`:app:assembleDebug` 两个 flavor `BUILD SUCCESSFUL`（10s，121 tasks）；`:app:testStandardDebugUnitTest` **66 suites / 694 tests / 0 失败 / 0 错误**（`StringUtilTest` 7 例全过）；`:app:testCoexistDebugUnitTest`（同源码）`BUILD SUCCESSFUL`。
+- **未验证 / 残留**：无真机复测（评论页要登录态）。长按判据是「按住时长 ≥ `ViewConfiguration.getLongPressTimeout()`」，若某 ROM 把长按判定调得比该值更晚，极短的一小段区间内抬手可能仍被当成点击——真机回归第 249 条会确认。真机验证清单见 `docs/review/real-device-regression-checklist.md` 第 249 条，判据与复用规则见 `docs/architecture-map.md` §7.48。
+
+### 3.40 低分辨率设备上弹窗显示不全：宽度没落地 + 高度预算把提示行挤没了（26.10.20）
+
+- **现象（用户报告：26.10.20，附截图）**：启动时的「隐私说明」弹窗在低分辨率设备上显示不全——正文右边缘被切断（半字）、底部「正文较长，可上下滑动阅读」看不见、按钮行贴底甚至被顶出屏幕。用户原话只有「修复低分辨率设备应用的弹窗显示不全的问题」+ 一张图，设备型号与分辨率未提供；截图里弹窗左沿距屏幕仅约 2px、右侧看不到描边。
+- **复现（MuMu 模拟器 380×380 / 320dpi + DebugBridge 改 `dpi`，等价于「设置 - 布局适配 - 界面大小」）**：
+  - 默认 1.0 倍、380×380：`dumpsys window` 里弹窗窗口 `mAttrs=(wrapxwrap)`、`mFrame=[0,0][380,380]`，即**整屏宽**；视图树 `title [0,0][380,80]`、`scroll [0,82][380,253]`(171=45%×380)、`buttons [0,253][380,341]`、`hint [0,341][380,380]` —— 四行**刚好**凑满 380，纯属巧合。
+  - 320×320：`title 80 + divider 2 + scroll 144(45%) + buttons 88 + hint` = 314，提示行只剩 **6px**（文字必然被裁）；300×300 同理需 344px。
+  - 1.8 倍：`widthPixels` 随 dpi 一起放大 → 窗口比屏幕还宽（WMS 裁到屏内，表现为「右侧被切」）；dp 固定行也放大 1.8 倍 → 高度溢出、提示行整个消失；两个三字按钮 `minimumWidth` 各 158px、合计 468px > 342px，**右对齐的「同意」被挤出屏幕**（`choice()` 是 `setCancelable(false)`，等于用户卡死在闪屏）。
+- **根因（两条，互相独立）**：
+  1. **宽度写早了**：`Sheet.init` 里 `window.setLayout(屏宽×0.9, WRAP_CONTENT)` 在 `show()` 之前调用，而 appcompat `AlertDialog.onCreate()` 的 `installContent()` 会把自定义视图**重新** `addView(child, MATCH_PARENT, MATCH_PARENT)` —— 于是宽度被覆盖回整屏宽（26.10.20 之前 `docs/architecture-map.md` §8.7.0 写的「已把宽度限到约 90%、两侧各约 24px」**从未生效**）。
+  2. **高度预算是加法凑的**：`capScrollHeight()` 把滚动区钉死 `屏高 × 45%`，再加上一堆 dp 固定高度（标题/分割线/底栏/提示行）——`45% + 固定部分` 在小屏上必然超屏，且「界面大小」放大后固定部分 ×1.8、`45%` 不变，越放大越挤。
+- **修法**：
+  - 新增 `app/src/main/java/com/RobinNotBad/BiliClient/util/view/DialogSizing.kt`（纯函数 + JVM 单测）：`Frame`/`available()`（扣「界面边距」百分比，与 `BaseActivity` 同一套整数算法，保证圆屏不被切角）/`width()`（90%）/`heightBudget()`（94%）/`plan()`（预算 − 实测的标题/分割线/底栏/提示行，放不下先舍提示行再舍标题，滚动区兜底一行高）。
+  - `Sheet`：`init` 末尾挂 `setOnShowListener`，在窗口 attach 完、第一帧 layout 之前再调一次 `prepareLayout()` 把宽度落到 `content.layoutParams`；`init` 里那次保留当兜底。行高**实测**（都随界面大小缩放，不能写死 dp）；打字模式（`typingEdit != null`）不钉滚动区高度。
+  - `Sheet.fitButtonBars()`：底栏/按钮行放不下时逐级缩字号（下限 9sp，同时松内边距与 44dp 最小宽度），仍放不下改成均分宽度——修掉 1.8 倍下「同意」点不到的死局。
+- **构建 / 单测**：`:app:assembleDebug` 两个 flavor `BUILD SUCCESSFUL`；`:app:testStandardDebugUnitTest` **690 tests / 0 失败**、`:app:testCoexistDebugUnitTest` **694 tests / 0 失败**（新增 `DialogSizingTest` 15 例，其中 `parts380` 用模拟器实测值）。
+  - 模拟器实测（coexist 包，`uiautomator dump` 取真实 bounds）：380×380@1.0 → 窗口 `[19,10][361,369]`（342 宽、左右各 19px）、标题/正文/按钮/**提示行全在屏内**；320×320@1.0 → `[16,9][304,311]`、舍提示行；240×240@1.0 → `[12,7][228,232]`、舍标题与提示行；380×380@1.8 与 320×320@1.5 → 两个按钮都完整可见、未被挤出。
+- **未验证 / 残留**：真机未复测（本机只有模拟器 + 用户正式包，无低分辨率真机）；用户原设备分辨率未知，但两条根因与分辨率无关（任何「屏高 < 约 400px」或「界面大小 > 1.0」都会命中）。1.8 倍下按钮字号被缩到 9sp——可读、可点，但明显小于正文；那档位本身已属于「整屏只放得下两三个元素」的极端档。
+
+### 3.41 短视频取流协议修订：分页状态、推荐路由、去重与降级（26.10.21，待真机）
+
+- **背景**：短视频页（`short_video`）的取流是手拼查询串的一次性实现，有四个缺陷：①`pull` 传的是字符串 `true`，而接口取值是 `0`/`1`；②丢弃服务端下发的 `track_id`，翻页无法跟随推荐路由；③主接口失败后的兜底请求 `/x/v2/feed/index` 不在接口文档端点表里（可用的是动态流 `/x/v2/feed/index/dynamic/story`）；④页码 `currentPage` 挂在 object 上，退出再进不归零。
+- **修法**：
+  - 新增 `api/StoryFeedQuery.kt`（纯函数，无 Android 依赖）：`buildParams`（`display_id` 批次序号、首屏 `pull=0`/翻页 `1`、`open_event=cold`、`trackid` 仅正式路由回传、**不发 `from`/`from_spmid`/`spmid`**——三者混传服务端直接 `-400`）、`buildUrl`、`percentEncode`（不用 `URLEncoder`，空格必须是 `%20`）、`isDegradedTrackId`、`isClearlyHorizontal`（有 `dimension` 且 `width>height` 且 `rotate==0` 才丢）、`parseFeed`（`code!=0`→空、横屏过滤、按 `aid` 批内 + 跨批去重、取最后非空 `track_id`）。
+  - `api/ShortVideoFeedApi.kt` 保留 `fetchVideoUrl` 不动；新增 `class StoryFeedPager` 持会话级分页状态（`display_id`/`lastTrackId`/`seenAids`/降级只记一次日志），主信息流空则走动态流兜底；旧 `currentPage` 与 `fetchIndexFeed` 删除。
+  - `util/VideoPreloadManager.kt` 改为持有 `StoryFeedPager` 实例，页面销毁随实例丢弃（不再有跨页面的静态分页状态）。
+- **构建 / 单测**：`:app:assembleDebug` 两个 flavor `BUILD SUCCESSFUL`；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 各 **67 suites / 714 tests / 0 失败**（新增 `StoryFeedQueryTest` 20 例）。首次跑挂 1 例——测试里的 raw string 以 `"` 结尾被 Kotlin 吃掉一个引号导致 JSON 非法，改成整条 JSON 字面量后通过（产品代码无问题）。
+- **未验证 / 残留**：真机未跑（本会话无设备），用例见 §2.1 第一条。未做：`relate/story`、`space/story`、`request_from` 池切换、点赞/投币/收藏、曝光与行为上报（见 `docs/superpowers/specs/2026-10-21-short-video-feed-protocol.md` §2.1）。
+- **口径提醒**：降级池（`track_id` 以 `gateway_fallback_` 开头）只记日志、内容照常播放；**不要**把降级 `track_id` 回传（会把后续请求钉死在降级链路）。
+
+### 3.42 短视频分辨率不跟随「视频设置 → 分辨率」（26.10.21，待真机）
+
+- **现象**：在设置里把分辨率从 360P 改到 720P/1080P，普通视频生效，**短视频页仍是 360P**。
+- **根因**：`ShortVideoFeedApi.fetchVideoUrl(item, qn = 16)` 把清晰度硬编码成 16（360P），播放页与预加载两处调用都没传 `qn`——设置里的 `SettingsKeys.PLAY_QN` 根本没被读过。
+- **修法**：默认值改为 `defaultPlayQuality()`（读 `SharedPreferencesUtil.getInt(SettingsKeys.PLAY_QN, 16)`，老用户无该键仍回退 360P），`item.currentQuality` 改用新增纯函数 `StoryFeedQuery.pickQuality(qn, qnValueList)` 还原服务端**实际能给的档位**（≤请求值的最高档；列表缺失时原样返回请求值），不一致时记一条日志便于排查风控降级。
+- **构建 / 单测**：`:app:assembleDebug` 两 flavor `BUILD SUCCESSFUL`；两 flavor 单测各 **67 suites / 718 tests / 0 失败**（`StoryFeedQueryTest` 20→24 例，新增 4 例覆盖 pickQuality）。
+- **未验证 / 残留**：真机未跑。**改设置后需要重新进入短视频页才生效**（同一页内的 `item.videoUrl` 是会话内缓存，不主动重取）；未登录时 1080P 会被服务端降级，属预期。
+
+### 3.43 内测码更新：长按「检查更新」从内测分享站下载（26.10.21，待真机）
+
+- **需求（用户原话）**：「新功能，检查更新按钮长按弹出输入内测码功能，之后拼接二维码（`https://share.lanol.cn/#/?code=12345`）（纯数字），之后开始从这个链接下载更新」；用户补充「域名两个个，`file.zsapp.asia`，`share.lanol.cn`，那个有软件下载哪个」，后又要求「文件不存在和解析到非apk文件直接返回内测码错误提示即可」。**不显示二维码**：码只用来拼分享链接，应用内直接下载安装。
+- **新增 `util/BetaUpdate.kt`（纯函数，JVM 单测直调，不读资源/Context）**：`HOSTS`（`file.zsapp.asia` → `share.lanol.cn` 顺序探测）、`SHARE_HOST`、`normalizeCode`（`^\d{1,20}$`）、`buildShareUrl`、`selectUrl`/`buildSelectBody`（`POST /share/select/`，body `{"code":"12345"}`）、`parseSelectResponse`（分享站 FileCodeBox：成功取 `detail.download_url`，相对路径经 `absoluteUrl` 补全；`is_text` 或 `download_url` 为空 → `NotFound`）、`isApkFileName`（`endsWith(".apk")`，分享站不校验上传内容）、`formatSize`。新增 `BetaUpdateTest` 12 例。
+- **`util/UpdateManager.kt`**：新增 `resolveBetaShare(code, onResult, onError)`，`CenterThreadPool.run` 内按 `HOSTS` 逐个 `selectBetaShare`，第一个 `Found` 即回调；**两个域名都没有包 / 解析到的不是 `.apk` → 统一回调「内测码错误」**（不拼域名细节）；只有出现网络异常才回「获取内测包失败：<原因>」。不做版本比较。
+- **`activity/settings/UpdateActivity.kt`**：`onCreate` 改成 `when` 三分支，新增 `beta_code` 模式——先 `deleteOldApkFile()`（否则 Range 续传会拼两份不同 APK），`resolveBeta()` → 解析成功即 `showBetaInfo()` + `startDownload()`；`retryBtn` 在内测模式重新解析（分享站下载地址带签名/时间窗，旧地址可能失效）。
+- **`activity/settings/SettingGroupActivity.kt`**：关于页「检查更新」加 `onLongClick` → `showBetaCodeDialog()`；短按仍是进 `UpdateActivity` 检查更新。`util/TerminalDialog.input` 新增 `digitsOnly` 参数（数字键盘 + `InputFilter`，粘贴的字母也会被过滤）。
+- **坑 1（本次排查最久）**：`TerminalDialog` 的工厂方法**只 `create()` 不 `show()`**，调用方漏了 `.show()` 就「长按没反应」——没有弹窗、没有异常、logcat 干净。同 §3.35 已记的结论，本次又踩一次：**长按无反应先查 `.show()`**。
+- **坑 2（380×380 错误态布局）**：下载失败态原来同时显示「进度条 + 两行错误文案 + 取消/重试两个 44dp 按钮」，`progress_container` 比屏幕还高，`alignParentBottom` 被顶到 y=0、错误文案压住标题栏。修法：错误态隐藏进度条与「取消下载」（返回键等价），只留「重试下载」；`startDownload()` 里恢复进度条可见。
+- **`.txt` 内测码按公告展示（26.10.21 追加）**：用户要求「如果检测到的是.txt的文本就像展示公告一样的展示他」。分享站不校验上传内容，内测码可能对应一段文本：`BetaUpdate.isTextFileName`（`endsWith(".txt")`）与 `isApkFileName` 并列成为「可展示」白名单；`UpdateActivity.resolveBeta()` 里分支到 `openBetaText()` → `UpdateManager.downloadBetaText(url, onResult, onError)`（`okHttpClient` GET、UTF-8、`BetaUpdate.decodeText` 去 BOM、上限 `BETA_TEXT_MAX_BYTES = 2MB`、不落盘、不走 `downloadApk`）→ `MsgUtil.showText(标题, 正文)`，标题取文件名去掉 `.txt`（空则用 `text_update_beta_text_title`=内测公告），页面就是公告列表点开的 `ShowTextActivity`（支持长按复制）。新增字符串 `text_update_beta_text_loading`=正在下载内测文本…、`text_update_beta_text_failed`=获取内测文本失败：%1$s、`text_update_beta_text_title`=内测公告。
+- **`.txt` 链路验证方式（没有真实 txt 内测码，用 mock 打通全链路后回退）**：`build/mock_share.py` 本地起 HTTP mock（`POST /share/select/` 返回 `{"detail":{"name":"内测公告.txt","download_url":"/files/notice.txt"}}`，`GET /files/notice.txt` 返回带 BOM 的 UTF-8 文本），临时把 `BetaUpdate.HOSTS`/`SHARE_HOST` 指向 `http://127.0.0.1:18080` 并在 `network_security_config.xml` 临时放行 `127.0.0.1` 明文，`adb reverse tcp:18080 tcp:18080` 让模拟器回环到宿主机；装包后长按「检查更新」→ 输入 `12345` → 直接进 `ShowTextActivity`，标题「内测公告」、正文 BOM 已去掉、logcat `内测包来自 http://127.0.0.1:18080：内测公告.txt`。**验证完已全部回退**（`git checkout` 网络配置、`BetaUpdate.kt` 从备份还原、删除 mock 与 `adb reverse --remove-all`），重装干净包对真实域名复测 `12345` → 仍提示「内测码错误」。
+- **验证（MuMu 380×380 模拟器，非真手表）**：长按「检查更新」→ 弹窗「输入内测码 / 纯数字内测码 / 取消 / 下载」；输入 `ab12c34` 只留下 `1234`；`99999`（分享站上是一张 jpg）与 `0000000000`、`12345`（不存在）均提示「内测码错误」并返回设置页，**不再下载**；截图确认错误态不再压标题栏。
+- **构建 / 单测**：`:app:assembleDebug` 两 flavor `BUILD SUCCESSFUL`；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 各 **68 suites / 733 tests / 0 失败**（`BetaUpdateTest` 15 例：新增 txt 解析、`isTextFileName`、`decodeText` 去 BOM）。
+- **未验证 / 残留**：没有真实有效的内测码，**未跑通「下载 → 校验 → 安装」完整正链**（旧版本链路已在 `docs/FEATURES.md` §14.15 的长按说明范围内验证过下载与 `ApkVerifier`）；`.txt` 展示链路已用本地 mock 打通（见上）；真机未测；`SettingsIndex` 里搜索出来的「检查更新」条目仍是直接进 `UpdateActivity`，无长按。
+
+### 3.44 图片下载器「下载完成」但相册/文件管理里找不到：写完从不登记媒体库（26.10.21）
+
+- **现象（用户报告）**：长按/点击图片（视频封面、动态图、评论图等）→「保存图片」，**有「下载完成」提示，但相册/图库里没有，文件管理器里也找不到**。用户环境记不清，按代码逻辑排查。
+- **复现（已实际复现，手表模拟器 Android 12 / SDK 32 / 380×380，小米 `24031PN0DC`，debug 包 26.10.19）**：用 DebugBridge 直接拉起 `DownloadActivity`（`type=0`、`link=https://i0.hdslb.com/bfs/face/member/noface.jpg`、`path=/storage/emulated/0/Pictures/哔哩终端/`），4 秒后：
+  - `ls -la` → 文件**确实下好**：`-rwxrwxrwx 1 root root 3719 … noface.jpg`（内容正确）→ 排除「写盘失败」「onDestroy 误删」（成功流程先 `finishFlag = true` 再 `finish()`，`onDestroy` 只在 `!finishFlag` 时删 `touchedFiles`）；
+  - `content query --uri content://media/external/images/media` → 表里**没有这一行**（当时 160 行，全是 Screenshots/DCIM 的历史图）→ 相册/图库（只读 MediaStore）当然看不到；
+  - 手动补一次 `am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///…/noface.jpg`，2 秒后立刻出现 `_id=462 _display_name=noface.jpg relative_path=Pictures/哔哩终端/`（表 161 行）→ **缺的就是登记这一环**。
+  - 设备上相册/文件相关包只有 `com.android.gallery3d` / `com.android.documentsui` / `com.android.providers.media.module`——「文件管理器里也找不到」同样是「媒体库没有这条记录」的表现（按媒体分类浏览走 MediaStore）。
+- **根因**：`activity/DownloadActivity.kt` 的 `handleDownloadComplete()` 里图片分支**只弹一句「下载完成」**，下载本身用裸 `File`/`FileOutputStream` 写公共 `Pictures/哔哩终端/`，全仓**没有任何 MediaStore 写入或 `MediaScannerConnection`**。Android 10 起（本应用 `targetSdk 34`）用文件路径写进公共目录的文件**不会被媒体库自动索引**，于是文件在、相册没有。成功提示又是通用的 `text_update_download_complete`（「下载完成」，不含路径），用户连去哪儿翻都不知道。
+- **修法**：
+  - 新增 `app/src/main/java/com/RobinNotBad/BiliClient/util/PictureMediaStore.kt`：`mimeTypeOf(fileName)`（纯函数，按后缀判 `image/*`，认不出返回 null 就不登记，免得把错误页塞进相册）、`displayFolder(folderPath, externalRoot)` / `displayFolder(file)`（纯函数 + 便捷重载，把绝对路径裁成 `Pictures/哔哩终端` 这种能对上文件管理器的层级）、`scan(context, file)`（`MediaScannerConnection.scanFile`，异步回调里 `uri == null` 记日志；**吞异常只落日志**——文件已经落盘、下载确实成功，扫描失败最坏是相册晚点出现，不该反过来判下载失败）。
+  - `DownloadActivity.handleDownloadComplete()` 图片分支（`type == 0`，入口只有 `ImageViewerActivity`）先 `PictureMediaStore.scan(this, downloadedFile)`，提示改成 `R.string.msg_picture_saved` =「图片已保存：%1$s\n可在相册中查看」（`%1$s` 就是上面裁出来的目录）。视频/APK 两条分支不动（视频目录是应用专属 `Android/media/`，且 `save_ban_gallery` 本来就把 `.nomedia` 写进去刻意不进相册）。
+- **构建 / 单测**：`:app:clean` 后 `:app:testStandardDebugUnitTest :app:assembleDebug` 通过；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 各 **70 个测试类 / 747 例 / 0 失败 0 错误 0 跳过**（两个 flavor 同源码；`PictureMediaStoreTest` 各 7 例）；`app/build/outputs/apk/` 下两个 flavor 的 debug 四个 ABI 分包都在。
+- **真机验证（模拟器，`MediaStore` 实测，已通过）**：`adb install -r` 装新包后连下两张图（`Pictures/哔哩终端/verify/`、`verify2/`），`content query --uri content://media/external/images/media` **不靠手动扫描**就直接出现 `_id=465 relative_path=Pictures/哔哩终端/verify/`、`_id=467 … /verify2/`（全表 160→161→162 行）；`am start -a android.intent.action.VIEW -d content://media/external/images/media/467 -t image/jpeg` 由系统相册 `com.android.gallery3d` 正常渲染出该图 → **相册里确实能看到**。提示文案实测为「图片已保存：Pictures/哔哩终端/verify3\n可在相册中查看」（`displayFolder` 已把绝对路径裁成相对层级）。
+- **残留**：Android 11+ 上「应用能不能用文件路径写公共 `Pictures/`」本身取决于是否拿到「所有文件访问」（`FileUtil.ensureDirectoryWritable` 会在不可写时拉起授权页并直接结束页面，所以这里不会出现「没权限却假装成功」）；更彻底的写法是 API 29+ 直接走 `MediaStore.Images` 的 `IS_PENDING` 插一条再写流（免权限、天然登记），本次没做，属可选后续。`getFileNameFromLink` 不去 query 串、重名覆盖等既有问题不在本次范围。
+
+### 3.45 线上崩溃 #66：回车推进焦点，平台自己抛 ISE（26.10.21）
+
+- **现象（用户报告：26.10.20 21:18 / 版本 26.10.16 / XTC `msm8937_32go_i25d` Z7S / SDK 27 / 380×380 档手表）**：`java.lang.IllegalStateException: focus search returned a view that wasn't able to take focus!`，`main` 线程；栈自下而上：`ActivityThread.main` → `ViewRootImpl$ViewPostImeInputStage.processKeyEvent` → `DecorView.dispatchKeyEvent` → 三层业务 `dispatchKeyEvent`（`h.x`/`h.j`/`G.j`，即混淆后的 Activity/AppCompat 包装链）→ `q3.b.o` → `PhoneWindow.superDispatchKeyEvent` → `DecorView.superDispatchKeyEvent` → 11 层 `ViewGroup.dispatchKeyEvent` → `KeyEvent.dispatch` → **`android.widget.TextView.onKeyUp(TextView.java:7456)`**。页面轨迹最后停在 `SettingTerminalPlayerActivity`（21:18:21 打开，21:18:26 去过 `ListChooseActivity` 又返回，21:18:27 之后崩）。应用日志无相关信息（只有短视频接口 `-400`）。
+- **复现 / 预期 / 实际（先问过用户）**：用户手上只有崩溃报告，**没有可复现步骤**；预期是「在设置页的输入框里按回车/软键盘完成键 → 收起键盘或跳下一项」；实际直接进崩溃页（`CatchActivity`）。
+- **根因（平台前后判据不一致，不是本仓库某处写错）**：AOSP `TextView.onKeyUp` 的 `KEYCODE_ENTER` 分支（8.1 `TextView.java:7424-7477`、throw 在 `7453`；12 `8662-8716`、throw 在 `8690`，逐字同构）：`event.hasNoModifiers()` 且该 TextView **没有 OnClickListener** 时，若 `(event.getFlags() & KeyEvent.FLAG_EDITOR_ACTION) != 0` **或** `shouldAdvanceFocusOnEnter()` 为真，就 `focusSearch(FOCUS_DOWN)`；`v != null && !v.requestFocus(FOCUS_DOWN)` → **平台自己 throw**。`shouldAdvanceFocusOnEnter()`（8.1 `7145-7171` / 12 `8387-8406`，逐字一致）= 单行（`mSingleLine`）为真；或文本类且 variation 是 `EMAIL_ADDRESS`/`EMAIL_SUBJECT`。两处判据不一致：**找候选**只按 `focusableInTouchMode` 过筛（触摸模式下用 `FOCUSABLES_TOUCH_MODE`，`View.addFocusables`），**给焦点**时 `requestFocusNoSearch()` 还拒「触摸模式下不是 `focusableInTouchMode`」和「祖先 `descendantFocusability=blocksDescendants` / `shouldBlockFocusForTouchscreen()`」（8.1 `View.java:10850-10870`；12 `13517-13532` 另加一道 `canTakeFocus()`，连 DISABLED/零尺寸也拒 → 缺口更大）。应用侧改不了平台判据，只能兜住。
+- **为什么 `adb input keyevent 66` 在模拟器上复现不出来（重要，别再照着试）**：物理 ENTER 的 **DOWN 会先退出 touch mode**（`ViewRootImpl.isNavigationKey` 含 `KEYCODE_ENTER`，`checkForLeavingTouchModeAndConsume` 在无 `FLAG_KEEP_TOUCH_MODE` 时 `ensureTouchMode(false)`；12 `7476`/`7497-7532`，8.1 `5816-5874` 同）→ 到 `onKeyUp` 时已是非触摸模式，两处判据一致，选中的 view 基本必能拿到焦点；`focusSearch` 返回 null 时那个 `if` 直接跳过、也不抛。已在 380×380 Android 12 模拟器上按此路径试过四个页面（`SettingMainActivity` 搜索框、`SettingTerminalPlayerActivity` 数字输入行、`InputDialogActivity`、播放器），全部 pid 不变、logcat 无 ISE。真要制造错配只能人为写 `android:nextFocusDown` 指向 `blocksDescendants` 容器里的 view / 零尺寸 view，本仓库 `res/` 里 **0 处** `nextFocus*`、`descendantFocusability`、`touchscreenBlocksFocus`（已 grep），所以此路不通。
+- **软键盘也被这条把式覆盖**：`BaseInputConnection.performEditorAction` 不直接调 `TextView.onEditorAction(int)`，而是合成一对带 `FLAG_SOFT_KEYBOARD|FLAG_KEEP_TOUCH_MODE|FLAG_EDITOR_ACTION` 的 ENTER DOWN/UP（8.1 `569-582`、12 `665-678`），经 `InputMethodManager.dispatchKeyEventFromInputMethod`（8.1 `1913-1923`、12 `2630-2651`）→ `ViewRootImpl.dispatchKeyFromIme` 入队 → **和物理按键同一条分发栈**。所以崩溃栈里分不出是手按还是软键盘按的，而「IME 动作」这条也一并被下面的兜底管住。
+- **修法（不猜具体输入框，兜在按键进 Activity 的必经之路上）**：
+  - 新增 `app/src/main/java/com/RobinNotBad/BiliClient/util/view/EditorEnterKeyGuard.kt`：`FOCUS_SEARCH_FAILURE_MESSAGE`（平台原文常量）+ 纯函数 `isFocusSearchFailure(Throwable?)`（沿 cause 链最多 8 层找「`IllegalStateException` 且 message 逐字等于原文」）+ `swallowFocusSearchFailure(tag, e)`（命中记 `Logu.e` 并返回 true）。**只认原文、不做 `IllegalStateException` 一把抓**（同名 ISE 别处可能是真 bug）。
+  - `activity/base/BaseActivity.kt` 与 `activity/player/PlayerActivity.kt` 各加一个 `dispatchKeyEvent` 覆写：`try { super.dispatchKeyEvent(event) } catch (e: IllegalStateException) { if (!EditorEnterKeyGuard.swallowFocusSearchFailure(tag, e)) throw e; true }`。选 `dispatchKeyEvent` 是因为崩溃在 `super.dispatchKeyEvent` 往下调视图树时才发生，`onKeyDown`/`onKeyUp` 那时根本轮不到；`PlayerActivity` 单独加是因为它**不继承 `BaseActivity`**（`class PlayerActivity : Activity()`）且带单行 `danmaku_send_edit`。
+  - 弹窗（`TerminalDialog.input()` 造的 `AlertDialog`，全仓 2 处调用）是独立窗口，按键不经 Activity，给 Dialog 换 `Window.Callback` 也不能保证在崩溃前拦到；靠 `setOnEditorActionListener` 改掉分支又会变多行输入框的回车行为——两条都没做，记为**已知缺口**（线上从未出现弹窗内回车崩溃）。`InputDialogActivity` 是普通 BaseActivity 页，天然被覆盖。
+- **单测**：新增 `app/src/test/java/com/RobinNotBad/BiliClient/util/view/EditorEnterKeyGuardTest.kt` 7 例（原文命中 / 包在 cause 里 / 大小写·空白·少末字符不命中 / 普通 ISE 不命中 / 同文案 `RuntimeException` 不命中 / null / 8 层上限边界）。
+- **构建 / 单测（已跑，全绿）**：`:app:assembleDebug --offline` 两 flavor `BUILD SUCCESSFUL`（30s，121 tasks）；新单测 7 例全过；全量 `:app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest` 各 **70 个测试类 / 747 例 / 0 失败 0 错误**（`--offline --no-build-cache --no-configuration-cache`）。
+  - **踩到的坑（与本次改动无关，会误导判据）**：coexist 变体首跑全量单测时 `:app:compileCoexistDebugUnitTestKotlin` 报 `Unresolved reference 'formatDownloadSpeed'` / `'tutorial'` / `'page'` 等一堆错，看起来像主源码缺符号，实际是**增量编译把 `coexistDebug` 的 Kotlin 模块元数据写坏了**——`app/build/tmp/kotlin-classes/coexistDebug/META-INF/app_coexistDebug.kotlin_module` 只有 24 字节（正常 233 字节），于是「类能解析、顶层函数/DSL 解析不到」。删掉 `app/build/tmp/kotlin-classes/coexistDebug` 与 `app/build/kotlin/compileCoexistDebugKotlin` 后重编即恢复（同 AGENTS.md「增量编译单独坏掉」那条）。
+- **未验证 / 残留**：本机无该机型（SDK 27）也无登录态，**未真机复现**；判据来自 AOSP 8.1/12 源码逐字核对 + 崩溃栈行号对位，属确定结论。风险面：只有「按键分发经过 Activity」的窗口被覆盖（弹窗见上）；`TextView.onEditorAction(IME_ACTION_NEXT/PREVIOUS)` 里同一条 ISE（8.1 `5926`/`5936`，12 `7164`/`7174`）不在本次范围——框架内只有无障碍 `accessibilityActionImeEnter` 直接调它。
+
+### 3.46 短视频第二轮：推荐续接（指纹/去重/relate）与播放页左右滑（26.10.21，待真机）
+
+- **需求（用户原话）**："改两个，第一个是短视频推荐，第二个是短视频的操作我想改成和b站手机版一样的操作流程，不懂的问我，我很多都没说清楚"。两轮追问后确定：推荐侧「内容更像 B 站 / 少重复、横屏、低质 / 加相关推荐、播完自动接下一条」；操作侧**只加左右滑**（右滑进 UP 主主页、左滑返回），单击 / 双击 / 长按与底栏**全部保持现状**，不新增互动按钮，并关闭本页的系统右滑返回。
+- **取流侧改动**：
+  - `api/ShortVideoFeedApi.kt` `buildHeaders()` 补 `Buvid`（Cookie 里的 `buvid3`，取不到就不发）与 `Display-ID`（`util/DeviceIdentity.kt`：32 位大写十六进制、持久化复用）；桌面报告实测缺指纹会落降级池。
+  - `api/StoryFeedQuery.kt`：`buildParams(...)` 新增 `requestFrom`（0..6，默认 0，越界夹取，本轮不暴露 UI）；新增 `PATH_RELATE = "/x/v2/feed/index/relate/story"`、`buildRelatedParams(anchorAid, ...)`、`parseRelated(...)`。
+  - `api/StorySeenStore.kt`（新增）：最近 **300** 条已消费 `aid` 存 `SharedPreferences("short_video_seen_aids")`，合并式写入（旧→新，超限丢最旧）；`StoryFeedPager` 每次成功取流后写回，解析时与它比对。
+  - `api/ShortVideoFeedApi.kt` 的 `StoryFeedPager` 新增 `fetchRelated(anchorAid)`；`util/VideoPreloadManager.kt` 新增 `loadRelated()` 与 `onRelatedLoaded` 回调。
+- **播放页改动**（`activity/video/ShortVideoPlayerActivity.kt`）：
+  - `BaseActivity` 新增 `protected open val forceNoSwipeTheme: Boolean get() = false`，并入 `setTheme(ColorScheme.themeResId(theme, noSwipe = forceNoSwipeTheme || BACK_DISABLE))`；短视频页覆写 true。**不能在子类 `super.onCreate` 前再 `setTheme`**，会被 BaseActivity 覆盖。
+  - `GestureDetector.onFling`：横向位移 ≥ 24dp 且横向占优才处理（缩放中 `isScaling` 忽略）——右滑 `openAuthorPage()`（`UserInfoActivity` + `mid`，没 mid 提示），左滑 `activity.onSwipeLeftToBack()`（暂停后 finish）。用 `onFling` 而不是 `onScroll`，避免与 ViewPager2 纵向滑动抢手势。
+  - `setOnCompletion` 由「`seekTo(0)` 循环」改为 `activity.onVideoCompleted(boundPosition)`：列表还有下一条就 `setCurrentItem(next)`；到底则以当前 `aid` 调 `loadRelated()`，结果到了自动切到追加的第一条；空结果提示「没有更多短视频了」并停下。`pendingAdvanceAfterRelated` 在用户手动翻页时清掉，避免被异步结果强行切走。`resume()` 保留「快看完时重播从头」的既有行为。
+  - 新增文案 `R.string.text_shortvideoplayer_no_more` / `text_shortvideoplayer_no_author`（`strings.xml`）。
+- **教程 / 文档**：`tutorial/Tutorials.kt` 的 `shortVideo` 教程补充左右滑与自动续接、`version` 1→2；旧 `res/xml/tutorial_short_video.xml` 同步补两条（旧链路已不展示，只作存证）；`docs/superpowers/specs/2026-10-21-short-video-feed-protocol.md` 增加 §6 记录本轮回合并修正 §2.1 非目标；`docs/FEATURES.md` §2.7、`docs/copy-inventory/03-tutorials.md` T-010/T-036 同步。
+- **单测**：`StoryFeedQueryTest` 新增 7 例（`request_from` 夹取、`buildRelatedParams`、`parseRelated` 的数组/items/横屏过滤/跨批去重）；新增 `StorySeenStoreTest` 5 例（合并去重、300 上限、编解码容错、空值与脏数据）。
+- **构建 / 单测（已跑）**：`:app:assembleDebug --offline` 两 flavor `BUILD SUCCESSFUL`（1m24s）；`:app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest` 各 **71 个测试类 / 759 例 / 0 失败 0 错误 0 跳过**。
+- **未验证 / 残留**：本机无可用设备，**全部交互与 relate 真机行为未验证**；`relate/story` 的响应结构是按桌面报告的字段表复用主信息流解析，真机若结构不同需单独解析。`space/story`、`request_from` 的用户入口、曝光/点击行为上报、点赞等互动仍未做（用户明确不要互动按钮）。短视频倍速下弹幕不同步（`DanmakuSync` 用播放器时间，倍速只在 IJK 侧生效）是老问题，本轮未动。
+- **后续**：其中「右滑进 UP 主页 / 左滑返回」的手势在真机上直接被用户反馈为**闪退**，且用户要求改成与手机版一致的「横滑进入详情」，见 §3.47。
+
+### 3.47 短视频改横向四页结构：短视流 → 详情 → 评论 → 相关推荐（26.10.21，待真机）
+
+- **需求（用户原话）**："滑动直接闪退，而不是进入主页，建议滑动后视频详情页面做到右边，像搜索一样连起来，连贯一些，第一页，短视频，第二页到第四页，原有的视频详情卡片，不懂的问我"。追问后确定：第 2 页视频详情、第 3 页评论、第 4 页相关推荐；**手势完全按手机版**（单击显隐底栏、双击播放/暂停、长按详情、上下滑切视频、**横滑切详情/评论/相关推荐**）；短视频页**右滑 = 退出本页**；「试看模式」= 停下视频 + 给「播放」按钮（不由本页实现）；相关推荐返回才自动切下一条、失败则停；相关推荐**复用既有「视频详情页相关推荐」开关**（关掉时没有第 4 页）。
+- **闪退处理**：本机无设备、用户未提供 logcat，根因未定位；直接**删掉整条旧手势路径**（页内 `onFling` + `openAuthorPage` + `UserInfoActivity` 跳转），横向手势全部交给外壳 pager，不再由页面内的 `GestureDetector` 抢。
+- **结构重构**：
+  - `activity_short_video_player.xml` 改为「黑底 FrameLayout + 横向 `ViewPager2`（id `pager`）」，短视频流挪进 `fragment_short_video_feed.xml`（id `viewPager` 的竖向 pager + 加载/错误三件套）。
+  - 新增 `ShortVideoFeedFragment`：原 `ShortVideoPlayerActivity` 里的取流/预加载/竖向翻页/播放器生命周期/播完续接**整段搬入**；`itemView.setOnTouchListener` 返回值由 `true` 改为 **`false`**，否则事件被页内吞掉、横滑永远翻不到详情；`onPause` 暂停、`onResume` 续播（横向滑到详情时 FragmentStateAdapter 自动把这一页降到 STARTED，无需外壳通知）。
+  - 新增 `ShortVideoDetailPageFragment` + `fragment_short_video_detail_page.xml`：右侧三页的**壳**，`onViewCreated` 按当前 aid 塞 `VideoInfoFragment.newInstance(aid, bvid)` / `ReplyFragment.newInstance(aid, 1, 0, -1, 0)` / `VideoRcmdFragment.newInstance(aid)`；aid 未就绪时显示「短视频还没加载好，先滑回去看看」。
+  - 新增 `ShortVideoShellAdapter`（`FragmentStateAdapter`，注意包名是 `androidx.viewpager2.adapter`）：第 0 页 id 恒为 0（翻视频不重建），第 1~3 页 `getItemId = detailAid * 10 + position`（aid 一变整页重建）；`offscreenPageLimit = itemCount` 常驻。
+  - 外壳只做三件事：`onFeedAnchorChanged()`（取当前 aid、变则 `notifyItemRangeChanged(1, count-1)`）、`currentShortVideo()`、转发 `onVideoCompleted(position)`。返回键在右侧页先回第 0 页；`dispatchTouchEvent` 里第 0 页右滑 fling → `finish()`。
+- **文案/教程**：删除 `text_shortvideoplayer_no_author`，新增 `text_shortvideoplayer_detail_not_ready`；`tutorial/Tutorials.kt` 的左右滑说明改为「滑到右侧看详情、评论和相关推荐；短视频页右滑退出」，`version` 2→3；`res/xml/tutorial_short_video.xml` 同步。
+- **未验证 / 残留**：无设备，**全部交互未验证**；详情/评论/相关推荐三页复用 `VideoInfoFragment` / `ReplyFragment` / `VideoRcmdFragment`，它们内部若假设宿主是 `VideoInfoActivity`（如 `viewPager` 字段）需真机确认——已 grep 过三者的 `viewPager` / `parentFragment` / `as VideoInfoActivity`，均无强依赖（`VideoInfoFragment` 仅在 `activity is VideoInfoActivity` 时才联动翻页）。`ReplyFragment` 首次进入会自己拉评论，评论页在「短视频还没加载好」时不会创建。闪退根因仍未定位，若真机复现需 logcat。
+
+### 3.48 短视频横滑误触发修复：横滑不再交给 pager 抢，改由 `SwipePageLayout` 判向 + fakeDrag 跟手（26.10.21，待真机）
+
+- **反馈（用户原话）**："误触发左右滑动的概率极高，所有滑动都会触发进入视频详情，且这些界面并没有真正连接到一起，而是跳转类似的"。
+- **根因**：上一版把横滑完全交给外壳 `ViewPager2`，它判断「横向」的标准是 `dx > dy`（1:1），竖向刷短视频时手指稍微一斜就被它 intercept 成翻页；而且翻页判定发生在 pager 内部，页面层没有「这到底是不是横滑」的裁决权。
+- **方案**：`pager.isUserInputEnabled = false` 彻底禁掉 pager 自己接触摸（已反编译 `viewpager2-1.1.0.aar` 的 `classes.jar` 确认：`ViewPager2$RecyclerViewImpl.onInterceptTouchEvent/onTouchEvent` 都以 `isUserInputEnabled()` 为闸门），改由**每一页的根布局** `ui/widget/SwipePageLayout` 判方向后驱动 pager 的 fakeDrag：
+  - 判据：超过 `ViewConfiguration.touchSlop` 后 `|dx| > |dy| * 2` 才算横向（60° 以内的斜滑全算竖向，交给页内竖向 pager / 列表）；多指（缩放）一律不参与翻页。
+  - 横向成立后 `beginFakeDrag()` + 每次 MOVE `fakeDragBy(lastX - ev.x)`，页面**跟手**移动；松手 `endFakeDrag()` 由 pager 自己按速度/位移吸附到目标页。
+  - 松手时若已超过 `SWIPE_MIN_RATIO = 0.18` 屏宽、但 pager 因吸附阈值更严没翻过去，则补一次 `setCurrentItem`，避免「明明滑了却不翻页」。
+  - 第 0 页向右滑：fakeDrag 无页可退，改用整页 `translationX` 跟手位移作反馈；超过阈值后整页滑出屏幕再 `finish()`（手感对齐系统右滑返回）。**判退出必须比对「按下时所在的页」**（`startItem == 0`），否则从详情页滑回第 0 页那一下也会被误判成退出。
+- **fakeDrag 方向（反编译确认，别凭感觉改）**：`FakeDrag.fakeDragBy(float offset)` 对横向 pager 调的是 `RecyclerView.scrollBy(offset, 0)`，**offset 为正 = 向后一页**；所以手指左移（`lastX - ev.x > 0`）传正值。`beginFakeDrag()` 只检查当前是否正在拖动，**不受 `isUserInputEnabled` 影响**，故禁用触摸后 fakeDrag 仍可用。
+- **接线**：`fragment_short_video_feed.xml` / `fragment_short_video_detail_page.xml` 根节点由 `FrameLayout` 换成 `SwipePageLayout`；两个 Fragment 在 `onViewCreated` 里 `pagerProvider = { host.shellPager() }`、`onSwipe = { host.handleSwipe(it) }`；`ShortVideoPlayerActivity` 删掉 `dispatchTouchEvent` 与 `swipeExitDetector`，新增 `shellPager()` / `handleSwipe(direction)`（-1 = 手指向左翻下一页，+1 = 手指向右翻上一页，`target < 0` 即退出本页）。
+- **验证**：`./gradlew.bat :app:assembleDebug --offline` → BUILD SUCCESSFUL（两 flavor）；`:app:testStandardDebugUnitTest` / `:app:testCoexistDebugUnitTest` 各 71 类 / 759 例、0 失败（与 §3.47 时一致，本次只改 UI 手势链路，未动可选为单测的纯函数）。**真机手感（跟手、阈值 2:1、退出动画）未验证**。
+
 ## 4. 历史章节索引
+
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
 > §一~§三十 的「收尾状态」按归档正文与 §五 / §十 的登记推断：批次类记「已闭环」，正文明确登记遗留的记「部分遗留」，总览 / 明细 / 建议 / 验证记录类记「纯历史」。
