@@ -8,6 +8,7 @@
     3. 构建全部：普通版 + 共存版 × Debug + Release 一次出 4 个包
     4. 安装到真机（Debug / Release × 普通版 / 共存版）
     5. 安装到模拟器（Debug / Release × 普通版 / 共存版）
+    6. 修改版本号 / 版本名（写 app/build.gradle，可顺带同步 strings.xml 的更新日志锚点）
 
 设计要点：
     * 只用 Python 标准库，不引入第三方依赖（仓库约定「不轻易引入新第三方库」）。
@@ -19,15 +20,20 @@
       （会清空该应用数据：登录态、设置、缓存）。
     * Release 需要 `local.properties` 里的 KEY_PATH / KEY_PASSWORD 才会签名；
       没配时会给出提示，产物装不上。
+    * 改 versionName 只动 `app/build.gradle` 那一行；`strings.xml` 里的
+      「【YY.MM.DD 本次更新】」锚点不会自动跟着改（会询问），不同步的话
+      `verifyVersionConsistency` 在 check / CI 上会失败，assemble 不受影响。
 
 用法：
     python build_tui.py                  # 交互式 TUI（终端不支持时自动降级为行式菜单）
     python build_tui.py --connect        # 连接本机模拟器（MuMu / 雷电 / 夜神）并列出设备
     python build_tui.py --list-devices   # 列出 adb 设备（含 ABI）
     python build_tui.py --list-apks      # 列出已构建的 APK
+    python build_tui.py --list-version   # 打印当前 versionName / versionCode
     python build_tui.py --build --type release --flavor coexist
     python build_tui.py --build-all      # 一次构建全部四个变体
     python build_tui.py --install --target emulator --type debug --flavor standard
+    python build_tui.py --version-name 26.10.20 --version-code 2610200 --sync-anchor
     python build_tui.py --dry-run ...    # 只打印将执行的命令，不真正执行
 
 注意：TUI 用 ANSI 转义序列 + Windows 控制台 VT 模式实现，Windows 10 及以上、以及
@@ -468,6 +474,262 @@ def has_release_signing():
 
 
 # ---------------------------------------------------------------------------
+# 版本号 / 版本名
+# ---------------------------------------------------------------------------
+
+BUILD_GRADLE = ROOT / "app" / "build.gradle"
+STRINGS_XML = ROOT / "app" / "src" / "main" / "res" / "values" / "strings.xml"
+
+# defaultConfig 里的两行声明；`versionName += "-BETA" + betaVer` 那种拼接行不会被匹配。
+# 说明：仓库里的 gradle 文件可能是 CRLF，`$` 不会在 `\r` 前成立，所以必须显式吃掉 `\r`
+# 并且把它放进分组——否则 sub() 会连同 `\r` 一起替换掉，把这一行改成 LF（曾真踩过）。
+_RE_VERSION_CODE = re.compile(
+    r"(?m)^([ \t]*versionCode[ \t]+)(\d+)([ \t]*(?://[^\r\n]*)?)(\r?)$"
+)
+_RE_VERSION_NAME = re.compile(r'(?m)^([ \t]*versionName[ \t]+")([^"\r\n]*)(")')
+_RE_VERSION_NAME_OK = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]*$")
+
+
+class VersionChange:
+    """一次版本改动（或 dry-run）的结果。"""
+
+    def __init__(self, old_name, old_code):
+        self.ok = True
+        self.error = ""
+        self.changed = False
+        self.old_name = old_name
+        self.old_code = old_code
+        self.new_name = old_name
+        self.new_code = old_code
+        self.anchor_synced = False
+        self.anchor_available = False
+
+
+def _read_text_exact(path):
+    """按原样读文本（不转换换行），写回时才能保证除目标行外一个字节都不变。"""
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def _write_text_exact(path, text):
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+
+
+def read_version_info():
+    """读 app/build.gradle 里真正生效的 versionCode / versionName。"""
+    if not BUILD_GRADLE.is_file():
+        raise EnvError(f"找不到 {rel(BUILD_GRADLE)}")
+    try:
+        text = _read_text_exact(BUILD_GRADLE)
+    except OSError as exc:
+        raise EnvError(f"读取 {rel(BUILD_GRADLE)} 失败：{exc}") from exc
+    code_match = _RE_VERSION_CODE.search(text)
+    name_match = _RE_VERSION_NAME.search(text)
+    if not code_match or not name_match:
+        raise EnvError(f"解析 {rel(BUILD_GRADLE)} 的 versionCode / versionName 失败")
+    return int(code_match.group(2)), name_match.group(2)
+
+
+def validate_version_name(value):
+    """校验版本名；返回空字符串表示通过。"""
+    if not value:
+        return "版本名不能为空"
+    if not _RE_VERSION_NAME_OK.match(value):
+        return "版本名只能用字母、数字、点、下划线、连字符（本仓库惯例是 YY.MM.DD，如 26.10.20）"
+    if len(value) > 32:
+        return "版本名太长（最多 32 个字符）"
+    return ""
+
+
+def is_yy_mm_dd(value):
+    return bool(re.fullmatch(r"\d{2}\.\d{2}\.\d{2}", value))
+
+
+def version_anchor(name):
+    """更新日志锚点，与 app/build.gradle 的 verifyVersionConsistency 一致。"""
+    return f"【{name} 本次更新】"
+
+
+def anchor_present(name):
+    """strings.xml 里是否已有该版本名的更新日志锚点。"""
+    if not STRINGS_XML.is_file():
+        return False
+    try:
+        return version_anchor(name) in _read_text_exact(STRINGS_XML)
+    except OSError:
+        return False
+
+
+def sync_version_anchor(old_name, new_name, dry_run=False):
+    """把 strings.xml 的更新日志锚点【旧版本 本次更新】改成新版本。返回是否找到锚点。"""
+    if not STRINGS_XML.is_file():
+        return False
+    try:
+        text = _read_text_exact(STRINGS_XML)
+    except OSError:
+        return False
+    old_anchor = version_anchor(old_name)
+    if old_anchor not in text:
+        return False
+    if not dry_run:
+        _write_text_exact(STRINGS_XML, text.replace(old_anchor, version_anchor(new_name)))
+    return True
+
+
+def apply_version(new_name=None, new_code=None, dry_run=False, sync_anchor=False):
+    """改 versionName / versionCode；返回 VersionChange。不打印任何东西。"""
+    old_code, old_name = read_version_info()
+    change = VersionChange(old_name, old_code)
+    target_name = old_name if new_name is None else new_name
+    target_code = old_code if new_code is None else new_code
+
+    error = validate_version_name(target_name)
+    if error:
+        change.ok = False
+        change.error = error
+        return change
+    if not isinstance(target_code, int) or target_code <= 0:
+        change.ok = False
+        change.error = "版本号必须是正整数"
+        return change
+
+    change.new_name = target_name
+    change.new_code = target_code
+    change.anchor_available = anchor_present(old_name)
+    if target_name == old_name and target_code == old_code:
+        return change
+
+    text = _read_text_exact(BUILD_GRADLE)
+    if target_name != old_name:
+        text = _RE_VERSION_NAME.sub(
+            lambda match: match.group(1) + target_name + match.group(3), text, count=1
+        )
+    if target_code != old_code:
+        text = _RE_VERSION_CODE.sub(
+            lambda match: match.group(1) + str(target_code) + match.group(3) + match.group(4),
+            text,
+            count=1,
+        )
+
+    if dry_run:
+        change.changed = True
+        return change
+
+    _write_text_exact(BUILD_GRADLE, text)
+    # 写回后回读，确认真的生效（正则写错时不要留个假成功）
+    try:
+        read_code, read_name = read_version_info()
+    except EnvError as exc:
+        change.ok = False
+        change.error = str(exc)
+        return change
+    if read_code != target_code or read_name != target_name:
+        change.ok = False
+        change.error = f"回读校验失败（现在是 {read_name} / {read_code}），请手动检查 {rel(BUILD_GRADLE)}"
+        return change
+
+    change.changed = True
+    if sync_anchor and target_name != old_name and change.anchor_available:
+        change.anchor_synced = sync_version_anchor(old_name, target_name)
+    return change
+
+
+def print_version_change(change, dry_run=False):
+    """打印一次版本改动的人话结果。"""
+    if not change.ok:
+        print(paint(f"  ✗ {change.error}", C.RED))
+        return
+    if not change.changed:
+        print(paint(f"  版本没有变化：{change.old_name} ({change.old_code})", C.DIM))
+        return
+    arrow = f"{change.old_name} ({change.old_code}) → {change.new_name} ({change.new_code})"
+    prefix = "[dry-run] 未写入，将改为" if dry_run else "✓ 版本已改为"
+    print(paint(f"  {prefix} {arrow}", C.GREEN if not dry_run else C.CYAN, C.BOLD))
+    if dry_run:
+        return
+    print(f"  已写入 {rel(BUILD_GRADLE)}")
+    if not is_yy_mm_dd(change.new_name):
+        print(paint(f"  [提示] 版本名不是仓库惯例的 YY.MM.DD 格式：{change.new_name}", C.YELLOW))
+    if change.new_name != change.old_name and not change.anchor_synced:
+        if change.anchor_available:
+            print(
+                paint(
+                    f"  [注意] {rel(STRINGS_XML)} 里仍是【{change.old_name} 本次更新】；"
+                    "构建不受影响，但 check / CI 的 verifyVersionConsistency 会失败。",
+                    C.YELLOW,
+                )
+            )
+        else:
+            print(
+                paint(
+                    f"  [注意] {rel(STRINGS_XML)} 里没有【{change.old_name} 本次更新】锚点，"
+                    "verifyVersionConsistency 会失败。",
+                    C.YELLOW,
+                )
+            )
+
+
+def prompt_version_edit(term, dry_run=False):
+    """交互修改版本号 / 版本名（TUI 与行式菜单共用）。返回 (成功, 状态文案)。"""
+    try:
+        old_code, old_name = read_version_info()
+    except EnvError as exc:
+        print(paint(f"[错误] {exc}", C.RED))
+        return False, str(exc)
+
+    print()
+    print(paint("▶ 修改版本号 / 版本名", C.BOLD, C.CYAN))
+    print(f'  当前：versionName "{old_name}"    versionCode {old_code}')
+    print(paint("  直接回车表示保持不变，输入 q 取消。", C.DIM))
+    try:
+        name_input = input("新的 versionName: ").strip()
+        code_input = "" if name_input.lower() == "q" else input("新的 versionCode: ").strip()
+    except EOFError:
+        print(paint("  已取消", C.DIM))
+        return False, "已取消修改版本号"
+    if name_input.lower() == "q" or code_input.lower() == "q":
+        print(paint("  已取消", C.DIM))
+        return False, "已取消修改版本号"
+
+    new_name = name_input or old_name
+    if code_input:
+        try:
+            new_code = int(code_input)
+        except ValueError:
+            print(paint("  [错误] versionCode 必须是数字", C.RED))
+            return False, "版本号必须是正整数"
+    else:
+        new_code = old_code
+
+    error = validate_version_name(new_name)
+    if error:
+        print(paint(f"  [错误] {error}", C.RED))
+        return False, error
+
+    sync = False
+    if new_name != old_name:
+        if anchor_present(old_name):
+            sync = term.ask_yes_no(
+                f"同时把 strings.xml 的更新日志锚点改成【{new_name} 本次更新】？"
+            )
+        else:
+            print(paint(f"  [注意] strings.xml 里没有【{old_name} 本次更新】锚点，跳过同步", C.YELLOW))
+
+    try:
+        change = apply_version(new_name, new_code, dry_run, sync)
+    except (OSError, EnvError) as exc:
+        print(paint(f"  ✗ 写版本失败：{exc}", C.RED))
+        return False, f"写版本失败：{exc}"
+    print_version_change(change, dry_run)
+    if not change.ok:
+        return False, change.error
+    if not change.changed:
+        return True, f"版本没有变化：{change.old_name} ({change.old_code})"
+    return True, f"版本：{change.new_name} ({change.new_code})"
+
+
+# ---------------------------------------------------------------------------
 # adb
 # ---------------------------------------------------------------------------
 
@@ -842,12 +1104,24 @@ def print_apks(flavor, build_type):
         print(f"    {apk.name:<44} {human_size(stat.st_size):>9}  {stamp}")
 
 
+def version_note():
+    """构建横幅上那行版本信息；读不到就空着，不打断构建。"""
+    try:
+        code, name = read_version_info()
+    except EnvError:
+        return ""
+    return f"当前版本：{name} ({code})"
+
+
 def execute_build(build_type, flavor, dry_run=False):
     """执行一次构建，返回是否成功。"""
     task = task_name(flavor, build_type)
     print()
     print(paint(f"▶ 构建 {TYPE_LABEL[build_type]} · {FLAVOR_LABEL[flavor]}", C.BOLD, C.CYAN))
     print(f"  Gradle 任务：{task}")
+    note = version_note()
+    if note:
+        print(f"  {note}")
     if build_type == "release" and not has_release_signing():
         print(
             paint(
@@ -870,6 +1144,9 @@ def execute_build_all(dry_run=False):
     tasks = [task_name(flavor, build_type) for flavor, build_type in ALL_VARIANTS]
     print()
     print(paint("▶ 构建全部：普通版 + 共存版 × Debug + Release", C.BOLD, C.CYAN))
+    note = version_note()
+    if note:
+        print(f"  {note}")
     for task in tasks:
         print(f"  {task}")
     if not has_release_signing():
@@ -1036,10 +1313,26 @@ class AppState:
     adb_error: str = ""
     status: str = ""
     status_kind: str = "info"
+    version_name: str = ""
+    version_code: int = 0
 
     def set_status(self, text, kind="info"):
         self.status = text
         self.status_kind = kind
+
+    def version_hint(self):
+        if self.version_name:
+            return f"{self.version_name} ({self.version_code})"
+        return "读取失败"
+
+
+def load_version(state):
+    """把 build.gradle 里的当前版本读进 state（失败时留空，不抛异常）。"""
+    try:
+        state.version_code, state.version_name = read_version_info()
+    except EnvError:
+        state.version_name = ""
+        state.version_code = 0
 
 
 def make_items(state):
@@ -1051,6 +1344,12 @@ def make_items(state):
         Item("build", "构建 Debug", hotkey="1", arg="debug", hint=task_name(state.flavor, "debug")),
         Item("build", "构建 Release", hotkey="2", arg="release", hint=task_name(state.flavor, "release")),
         Item("build_all", "构建全部", hotkey="a", hint="两渠道 × 两类型"),
+        Item(
+            "edit_version",
+            "版本号 / 版本名",
+            hotkey="v",
+            hint=f"改 build.gradle：{state.version_hint()}",
+        ),
         Item(
             "install_device",
             "安装到真机",
@@ -1180,7 +1479,7 @@ def build_frame(state, width):
     lines.append("│ " + row(status_segs, inner) + " │")
     lines.append(
         "│ "
-        + row([(" ↑↓ 选择   ←→ 切换   Enter 执行   1-4 直达   A 全构建   R 刷新   C 连模拟器   Q 退出", C.DIM)], inner)
+        + row([(" ↑↓ 选择   ←→ 切换   Enter 执行   1-4 直达   A 全构建   V 版本   R 刷新   C 连模拟器   Q 退出", C.DIM)], inner)
         + " │"
     )
     lines.append("└" + "─" * (w - 2) + "┘")
@@ -1296,6 +1595,8 @@ class TuiApp:
             self.run_build(item.arg)
         elif item.key == "build_all":
             self.run_build_all()
+        elif item.key == "edit_version":
+            self.run_edit_version()
         elif item.key == "install_device":
             self.run_install("device")
         elif item.key == "install_emulator":
@@ -1358,6 +1659,16 @@ class TuiApp:
             state.set_status("全部构建完成（普通版 + 共存版 × Debug + Release）", "ok")
         else:
             state.set_status("全量构建有失败，详见上方输出", "err")
+
+    def run_edit_version(self):
+        state = self.state
+        self.term.leave()
+        ok, message = prompt_version_edit(self.term, self.dry_run)
+        self.term.wait_return()
+        self.term.enter()
+        load_version(state)
+        self.refresh(quiet=True)
+        state.set_status(message, "ok" if ok else "err")
 
     def run_install(self, target_kind):
         state = self.state
@@ -1443,7 +1754,13 @@ def print_banner():
 def run_line_mode(state, dry_run=False):
     while True:
         print()
-        print(paint(f" 当前：{TYPE_LABEL[state.build_type]} · {FLAVOR_LABEL[state.flavor]}", C.BOLD))
+        print(
+            paint(
+                f" 当前：{TYPE_LABEL[state.build_type]} · {FLAVOR_LABEL[state.flavor]}"
+                f"    版本：{state.version_hint()}",
+                C.BOLD,
+            )
+        )
         online = [d for d in state.devices if _device_state_ok(d)]
         if state.adb_error:
             print(paint(f" 设备：{state.adb_error}", C.RED))
@@ -1457,6 +1774,7 @@ def run_line_mode(state, dry_run=False):
         print()
         print("  [1] 构建 Debug            [2] 构建 Release")
         print("  [a] 构建全部（两渠道 × 两类型）")
+        print("  [v] 修改版本号 / 版本名")
         print("  [3] 安装到真机            [4] 安装到模拟器")
         print("  [t] 切换构建类型          [f] 切换发行渠道")
         print("  [c] 连接模拟器            [d] 刷新设备    [0] 退出")
@@ -1506,6 +1824,10 @@ def run_line_mode(state, dry_run=False):
             continue
         if raw == "a":
             execute_build_all(dry_run)
+            continue
+        if raw == "v":
+            prompt_version_edit(TERM, dry_run)
+            load_version(state)
             continue
         if raw in ("3", "4"):
             target_kind = "device" if raw == "3" else "emulator"
@@ -1593,6 +1915,41 @@ def cmd_list_apks():
     return 0
 
 
+def cmd_list_version():
+    try:
+        code, name = read_version_info()
+    except EnvError as exc:
+        print(paint(f"[错误] {exc}", C.RED))
+        return 2
+    print(f"{name} ({code})")
+    if not anchor_present(name):
+        print(
+            paint(
+                f"[提示] {rel(STRINGS_XML)} 里没有【{name} 本次更新】锚点，check / CI 会失败",
+                C.YELLOW,
+            )
+        )
+    return 0
+
+
+def cmd_set_version(args):
+    try:
+        change = apply_version(
+            args.version_name, args.version_code, args.dry_run, args.sync_anchor
+        )
+    except EnvError as exc:
+        print(paint(f"[错误] {exc}", C.RED))
+        return 2
+    except OSError as exc:
+        print(paint(f"[错误] 写 {rel(BUILD_GRADLE)} 失败：{exc}", C.RED))
+        return 2
+    if not change.ok:
+        print(paint(f"[错误] {change.error}", C.RED))
+        return 2
+    print_version_change(change, args.dry_run)
+    return 0
+
+
 def cmd_build(args):
     ok = execute_build(args.type, args.flavor, args.dry_run)
     return 0 if ok else 1
@@ -1648,6 +2005,8 @@ def parse_args(argv=None):
             "  python build_tui.py --build --type release --flavor coexist\n"
             "  python build_tui.py --build-all          # 两渠道 × 两类型一次构建\n"
             "  python build_tui.py --install --target emulator --type debug --flavor standard\n"
+            "  python build_tui.py --list-version\n"
+            "  python build_tui.py --version-name 26.10.20 --version-code 2610200 --sync-anchor\n"
         ),
     )
     parser.add_argument("--build", action="store_true", help="非交互：构建一次")
@@ -1672,6 +2031,24 @@ def parse_args(argv=None):
         help="只尝试连接本机常见模拟器端口（MuMu / 雷电 / 夜神），然后列出设备",
     )
     parser.add_argument("--list-apks", action="store_true", help="列出已构建的 APK")
+    parser.add_argument("--list-version", action="store_true", help="打印当前 versionName / versionCode")
+    parser.add_argument(
+        "--version-name",
+        default=None,
+        help="非交互：改 versionName（只动 app/build.gradle 那一行）",
+    )
+    parser.add_argument(
+        "--version-code",
+        type=int,
+        default=None,
+        help="非交互：改 versionCode（正整数）",
+    )
+    parser.add_argument(
+        "--sync-anchor",
+        action="store_true",
+        help="改版本名时同时把 strings.xml 的【旧版本 本次更新】锚点一起改掉"
+        "（verifyVersionConsistency 要求，不同步则 check / CI 失败）",
+    )
     parser.add_argument("--no-tui", action="store_true", help="强制使用行式菜单（不用全屏 TUI）")
     parser.add_argument("--dry-run", action="store_true", help="只打印将执行的命令，不真正执行")
     return parser.parse_args(argv)
@@ -1690,6 +2067,15 @@ def main(argv=None):
     TERM = Term(force_tui=False if args.no_tui else None)
     USE_ANSI = bool(sys.stdout.isatty() and (os.name != "nt" or TERM._vt))
     try:
+        if args.list_version:
+            return cmd_list_version()
+        if args.version_name is not None or args.version_code is not None:
+            code = cmd_set_version(args)
+            if code != 0:
+                return code
+            # 只改版本就到此为止；带构建 / 安装参数则继续往下走
+            if not (args.build or args.build_all or args.install):
+                return 0
         if args.connect:
             connect_emulators()
             devices = list_devices(auto_connect=False)
@@ -1715,6 +2101,7 @@ def main(argv=None):
             return cmd_install(args)
 
         state = AppState(build_type=args.type, flavor=args.flavor)
+        load_version(state)
         if TERM.tui:
             TuiApp(TERM, state, args.dry_run).run()
             return 0

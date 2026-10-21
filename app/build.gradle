@@ -20,7 +20,7 @@ android {
         applicationId "com.RobinNotBad.BiliClient"
         minSdk 19
         targetSdk 34
-        versionCode 2610190
+        versionCode 2610200
         versionName "26.10.19"
 
         if (betaVer) {
