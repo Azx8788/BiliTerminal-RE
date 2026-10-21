@@ -1,33 +1,93 @@
 package com.RobinNotBad.BiliClient.player
 
 /**
- * 弹幕时钟校正的纯判定逻辑（无 Android 依赖，可直接 JVM 单测）。
+ * 弹幕时钟纠偏的纯判定逻辑（无 Android 依赖，可直接 JVM 单测）。
  *
- * 背景：DFM 在 `DrawHandler.syncTimer` 里每帧 `timer.add(d)`（`DrawHandler.java:466`）平滑推进
- * 弹幕时钟；而播放位置由主线程定时器每 250ms 采样一次喂进来。若每次采样都 `timer.update(pos)`
- * （把时钟强行拨到该值），DFM 自走的时钟会被周期性往回拽，滚动弹幕表现为"每 0.25 秒一跳"。
+ * ## 为什么不是「偏差超过 400ms 就 seek」
+ *
+ * DFM 的 `seekTo` **不是免费的**：`DrawHandler.seekTo` → `DrawTask.seek()` → `reset()`，
+ * 会把屏上全部弹幕清空（`danmakus = new Danmakus()` + `mRenderer.clear()`），
+ * 再靠 `CacheManagingDrawTask` 的 `SEEK` 分支 `prepareCaches(true)` 重建缓存
+ * （见 `DanmakuFlameMaster/.../controller/DrawTask.java` 的 `seek()` 与
+ * `CacheManagingDrawTask.java` 的 `CacheHandler.SEEK`）。
+ *
+ * 于是「小偏差也纠偏」在用户眼里就是：**弹幕整屏消失 → 过零点几秒重新出现 → 再消失**。
+ * 只要漂移持续存在（缓冲/卡顿时弹幕时钟按墙钟走、播放位置却停在原地），每秒一次 seek
+ * 就等于每秒清一次屏——这正是 26.10.21 用户报的「弹幕突然消失、拖进度条后闪一下就没了」。
+ *
+ * ## 现在的策略
+ *
+ * 1. **只吸附肉眼可见的大跳**（[SNAP_THRESHOLD_MS] = 1.5s）。1.5s 以内的偏差不碰，
+ *    因为清屏的代价远大于偏差本身。
+ * 2. **吸附后给冷静期**（[SETTLE_MS]），期间不再判定，让缓存重建与计时基准稳定下来。
+ * 3. **连续吸附仍不收敛就退避**（[MAX_CONSECUTIVE_SNAPS] 次后 [BACKOFF_MS]），
+ *    避免「判定为真 → seek → 清零重建 → 又被判定为真」的死循环。
+ * 4. 一旦某次采样落在阈值内（收敛），连续计数立刻清零，恢复正常灵敏度。
  */
 object DanmakuSync {
 
-    /**
-     * 弹幕时钟与播放位置的最大容许偏差（毫秒），**超过**才把 DFM 自走的时钟拉回。
-     *
-     * 位置每 250ms 采样一次，天然滞后 0~250ms；容差必须大于该间隔，否则每次采样都会触发校正。
-     * 取 400ms 再留约 150ms 给主线程卡顿余量，保证稳态下不校正。
-     */
-    const val TOLERANCE_MS = 400L
+    /** 播放位置的采样间隔（`PlayerActivity.progressChange` 的 250ms 自循环）。 */
+    const val SAMPLE_INTERVAL_MS = 250L
 
     /**
-     * 是否需要把弹幕时钟拉回到 [posMs]。
+     * 只有偏差**超过**这个值才吸附。
      *
-     * @param posMs 当前播放位置（毫秒）。**负数表示"位置不可信"**（播放器未就绪或正在重建），
-     *   此时必须跳过校正 —— 把窗口期的脏位置灌进 timer 会让整批弹幕被判定为"已过期"而一条都不显示。
-     * @param timerMs DFM 当前自走的时钟（`DanmakuTimer.currMillisecond`）。
-     * @return true 表示偏差已超出 [TOLERANCE_MS]，应当 `timer.update(posMs)`。
+     * 必须远大于采样滞后（250ms）：位置是每 250ms 采样一次，天然落后 0~250ms，
+     * 若在这个量级就判定，会每次采样都把 DFM 自走的时钟拽一次（滚动弹幕"一跳一跳"）。
      */
-    fun shouldResync(posMs: Long, timerMs: Long): Boolean {
-        if (posMs < 0) return false
+    const val SNAP_THRESHOLD_MS = 1500L
+
+    /** 吸附后的冷静期：这段时间内即使仍有偏差也不再吸附（给重建缓存留时间）。 */
+    const val SETTLE_MS = 1500L
+
+    /** 连续吸附这么多次后判定「吸附治不了」，转入退避。 */
+    const val MAX_CONSECUTIVE_SNAPS = 3
+
+    /** 退避时长。期间弹幕时钟按 DFM 自走的基准跑，不再清屏。 */
+    const val BACKOFF_MS = 30_000L
+
+    /**
+     * 一次采样的判定结果。
+     *
+     * @property snap 是否应当 `IDanmakuView.seekTo(posMs)`
+     * @property consecutive 更新后的「连续吸附次数」，调用方保存并在下次采样传回
+     */
+    data class Decision(val snap: Boolean, val consecutive: Int)
+
+    /**
+     * 判定这一次采样要不要吸附弹幕时钟。
+     *
+     * @param posMs 当前播放位置（毫秒）。**负数表示位置不可信**（播放器未就绪或正在重建），
+     *   此时绝不吸附——把窗口期的脏位置灌进去会让整批弹幕被判成"已过期"而一条都不显示。
+     * @param timerMs DFM 当前的弹幕时钟（`IDanmakuView.currentTime`）。
+     * @param nowMs 本次采样的时间（`SystemClock.elapsedRealtime()`）。
+     * @param lastSnapAtMs 上次吸附的时间；从未吸附过传一个足够小的值（如 0）。
+     * @param consecutive 上次返回的连续吸附次数。
+     */
+    fun decide(
+        posMs: Long,
+        timerMs: Long,
+        nowMs: Long,
+        lastSnapAtMs: Long,
+        consecutive: Int
+    ): Decision {
+        if (posMs < 0) return Decision(false, consecutive)
+
         val drift = posMs - timerMs
-        return drift > TOLERANCE_MS || drift < -TOLERANCE_MS
+        if (drift in -SNAP_THRESHOLD_MS..SNAP_THRESHOLD_MS) {
+            // 收敛：灵敏度立刻恢复，否则退避会一直挂着
+            return Decision(false, 0)
+        }
+        if (nowMs - lastSnapAtMs < settleFor(consecutive)) return Decision(false, consecutive)
+        return Decision(true, consecutive + 1)
     }
+
+    /**
+     * 距离上次吸附至少要等多久。
+     *
+     * 前 [MAX_CONSECUTIVE_SNAPS] 次只等 [SETTLE_MS]（正常的偶发大跳，例如卡顿累积）；
+     * 之后说明吸附没有解决问题，退到 [BACKOFF_MS]，宁可让弹幕错位也不再反复清屏。
+     */
+    fun settleFor(consecutive: Int): Long =
+        if (consecutive >= MAX_CONSECUTIVE_SNAPS) BACKOFF_MS else SETTLE_MS
 }

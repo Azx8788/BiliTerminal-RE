@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.20 实测）**：**63 个测试类 / 640 个用例**，两个 flavor 完全相同（同源码），0 失败。计数方式：`app/src/test/` 下 63 个 `*Test.kt|java`（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和为 640。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.21 实测）**：**64 个测试类 / 650 个用例**，两个 flavor 完全相同（同源码），0 失败。计数方式：`app/src/test/` 下 64 个 `*Test.kt|java`（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和为 650。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **本轮紧急撤回**：「自动跳过片头片尾」处于**撤回状态**（26.10.10 用户明确要求，非缺陷）——设置入口已隐藏、运行期恒不生效，代码与存档保留。恢复清单 6 步见 §2.2 第一条与 §3.3 末尾。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -832,6 +832,21 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **修法**（与 B 站网页行为一致：话题链接本来就指向搜索）：`LinkUrlUtil` 新增纯函数 `parseTopicSearchKeyword(jumpUrl)`（要求含 `search.bilibili.com`，从 `keyword=` 取值后 `URLDecoder` 解成中文，取不到返回空串）；`StringUtil.setSingleTopic` 改三段——有 `topic_id` 仍进 `DynamicTopicActivity`；只有搜索链接则用新内部类 `TopicSearchClickableSpan` 进 `SearchActivity`（`putExtra("keyword", …)` + `putExtra("auto_search", true)`）；两者都没有才只上色。`model/TopicNode` 补 `getSearchKeyword()`，`isClickable()` 改为「有 topic_id 或有搜索关键词」。`SearchActivity` 只在 `auto_search=true` 时**进入即搜**，其余只传 `keyword` 的调用方行为不变（原来只预填输入框、用户还得再点一次放大镜）。
 - **单测**：`LinkUrlUtilTest` 补 4 例（协议相对的真实跳转能解码、https + 额外参数、非搜索链接 / 无 keyword / 空值返回空、topic-detail 链接不误判为搜索）；`DynamicApiTest` 补 1 例（搜索链接话题 `topicId=0` 但 `isClickable=true`）。
 - **验证**：`:app:assembleDebug --offline` + 两个 flavor 的单测全 `BUILD SUCCESSFUL`；真机 `emulator-5554`（coexist debug 包）点正文话题 → 进站内搜索页。
+
+### 3.32 弹幕突然消失 / 拖进度条后闪一下就没了（26.10.21）
+
+- **现象（用户描述）**：有时看到某处弹幕突然整屏消失；拖进度条或快进快退后弹幕消失；消失后偶尔又出现零点几秒再消失。
+- **根因一（清屏机制，代码级确证）**：`DrawHandler.SEEK_POS` → `DrawTask.seek()` → **`reset()`**（`danmakus = new Danmakus()` + `mRenderer.clear()`），屏上弹幕被清空，再由 `CacheManagingDrawTask.CacheHandler.SEEK` 的 `prepareCaches(true)` 重建缓存（零点几秒后才回来）。也就是说 **`seekTo` 天生就是"清屏 + 重建"**。而 `PlayerActivity.progressChange` 里原来的纠偏是「偏差 > 400ms 且距上次 > 1s 就 seekTo」——只要漂移持续（缓冲/卡顿时弹幕时钟按墙钟走、播放位置停住），就**每秒清一次屏**，正好是「闪现零点几秒又消失」。
+- **根因二（跳转没更新判据，真 bug）**：拖进度条（`onStopTrackingTouch`）与快进后退键（`seekToPosition`）只调 `ijkPlayer.seekTo` + `mDanmakuView.seekTo`，**没有更新 `video_now`**。下一次采样用旧位置比新时钟，算出几百秒"偏差"，纠偏立刻把弹幕视图 seek 回**旧位置** → 用户看到"拖完弹幕就没了"。
+- **根因三（分段空洞，解释"不拖动也会消失"）**：`DanmakuApi.getAllVideoDanmaku` 并发拉 6 分钟一段的弹幕，任一段失败**不重试且完全不报**，那 6 分钟就是零弹幕（不是"少几条"）；`segmentCount = duration/360 + 1` 在时长恰好整除时还会多发一次空请求；`duration` 未就绪时回落 3600 秒 → 每次都按 11 段请求。
+- **修法**：
+  - `player/DanmakuSync.kt` 判据改为 `decide()`：阈值 **1.5s**（`SNAP_THRESHOLD_MS`）、吸附后冷静 **1.5s**（`SETTLE_MS`）、连续 3 次不收敛退避 **30s**（`BACKOFF_MS`）、收敛后计数清零；`posMs < 0` 仍不吸附。
+  - `PlayerActivity`：`seekToVideo()` 成为拖进度条/快进后退的**唯一入口**，内部 `markSeekTarget()` 同步 `video_now`、强制刷新进度（`video_now_last = -1`）、清零纠偏计数、给冷静期；重播路径也调 `markSeekTarget(0)`。`ShortVideoPlayerActivity` 的同一处判据同步改 `decide()`。
+  - `api/DanmakuApi.java`：新增纯函数 `segmentCountFor(sec)`（`ceil`，≤0 视为 1 段）与 `SEGMENT_SECONDS`；每个分段失败重试 1 次（`fetchSegmentWithRetry`）；拿不满时**按区间打缺口日志**（"分段 3~5，720~1080 秒无弹幕"），事后能区分"数据缺失"和"渲染问题"。
+- **单测**：`DanmakuSyncTest` 重写为 9 例（稳态不吸附、小偏差反复采样也不吸附、大跳吸附、冷静期挡住第二次、连续 3 次退避、退避期满恢复、收敛清零、位置不可信不吸附、阈值远大于采样间隔）；新增 `DanmakuSegmentCountTest` 6 例（未知时长 1 段、刚满一段仍是 1 段、整倍数不多发、361 秒必须 2 段、2 小时 20 段、`SEGMENT_SECONDS=360`）。
+- **验证（本机构建/单测，26.10.21）**：`:app:assembleDebug`（两个 flavor 各 4 个 ABI 包，`BUILD SUCCESSFUL in 1m 7s`）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 各 **64 suites / 650 tests / 0 failures**（较上轮 63/640 增加 1 套 10 例）。
+- **真机待验**：本机 `adb devices` 为空，上面三条根因全部来自 vendored DFM 源码与调用链，**必须真机复测**：① 正常播放中人为卡顿/切后台再回来，`adb logcat -s "弹幕纠偏"` 只应在 >1.5s 大跳时打一条，**不应每秒一条**；② 反复拖进度条/快进后退，弹幕应立即恢复且不闪；③ 长视频后半段不应出现整段无弹幕，`adb logcat -s "新版弹幕API"` 里"弹幕缺口"应为零。
+- **仍未做（另立项）**：`duration` 未就绪时按 3600 秒硬算 11 段——正确做法是先只取第 1 段、`onPrepared` 拿到真实时长后再补拉剩余分段（涉及二次加载时序，风险比本批大）。
 
 ## 4. 历史章节索引
 

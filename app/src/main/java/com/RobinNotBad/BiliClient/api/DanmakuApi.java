@@ -72,12 +72,32 @@ public class DanmakuApi {
     }
 
     /**
+     * 每段弹幕覆盖的时长（秒）：B 站 `seg.so` 一段 6 分钟。
+     * `segment_index` **从 1 开始**（0 是无效值，服务端返回空）。
+     */
+    public static final int SEGMENT_SECONDS = 360;
+
+    /**
+     * 计算需要请求的分段数（纯函数，便于单测）。
+     *
+     * 必须是 `ceil(duration / 360)`：旧实现写 `duration / 360 + 1`，时长恰好是 360 的倍数时
+     * 会多发一次必然为空的请求；而时长统计本身也会因为 `duration` 未就绪回落成 3600 秒
+     * （11 段），在手表上等于每次播放都多出十几个请求。
+     *
+     * @param maxDurationSec 视频时长（秒）。&lt;= 0 表示未知，按 1 段处理。
+     */
+    public static int segmentCountFor(int maxDurationSec) {
+        if (maxDurationSec <= 0) return 1;
+        return (maxDurationSec + SEGMENT_SECONDS - 1) / SEGMENT_SECONDS;
+    }
+
+    /**
      * 获取视频弹幕（新版 API，返回 protobuf 格式）
      * 使用分段获取方式，每段 6 分钟
      *
      * @param aid          稿件 avid
      * @param cid          视频 cid
-     * @param segmentIndex 分包索引（6min 一包，从 0 开始）
+     * @param segmentIndex 分包索引（6min 一包，**从 1 开始**，见 {@link #SEGMENT_SECONDS}）
      * @return 弹幕分段响应
      * @throws IOException   IO异常
      * @throws JSONException JSON异常
@@ -121,32 +141,20 @@ public class DanmakuApi {
      */
     public static List<DmSegMobileReply> getAllVideoDanmaku(long aid, long cid, int maxDuration)
             throws IOException, JSONException {
-        // 计算需要获取的分段数（每段 6 分钟 = 360 秒）
-        int segmentCount = (maxDuration / 360) + 1;
+        final int segmentCount = segmentCountFor(maxDuration);
 
         Logu.d("新版弹幕API", "视频时长: " + maxDuration + "秒, 需要获取 " + segmentCount + " 个分段");
 
         // 并发获取各分段，按顺序汇总（网络 IO 是主要耗时，串行等待多个 RTT 太慢）
         DmSegMobileReply[] segments = new DmSegMobileReply[segmentCount];
         if (segmentCount <= 1) {
-            try {
-                segments[0] = getVideoDanmakuSegment(aid, cid, 1);
-            } catch (Exception e) {
-                Logu.e("新版弹幕API", "获取分段 1 失败: " + e.getMessage());
-            }
+            segments[0] = fetchSegmentWithRetry(aid, cid, 1);
         } else {
             ExecutorService executor = Executors.newFixedThreadPool(Math.min(segmentCount, 4));
             List<Future<DmSegMobileReply>> futures = new ArrayList<>(segmentCount);
             for (int i = 0; i < segmentCount; i++) {
                 final int index = i;
-                futures.add(executor.submit(() -> {
-                    try {
-                        return getVideoDanmakuSegment(aid, cid, index + 1);
-                    } catch (Exception e) {
-                        Logu.e("新版弹幕API", "获取分段 " + (index + 1) + " 失败: " + e.getMessage());
-                        return null;
-                    }
-                }));
+                futures.add(executor.submit(() -> fetchSegmentWithRetry(aid, cid, index + 1)));
             }
             executor.shutdown();
             for (int i = 0; i < segmentCount; i++) {
@@ -165,12 +173,43 @@ public class DanmakuApi {
             }
         }
 
+        // 记录缺口：某一段拿不到时，那 6 分钟是没有弹幕的（用户表现为"看到这里弹幕突然没了"）。
+        // 旧实现在这里完全静默，事后只能怀疑是播放器的问题；至少把缺口区间打出来。
+        int missingFrom = -1;
+        for (int i = 0; i <= segmentCount; i++) {
+            boolean missing = i < segmentCount && (segments[i] == null || segments[i].elems.isEmpty());
+            if (missing && missingFrom < 0) {
+                missingFrom = i;
+            } else if (!missing && missingFrom >= 0) {
+                Logu.e("新版弹幕API", "弹幕缺口: 分段 " + (missingFrom + 1) + "~" + i
+                        + "（" + (missingFrom * SEGMENT_SECONDS) + "~" + (i * SEGMENT_SECONDS) + " 秒无弹幕）");
+                missingFrom = -1;
+            }
+        }
+
         int totalDanmaku = 0;
         for (DmSegMobileReply segment : allSegments) {
             totalDanmaku += segment.elems.size();
         }
-        Logu.d("新版弹幕API", "共获取到 " + totalDanmaku + " 条弹幕");
+        Logu.d("新版弹幕API", "共获取到 " + totalDanmaku + " 条弹幕（" + allSegments.size() + "/" + segmentCount + " 段有数据）");
 
         return allSegments;
+    }
+
+    /**
+     * 拉一个分段，失败重试一次。
+     *
+     * 重试的价值：这是大并发 + WBI 签名的请求，偶发 `-352`/超时很常见，而**任何一段失败都会
+     * 在时间轴上留下 6 分钟的空洞**（不是"少几条"，是整段消失），用户只会描述成"弹幕突然没了"。
+     */
+    private static DmSegMobileReply fetchSegmentWithRetry(long aid, long cid, int segmentIndex) {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                return getVideoDanmakuSegment(aid, cid, segmentIndex);
+            } catch (Exception e) {
+                Logu.e("新版弹幕API", "获取分段 " + segmentIndex + " 第 " + attempt + " 次失败: " + e.getMessage());
+            }
+        }
+        return null;
     }
 }
