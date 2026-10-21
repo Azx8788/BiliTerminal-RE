@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.SeekBar
+import androidx.core.view.ViewCompat
 import androidx.viewpager2.widget.ViewPager2
 import kotlin.math.abs
 
@@ -55,6 +56,21 @@ class SwipePageLayout @JvmOverloads constructor(
     private var blockHorizontal = false
 
     private var moveLogCount = 0
+
+    /**
+     * 待合并的拖动量。
+     *
+     * 现在的屏幕触摸采样率普遍 120~240Hz，比屏幕帧率（60~120Hz）高得多。若每个 MOVE 都立刻
+     * `fakeDragBy`，一帧里会触发好几次 `RecyclerView.scrollBy`，每跑一次就量一次/画一次两侧
+     * 页面，弱机上手感就是「一卡一卡」。这里把增量攒到下一帧统一提交，一帧只滚一次。
+     */
+    private var pendingDrag = 0f
+    private var flushScheduled = false
+
+    private val flushDragRunnable = Runnable {
+        flushScheduled = false
+        flushPendingDrag()
+    }
 
     /**
      * 子 View（滚动容器、RecyclerView）会调 true 请求父级别拦截。
@@ -125,7 +141,7 @@ class SwipePageLayout @JvmOverloads constructor(
                     // 传正数 = 往后翻。手指向左（ev.x 变小）要让页面跟着往左走，
                     // 必须传负数，所以这里用「当前 x - 上次 x」，别照抄常见的手写公式。
                     val delta = ev.x - lastX
-                    pagerProvider?.invoke()?.fakeDragBy(delta)
+                    queueDrag(delta)
                     // 第 0 页向右滑时 pager 无页可退，用整页位移给出「要退出」的反馈
                     if (startItem == 0 && delta > 0) {
                         translationX = (ev.x - downX).coerceAtLeast(0f)
@@ -148,6 +164,8 @@ class SwipePageLayout @JvmOverloads constructor(
                 if (fakeDragging) {
                     fakeDragging = false
                     val pager = pagerProvider?.invoke()
+                    // 先把攒着的最后一段位移交给 pager，再让它吸附，否则最后几像素会被丢掉
+                    flushDragNow()
                     pager?.endFakeDrag()
                     val edgePreview = startItem == 0 && translationX > 0f
                     // 从第 0 页向右滑：fakeDrag 无页可退，吸附回原位后这里当作「退出本页」。
@@ -186,6 +204,33 @@ class SwipePageLayout @JvmOverloads constructor(
     }
 
     /**
+     * 把 [delta] 攒起来，等下一帧统一交给 pager（见 [pendingDrag] 的注释）。
+     */
+    private fun queueDrag(delta: Float) {
+        pendingDrag += delta
+        if (!flushScheduled) {
+            flushScheduled = true
+            ViewCompat.postOnAnimation(this, flushDragRunnable)
+        }
+    }
+
+    private fun flushPendingDrag() {
+        if (pendingDrag == 0f) return
+        val delta = pendingDrag
+        pendingDrag = 0f
+        pagerProvider?.invoke()?.fakeDragBy(delta)
+    }
+
+    /** 松手/取消/页面销毁时立刻把残余位移交给 pager，避免最后几像素被吞。 */
+    private fun flushDragNow() {
+        if (flushScheduled) {
+            removeCallbacks(flushDragRunnable)
+            flushScheduled = false
+        }
+        flushPendingDrag()
+    }
+
+    /**
      * 按下点是否落在「自身要横向拖动」的控件上（底部进度条、横向滚动容器）。
      *
      * 这类控件拖到一半被父级抢走会很难用，所以整次手势都不翻页。
@@ -210,6 +255,7 @@ class SwipePageLayout @JvmOverloads constructor(
         // 页面被销毁时如果还停在 fakeDrag 状态，pager 会一直处于 DRAGGING
         if (fakeDragging) {
             fakeDragging = false
+            flushDragNow()
             pagerProvider?.invoke()?.endFakeDrag()
         }
         super.onDetachedFromWindow()

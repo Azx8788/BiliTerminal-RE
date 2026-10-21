@@ -190,4 +190,11 @@
 - 详情页右滑 → 回到短视频页（方向正确，与手指一致）；短视频页右滑 → 退出本页。
 - 单击、上下滑不再误跳 `VideoInfoActivity`（上一轮 `setOnTouchListener` 返回值问题已修）。
 
+### 9.4 拖动增量按帧合并（修「一卡一卡」）
+
+- 用户反馈详情页横滑「没有那么丝滑，一卡一卡的」。
+- 触摸采样率（120~240Hz）常高于帧率，原来每个 `ACTION_MOVE` 都直接 `fakeDragBy`，一帧内多次 `RecyclerView.scrollBy`，每次都触发两侧页面量算/绘制，弱机上表现为一格一格地动。
+- `SwipePageLayout` 改为：MOVE 只把增量累加到 `pendingDrag`，用 `ViewCompat.postOnAnimation` 在下一帧统一 `fakeDragBy` 一次；松手/取消/`onDetachedFromWindow` 时 `flushDragNow()` 先提交残余量再 `endFakeDrag()`，保证最后几像素不被吞。
+- 本机（x86 MuMu）`dumpsys gfxinfo`、`Choreographer` 均无掉帧记录，无法复现用户手机上的卡顿，因此这属于按成因做的优化，需用户真机复验手感。
+
 

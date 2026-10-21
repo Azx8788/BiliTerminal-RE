@@ -1078,6 +1078,14 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **未验证**：手表窄屏（300x300）下的 18% 阈值、内容列宽与长按手势；`testCoexist` 包未装机。
 - **已知现象（非 bug）**：横滑动画进行中截图会抓到两页叠加/视频帧残留（TextureView 与 ViewPager2 动画的合成帧），动画结束后显示正常。
 
+### 3.50 短视频横滑「一卡一卡」：拖动增量改成按帧合并提交（26.10.21，真机手感未复验）
+
+- **反馈（用户原话）**："短视频的视频详情界面滑起来没有那么丝滑，一卡一卡的"。
+- **本机测不出**：MuMu（`emulator-5554`）上对详情页做 6 次纵向滚动、4 组左右横滑，`dumpsys gfxinfo` 与 `logcat -s Choreographer` 都是 0 janky / 0 skipped frames，`50th/90th/95th` 全是 5ms——x86 模拟器跑不出用户手机上的掉帧，所以按「高采样率触摸 + 每事件一次布局」这条已知的卡顿来源做结构性优化。
+- **根因（推断，非实测）**：现代屏幕触摸采样 120~240Hz，比帧率高一倍以上。原来每个 `MotionEvent.ACTION_MOVE` 都直接 `fakeDragBy` → `RecyclerView.scrollBy`，一帧里可能滚 2~4 次，每次都触发两侧页面量算/绘制；弱机于是表现成一格一格地动。
+- **修复**：`SwipePageLayout` 增加 `pendingDrag` 累加器与 `ViewCompat.postOnAnimation` 的帧回调，MOVE 只累加、每帧统一 `fakeDragBy` 一次（`queueDrag()`/`flushPendingDrag()`）；松手、`ACTION_CANCEL`、`onDetachedFromWindow` 前调 `flushDragNow()` 立即提交残余量，避免最后几像素被吞。顺带确认 `ViewPager2` 没有 `setItemAnimator`（反编译 `viewpager2-1.1.0` 无该 API），所以没有从动画器这条线动。
+- **验证**：`assembleDebug` + 两 flavor 单测各 71 类 / 759 例全绿；真机上慢速拖动仍跟手、四页翻页与退出正常。**手感是否变顺滑需要用户在自己手机上复验**（本机无法复现）。
+
 ## 4. 历史章节索引
 
 
