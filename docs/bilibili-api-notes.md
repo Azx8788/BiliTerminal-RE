@@ -151,3 +151,27 @@
 - `x/v3/fav/folder/created/list-all` **不返回任何上限字段**（加收藏时的选择框走这条，所以它一直显示 1000 是对的）。
 - 结论：**同一个概念两条链给的值不一样**，`999` 是没有任何别的语义的历史值。统一走 `api/FavoriteApi.java` 的 `resolveMaxCount()`，别再把 `999` 直接当上限渲染。详见 `docs/architecture-map.md` §7.34。
 - 顺带：`getBoxList` 的 `list[0]` **就是默认收藏夹**（`fav_box` 非 0，但服务端把它排在第一），所以「默认收藏夹 = `index == 0`」的既有判据在这条链上成立。
+
+## 7. SponsorBlock 第三方端口 bsbsb.top（26.10.23 实测）
+
+> 用途：播放器内置的「跳过赞助片段」用它取社区标记的跳过区间。**不是 B 站接口**，
+> 域名与 Cookie 都不该混用；实现见 `api/SponsorBlockApi.kt`、`player/SponsorBlockSkip.kt`。
+
+- **端点**：`GET https://bsbsb.top/api/skipSegments?videoID=<BVID>&cid=<cid>&categories=<JSON数组>`
+- **只认 BVID**：传 `av` 号或纯数字返回空数组（200 + `[]`），不会报错。
+- **categories 必须是 JSON 数组**：`categories=["sponsor","selfpromo"]`（URL 编码后为
+  `%5B%22sponsor%22%2C%22selfpromo%22%5D`）有效，实测返回收窄到这两类；逗号分隔的
+  `categories=sponsor,selfpromo` 被判 400。
+- **服务端不保证按 cid 收窄**：同一 BVID 带 cid 与不带 cid 返回的条目集合一致（实测该视频
+  所有条目 cid 相同，无法据此确认服务端是否过滤）。**客户端必须自己按 cid 过滤**，
+  否则多分P 视频会把别P 的广告跳段套到当前P。
+- **空数据是 200 + `[]`**，不是 404。
+- **条目字段**：`segment:[start,end]`（秒）、`UUID`、`category`、`videoDuration`、`actionType`
+  （`skip`/`mute`/`full`）、`votes`、`description`、`cid`。
+- **上报已看**：`POST /api/viewedVideoSponsorTime`，body `{"UUID":"..."}`（`Content-Type:
+  application/json`）返回 200 + `OK`；query 参数写法同样 200。fire-and-forget 即可。
+- **请求头**：不需要登录态，本仓库只带自造的 `User-Agent`/`origin`/`x-ext-version`。
+  ⚠️ 千万不要走 `NetWorkUtil.getJson`/`postJson` 这类会带 B 站 Cookie 的重载——把登录凭据
+  发给第三方域名；用 `NetWorkUtil.get(url, headers)`（只写传入的头）。
+- **TLS 链**：`bsbsb.top` 用 GTS Root R4 → WE1（非 Let's Encrypt）。Android 5 是否信任该根
+  证书尚未真机确认；若真机上失败，兜底是把 GTS Root R4 根 pin 进 `network_security_config.xml`。

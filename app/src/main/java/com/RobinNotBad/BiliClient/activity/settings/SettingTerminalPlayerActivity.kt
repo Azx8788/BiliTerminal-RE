@@ -12,6 +12,7 @@ import com.RobinNotBad.BiliClient.model.SettingSection
 // 26.10.10 紧急撤回「自动跳过片头片尾」：入口已隐藏，这个 import 只有恢复设置项时才需要，
 // 暂时注释掉以免留下未使用引用。恢复时连同下面的 add(...) 一起放回来。
 //import com.RobinNotBad.BiliClient.player.SkipOpEdPrefs
+import com.RobinNotBad.BiliClient.player.SponsorBlockPrefs
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 
@@ -140,6 +141,8 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
             // 恢复时：取消下面两行注释 + 恢复上面的 import + 把 FEATURE_ENABLED 改回 true。
             //add(SettingSection("switch", "自动跳过片头片尾", SettingsKeys.PLAYER_SKIP_OP_ED,
             //    getString(R.string.desc_player_skip_op_ed), SkipOpEdPrefs.DEFAULT_ENABLED.toString()))
+            add(SettingSection("switch", "跳过赞助片段", SettingsKeys.PLAYER_SKIP_SPONSOR,
+                getString(R.string.desc_player_skip_sponsor), SponsorBlockPrefs.DEFAULT_ENABLED.toString()))
             add(SettingSection("switch", "弹幕允许重叠", SettingsKeys.PLAYER_DANMAKU_ALLOW_OVERLAP, "", "true"))
             add(SettingSection("switch", "合并重复弹幕", SettingsKeys.PLAYER_DANMAKU_MERGE_DUPLICATE, "", "false"))
             add(SettingSection("switch", "强制为滚动弹幕", SettingsKeys.PLAYER_DANMAKU_FORCE_R2L,

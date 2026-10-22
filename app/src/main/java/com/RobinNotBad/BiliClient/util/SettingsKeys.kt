@@ -136,6 +136,12 @@ object SettingsKeys {
      * 「自动跳过片头片尾」的首次引导是否已经弹过。纯记账用，不出现在设置页。
      */
     const val PLAYER_SKIP_OP_ED_GUIDED = "player_skip_op_ed_guided"
+
+    /**
+     * 跳过赞助片段（数据来自 bsbsb.top / BilibiliSponsorBlock）。
+     * 只对在线 UGC 视频生效；番剧、直播、本地视频不参与。
+     */
+    const val PLAYER_SKIP_SPONSOR = "player_skip_sponsor"
     const val PLAYER_DANMAKU_ALLOW_OVERLAP = "player_danmaku_allowoverlap"
     const val PLAYER_DANMAKU_MERGE_DUPLICATE = "player_danmaku_mergeduplicate"
     const val PLAYER_DANMAKU_FORCE_R2L = "player_danmaku_forceR2L"

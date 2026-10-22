@@ -52,6 +52,7 @@ import com.RobinNotBad.BiliClient.api.DanmakuApi
 import com.RobinNotBad.BiliClient.api.HistoryApi
 import com.RobinNotBad.BiliClient.api.InteractionVideoApi
 import com.RobinNotBad.BiliClient.api.PlayerApi
+import com.RobinNotBad.BiliClient.api.SponsorBlockApi
 import com.RobinNotBad.BiliClient.api.VideoInfoApi
 import com.RobinNotBad.BiliClient.event.SnackEvent
 import com.RobinNotBad.BiliClient.model.HighEnergyData
@@ -69,12 +70,15 @@ import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
 import com.RobinNotBad.BiliClient.player.SkipOpEdPrefs
+import com.RobinNotBad.BiliClient.player.SponsorBlockPrefs
+import com.RobinNotBad.BiliClient.player.SponsorBlockSkip
 import com.RobinNotBad.BiliClient.player.ViewPointSkip
 import com.RobinNotBad.BiliClient.player.SurfaceTarget
 import com.RobinNotBad.BiliClient.service.PlaybackService
 import com.RobinNotBad.BiliClient.ui.widget.BatteryView
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
+import com.RobinNotBad.BiliClient.util.BvidCodec
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.LocalVideoProgress
 import com.RobinNotBad.BiliClient.util.Logu
@@ -108,6 +112,7 @@ import java.io.IOException
 import java.util.Locale
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.regex.Pattern
 import kotlin.math.abs
 
@@ -511,6 +516,21 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     /** 最近一次自动跳过的片段，供「撤回」回到原位；跳完即置位，撤回后清空。 */
     private var lastSkippedSegment: ViewPointSkip.Segment? = null
 
+    /** SponsorBlock 跳过片段（数据来自 bsbsb.top），与片头片尾的 skipSegments 完全独立。 */
+    private var sponsorSegments: List<SponsorBlockSkip.Segment> = emptyList()
+
+    /** 本次播放已经自动跳过（或用户手动拖进过）的赞助片段 key。 */
+    private val sponsorHandled = HashSet<String>()
+
+    /** 最近一次自动跳过的赞助片段链，供「撤回」回到链首；撤回后或再次手动跳转即清空。 */
+    private var lastSkippedSponsor: List<SponsorBlockSkip.Segment>? = null
+
+    /**
+     * 跳过赞助的请求序号：切P后旧请求晚到，不能覆盖新分P 的数据。
+     * 用原子类型是因为自增发生在后台线程（loadSponsorSegments）与主线程（doSwitchPage）两处。
+     */
+    private val sponsorReqSeq = AtomicInteger(0)
+
     private var eventBusInit = false
 
     @JvmField var liveWebSocket: WebSocket? = null
@@ -788,6 +808,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                 if (!destroyed && isOnlineVideo && aid > 0 && cid > 0) {
                     loadInteractionVideo()
+                }
+
+                if (!destroyed && isOnlineVideo && aid > 0 && cid > 0) {
+                    loadSponsorSegments()
                 }
 
                 if (!destroyed) setDisplay()
@@ -1693,6 +1717,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         }
                         // 复用同一个 250ms 主线程定时器做片头/片尾判定，不另起 Timer
                         maybeAutoSkipOpEd(currSec.toDouble())
+                        // 赞助片段跳过同样复用这个定时器；两套判定互不干扰
+                        maybeAutoSkipSponsor(currSec.toDouble())
                         if (subtitles != null) showSubtitle(currSec + subtitle_delta)
 
                         // 只在整秒变化时上报，避免每 250ms 一次 MediaSession Binder IPC
@@ -3005,6 +3031,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun seekToVideo(position: Long) {
         // 用户手动拖进片头/片尾就算「已处理」，否则下一轮定时器会立刻把他弹走
         onUserSeekTo(position)
+        // 赞助片段同理：手动拖进某段后不再自动跳
+        onUserSeekToSponsor(position)
         markSeekTarget(position)
 
         ijkPlayer?.seekTo(position)
@@ -3099,6 +3127,99 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val key = ViewPointSkip.keyForManualSeek(positionMs / 1000.0, skipSegments, skipHandled) ?: return
         skipHandled.add(key)
         lastSkippedSegment = null
+    }
+
+    /** 跳过赞助片段当前是否生效。默认值与判据统一走 [SponsorBlockPrefs]，别在调用点写死字面量。 */
+    private fun sponsorBlockEnabled(): Boolean =
+        SponsorBlockPrefs.isEnabled(
+            SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SKIP_SPONSOR, SponsorBlockPrefs.DEFAULT_ENABLED)
+        )
+
+    /** 指定 aid 对应的 BV 号：优先精确换算，aid 缺失时退回 Intent 里的 bvid。 */
+    private fun bvidOf(fromAid: Long): String {
+        if (fromAid > 0) return BvidCodec.av2bv(fromAid)
+        val raw = intent?.getStringExtra("bvid").orEmpty()
+        return if (raw.length == 12 && raw.startsWith("BV")) raw else ""
+    }
+
+    /**
+     * 拉取 SponsorBlock 跳过片段。
+     *
+     * 只对在线 UGC 生效：番剧（epid>0）不在 SponsorBlock 的 BVID 数据库覆盖范围内，
+     * 直播没有分P 与固定时长，本地视频没有 BVID。
+     *
+     * 竞态保护：网络回来时比对请求序号与 aid/cid，切P/换集后旧响应一律丢弃。
+     */
+    private fun loadSponsorSegments() {
+        if (!sponsorBlockEnabled()) return
+        if (!isOnlineVideo || isLiveMode) return
+        if (epid > 0) return
+        // 先把 aid/cid 快照下来：本方法在后台线程执行，之后比对用的就是这两个值
+        val reqAid = aid
+        val reqCid = cid
+        val bvid = bvidOf(reqAid)
+        if (bvid.isEmpty()) return
+        val seq = sponsorReqSeq.incrementAndGet()
+        CenterThreadPool.run {
+            val raw = SponsorBlockApi.fetchSkipSegments(bvid, reqCid, SponsorBlockPrefs.DEFAULT_CATEGORIES)
+            if (raw.isEmpty()) return@run
+            val parsed = SponsorBlockSkip.buildSegments(
+                raw,
+                SponsorBlockPrefs.DEFAULT_CATEGORIES,
+                reqCid.toString()
+            )
+            runOnUiThread {
+                if (destroyed || seq != sponsorReqSeq.get()) return@runOnUiThread
+                if (aid != reqAid || cid != reqCid) return@runOnUiThread
+                sponsorSegments = parsed
+                sponsorHandled.clear()
+                lastSkippedSponsor = null
+                Logu.d("跳过赞助", "加载 " + parsed.size + " 段 bvid=" + bvid + " cid=" + reqCid)
+            }
+        }
+    }
+
+    /**
+     * 自动跳过赞助片段。
+     *
+     * 与 [maybeAutoSkipOpEd] 共用 250ms 主线程定时器，但判定与去重各用各的集合。
+     * 命中后一次跳到整条重叠/相接链的尾部，只 seek 一次——分两次 seek 会让进度条连跳，
+     * 也会被 [onUserSeekToSponsor] 误判成用户手动拖入。
+     */
+    private fun maybeAutoSkipSponsor(positionSec: Double) {
+        if (sponsorSegments.isEmpty()) return
+        if (!sponsorBlockEnabled()) return
+        val chain = SponsorBlockSkip.skipChainAt(positionSec, sponsorSegments, sponsorHandled) ?: return
+        val durationSec = ijkPlayer?.duration?.let { if (it > 0) it / 1000.0 else null }
+        val targetSec = SponsorBlockSkip.targetOf(chain, durationSec)
+        // 先记账再 seek：seek 会同步触发 onUserSeekToSponsor，晚一步就可能被当成「用户手动拖入」
+        chain.forEach { sponsorHandled.add(SponsorBlockSkip.keyOf(it)) }
+        Logu.d("跳过赞助", chain.size.toString() + " 段 " + chain.first().fromSec + "s -> " + targetSec + "s")
+        lastSkippedSponsor = chain
+        seekToPosition((targetSec * 1000.0).toLong())
+        showSponsorUndoSnack(chain)
+        CenterThreadPool.run { chain.forEach { SponsorBlockApi.reportViewed(it.uuid) } }
+    }
+
+    /** 赞助片段的「撤回」：回到整条链的起点；链上的段都已记进 [sponsorHandled]，不会再跳。 */
+    private fun showSponsorUndoSnack(chain: List<SponsorBlockSkip.Segment>) {
+        val action = MsgUtil.Action(UiText.of("撤回"), View.OnClickListener {
+            // 期间又跳过别的片段、或用户自己拖过进度，这条「撤回」就过期了
+            if (lastSkippedSponsor !== chain) return@OnClickListener
+            lastSkippedSponsor = null
+            seekToPosition((chain.minOf { it.fromSec } * 1000.0).toLong())
+            MsgUtil.showMsg(UiText.of("已回到原位置"))
+        })
+        val anchor = findViewById<View>(android.R.id.content) ?: return
+        MsgUtil.createSnack(anchor, UiText.of("已跳过赞助片段"), Snackbar.LENGTH_LONG, action).show()
+    }
+
+    /** 用户手动拖进赞助片段：算「已处理」，别在下一轮定时器把他弹走。 */
+    private fun onUserSeekToSponsor(positionMs: Long) {
+        if (sponsorSegments.isEmpty()) return
+        val key = SponsorBlockSkip.keyForManualSeek(positionMs / 1000.0, sponsorSegments, sponsorHandled) ?: return
+        sponsorHandled.add(key)
+        lastSkippedSponsor = null
     }
 
     /**
@@ -3805,6 +3926,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         viewPoints = null
         viewPointAdapter = null
         btn_viewpoint.visibility = View.GONE
+        // 上一P 的赞助片段不能带过来：请求序号 +1 让在途请求作废
+        sponsorReqSeq.incrementAndGet()
+        sponsorSegments = emptyList()
+        sponsorHandled.clear()
+        lastSkippedSponsor = null
 
         interactionData = null
         currentEdgeId = 0
@@ -3848,6 +3974,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                 if (!destroyed && isOnlineVideo && aid > 0 && cid > 0) {
                     loadInteractionVideo()
+                }
+
+                if (!destroyed && isOnlineVideo && aid > 0 && cid > 0) {
+                    loadSponsorSegments()
                 }
             }
         }, 60)

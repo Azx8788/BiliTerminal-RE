@@ -163,6 +163,7 @@
     <string name="desc_player_lock_locked">锁定播放画面（防止误触）</string>
     <string name="desc_player_lock_unlocked">点击解锁播放画面</string>
     <string name="desc_player_skip_op_ed">播放番剧/影视时，进度走到片头或片尾会自动跳过去，并在屏幕下方留一个「撤回」按钮，点一下就能回到被跳过的地方。\n跳过只对 B 站标注了片头片尾的视频生效。</string>
+    <string name="desc_player_skip_sponsor">播放站内视频时，自动跳过其他观众标记的赞助商广告与创作者自我推广片段，跳过后屏幕下方会留一个「撤回」按钮。\n片段数据来自 bsbsb.top（BilibiliSponsorBlock），每次播放会带上当前视频的 BV 号；未收录的视频不会跳过。番剧、直播和本地视频不生效。</string>
     <string name="desc_subtitle_autoshow">开启后，播放存在字幕的视频时，将会自动弹出字幕选择对话框。</string>
     <string name="desc_subtitle_ai_allowed">打开此选项，如果视频只有一个中文AI字幕，播放时仍然会让你选择。\n可能比较烦人，谨慎开启。</string>
     <string name="desc_player_subtitle_size">播放页字幕文字的大小，单位 sp，可填 6~40；超出范围会按边界显示，未设置时用默认值 11</string>
