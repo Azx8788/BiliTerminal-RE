@@ -25,7 +25,7 @@
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
 - **单测（静态计数，26.10.22 实测）**：**76 个测试类 / 804 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
-- **本轮紧急撤回**：「自动跳过片头片尾」处于**撤回状态**（26.10.10 用户明确要求，非缺陷）——设置入口已隐藏、运行期恒不生效，代码与存档保留。恢复清单 6 步见 §2.2 第一条与 §3.3 末尾。
+- **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
   - **24 → 21**：代码侧清掉**四处** API 24 才有的调用：`util/AsyncLayoutInflaterX.java` 的 `java.util.function.BooleanSupplier` → 工程内 `CancelledChecker`；`util/SharedPreferencesUtil.java:167` 的 `java.util.function.Consumer` → 工程内 `EditorAction`；`activity/reply/WriteReplyActivity.kt:177` 的 `Map.getOrDefault` → `msgMap[k] ?: 默认值`；`util/VideoPreloadManager.kt:12` 的 `ConcurrentHashMap.newKeySet<Int>()` → `Collections.newSetFromMap(ConcurrentHashMap<Int, Boolean>())`（**这一处是会真崩的**：类一初始化就 `NoSuchMethodError`，且已确认留在 release dex 里）。两个调用点（`activity/base/BaseActivity.kt:435`、`util/AccountManager.java:202`）走 SAM 转换，未改。
   - **21 → 19**：依赖必须降两处——`androidx.appcompat:appcompat` 1.7.0 → **1.6.1**、`androidx.fragment:fragment-ktx` 1.8.0 → **1.6.2**（只有这两代 AAR 自己还声明 minSdk 14；1.7.0 / 1.8.0 声明的是 21，`checkReleaseAarMetadata` 会硬失败），并**恢复** `androidx.multidex:multidex:2.0.1` + `BiliTerminal.kt` 的 `attachBaseContext()` 里 `MultiDex.install(this)`——26.09.10 那次「minSdk 21 下是死代码」的删除被整体回滚。改回 21 时这三件事要一起撤。
@@ -109,7 +109,7 @@
 
 ### 2.2 功能与工程待办
 
-- [ ] **「自动跳过片头片尾」处于撤回状态**，恢复清单 6 步未执行（撤回为 26.10.10 用户明确要求，非缺陷）。§3.3
+- [x] ~~**「自动跳过片头片尾」处于撤回状态**~~ ——26.10.22 **已恢复**（默认关闭），恢复清单 ①–④ 已完成，⑤⑥（发版公告与版本号）随下次发版做。§3.3
 - [ ] **播放器弱网 / 直播：P0-1、P0-3、P1-1、P1-2、P2-1 与半个 P2-3 已实施，其余待办**（26.10.11 已过编译 + 两 flavor 各 478 个 JVM 单测全绿；真机只验证到「播放器能正常起播、回前台位置未复现回跳」，**看门狗/线路轮换未在真机触发**——release 包 `Logu` 默认关闭，需 debug 包 + 真实直播间）：
   - 已实施：**P0-1** `activity/player/PlayerActivity.kt` 的 `setDisplay()` 给在线流加 `rw_timeout=10s` / `addrinfo_timeout=5s` / `reconnect_streamed=1` / `reconnect_delay_max=5s`；**P0-3** 新增 `checkStall()` 停滞看门狗（直播 20s / 点播 30s 不动就重试，直播切候选线路、点播原地重建；最多 3 次、冷却 15s、位置前进 5s 后复位）；**P1-1** 状态保存恢复；**P1-2** 重挂 Surface 改用 `video_now`；**P2-1** 删 `activity/video/ShortVideoPlayerActivity.kt` 里实测不存在的 `max_cached_duration`；**P2-3 的一半** 新增纯函数 `util/live/LiveStreamSelector.kt`（14 个单测），候选按「FLV 各线路 → HLS」排序，随 Intent `live_url_candidates` 交给播放器做运行时线路轮换。
   - **未做**：P0-2 的「重连前重调 `getRoomPlayInfo` 拿新 URL」（现在只在已到手的候选里轮换，URL 过期后仍会失败）、P1-3 后台保活与音频焦点、P2-2 短视频激进参数复核、`PlayerActivity.kt:892` 的 `dns_cache_clear`（二手证据不足，未动）。
@@ -218,7 +218,11 @@
 - 验证：`server/selftest.py`（临时 sqlite + 临时口令，**不碰生产数据**）**39 项断言全通过**。
 - 公网端到端全部按契约返回（`console.zsapp.asia/` 200 + 证书 + 5 个安全头；发布公告 `public_id=1000000002` → 立刻能从 `rebiliterminal.zsapp.asia/terminal/announcement/get_list` 拉到）。测试数据已清理，`sqlite_sequence` 复位。
 
-### 3.3 紧急撤回「自动跳过片头片尾」（§四十三）
+### 3.3 紧急撤回「自动跳过片头片尾」（§四十三，**26.10.22 已恢复**）
+
+> **现状（26.10.22）**：撤回**已解除**，功能整体恢复上线，但口径改为**默认关闭**。
+> 撤回与本恢复的判定都只动 `FEATURE_ENABLED` 这一个常量，`ViewPointSkip` 判定逻辑与其单测从头到尾一行未动。
+> 恢复相关的落点、默认值取舍与单测见本节末尾「恢复记录」；撤回过程保留在下文作历史依据。
 
 - **用户原话**：「将跳过片头片尾的功能紧急撤回，直接关闭且隐藏此设置，立刻发新版本26.10.10 2610102 tag打新的」，追加「更新公告追加一条说明即可」。要求是**撤回而非删除**：代码与设置项保留，只让它不生效、入口不可见。
 - **为什么必须新加开关，而不是把默认值改成 false**：`SharedPreferences.getBoolean(key, def)` 里的 `def` 只在**键不存在**时生效，而老用户从 26.10.09 起就已被写入 `true`（首次读取即落盘），改默认值对这些人一点作用都没有。
@@ -248,13 +252,27 @@
 - `app/build.gradle` versionCode `2610101` → **`2610102`**，versionName 仍为 `26.10.10`；tag 用 **`26.10.10.1`**（`26.10.10` 已被 2610101 的不可变 Release 用掉，release immutability 下被 release 用过的 tag 永久不可复用）。
 - **版本序列（26.10.09 → 26.10.10）**：写 §四十一 时版本仍是 `2610090` / `26.10.09`，随后按发版技能正常发版，落成 **`2610101` / `26.10.10`**（`update_log_current` 补本次 7 条 + `update_history_log` 顶部新增 `## 2026-10-09` 分组）；同日又因紧急撤回追加 **`2610102` / `26.10.10`**。
 - 本地 `verifyVersionConsistency` + `testDebugUnitTest`（457 例）+ `assembleRelease` 全绿，四个 ABI 的 release APK 已产出，然后推 tag `26.10.10` 走 `.github/workflows/build-release.yml`。
-- **恢复清单（6 步，未执行）**：
-  - ① `player/SkipOpEdPrefs.kt` 的 `FEATURE_ENABLED` 改回 `true`；
-  - ② `activity/settings/SettingTerminalPlayerActivity.kt:132-133` 两行与 `:10` 的 import 取消注释；
-  - ③ `activity/settings/SettingsIndex.kt` 搜索关键词加回 `"自动跳过片头片尾"`；
-  - ④ `PlayerActivity.needViewPoints()` 的 `|| PLAYER_SKIP_OP_ED` 判断按需恢复；
-  - ⑤ `strings.xml` 的 `update_log_current` 追加一条恢复说明；
-  - ⑥ 递增 versionCode / versionName 并按发版技能出包（tag 只能用未被 Release 占用过的新号）。
+- **恢复清单（6 步）——已于 26.10.22 执行 ①–④，⑤⑥ 留待下次发版**：
+  - ① `player/SkipOpEdPrefs.kt` 的 `FEATURE_ENABLED` 改回 `true`；✅
+  - ② `activity/settings/SettingTerminalPlayerActivity.kt` 两行与 `:10` 的 import 取消注释；✅
+  - ③ `activity/settings/SettingsIndex.kt` 搜索关键词加回 `"自动跳过片头片尾"`；✅
+  - ④ `PlayerActivity.needViewPoints()` 的 `PLAYER_SKIP_OP_ED` 判断恢复；✅
+  - ⑤ `strings.xml` 的 `update_log_current` 追加一条恢复说明；⏳ 未做（恢复不是这次发版的一部分）
+  - ⑥ 递增 versionCode / versionName 并按发版技能出包；⏳ 未做
+
+- **恢复记录（26.10.22）**：
+  - **口径由用户拍板**：在「A 只显示设置项但不生效 / B 整体恢复且默认开启 / C 整体恢复且**默认关闭**」三项里选了 **C**。
+    理由：26.10.10 撤回的起因就是「乱跳」，修掉之后让没主动开启的用户被动跳片头仍有风险，默认关闭可把决策权完全交还用户。
+  - **`DEFAULT_ENABLED` 由 `true` 改为 `false`**（历史上它是 `true`，被 `SkipOpEdPrefsTest` 钉着）。这不是「撤回」，是恢复后的新默认值；
+    真正的撤回手段仍是 `FEATURE_ENABLED`（与存档无关），两者职责不同、不可互相替代。
+  - **老用户不受默认值影响**：`getBoolean(key, def)` 只在键不存在时用 `def`，所以
+    ① 存档里显式开过的老用户恢复后**仍然是开的**（他们当初主动开过，不该被升级悄悄关掉）；
+    ② 存档里关过的保持关闭；③ 新装用户默认关闭。三种情形各有单测钉住。
+  - 四处落点全部按清单恢复；`player/ViewPointSkip.kt` 与其单测仍一行未动。
+  - **单测变化**：`SkipOpEdPrefsTest` 由 10 例变 13 例——删掉撤回期的 3 例（`功能已撤回时总开关必须是关闭` 等），
+    新增 4 例（`功能已恢复上线时总开关必须是开启`、`恢复后存档里写着开启就能跳`、`恢复后默认关闭不会自己跳`、`老用户开过的话恢复后仍然开启`），
+    并把 `默认值是开启` / `从未存过时读取默认值得到开启` 翻转为关闭。类注释第 1、4 条同步改写。
+  - 验证：`assembleDebug` 通过；`testStandardDebugUnitTest` 与 `testCoexistDebugUnitTest` 各 **818 例全绿**（`--rerun-tasks` 强制重跑）。
 
 ### 3.4 播放器网络韧性：弱网卡死 / 切后台位置错（§四十四，26.10.11）
 
@@ -1238,7 +1256,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 | 四十 | Release 说明漏掉更新日志：根因与兜底（26.10.05 发版后） | `.github/scripts/extract_update_log.py`、`build-release.yml` fail-closed、AGENTS/SKILL 硬要求 | 部分遗留（26.10.05 Release 正文未人工补） |
 | 四十一 | 26.10.09：自建反馈界面 + 自建公告源 + 匿名统计 / 崩溃自动上报（新功能） | `server/` 全栈 + `api/TerminalApi.java` + `util/TelemetryReporter.kt` / `CrashReporter.kt` / `CrashTrail.kt` + `activity/FeedbackActivity.kt` + 隐私文案改写 + §41.8 隐私再同意闸门（`PRIVACY_CONSENT_VERSION` / `PRIVACY_PROMPTED_VERSION` / `TerminalDialog.choice`） | 已闭环（明细回归清单待补）；正文见 `docs/archive/review/fix-progress-history.md` |
 | 四十二 | 26.10.09：管理控制台 WebUI（遥测 / 反馈 / 崩溃 / 公告四合一）+ 服务端并发加固 | `server/console.html` 零依赖单文件、`run_in_threadpool` + `synchronous=NORMAL`、无状态签名 Cookie + 双 CSRF 防线、`console.zsapp.asia` vhost / 证书、`backup.sh` + 探活、selftest 39 项 | 部分遗留（无告警渠道、无 TOTP/IP 白名单、无浏览器回归） |
-| 四十三 | 26.10.10 补丁：紧急撤回「自动跳过片头片尾」（2610102） | `SkipOpEdPrefs.FEATURE_ENABLED = false` + `isEnabled()`、四处落点、`SkipOpEdPrefsTest` +3 例、tag `26.10.10.1` | 部分遗留（处于撤回状态，恢复清单 6 步未执行） |
+| 四十三 | 26.10.10 补丁：紧急撤回「自动跳过片头片尾」（2610102） | `SkipOpEdPrefs.FEATURE_ENABLED = false` + `isEnabled()`、四处落点、`SkipOpEdPrefsTest` +3 例、tag `26.10.10.1` | **26.10.22 已恢复**（`FEATURE_ENABLED = true`，口径改为默认关闭），详见 §3.3 恢复记录 |
 | 四十四 | 26.10.11：播放器网络韧性（弱网卡死 / 直播线路 / 切后台位置错） | `PlayerActivity.kt` 加读超时与重连选项 + 停滞看门狗 + `onSaveInstanceState` + 重挂 Surface 改 seek `video_now`；新增 `util/live/LiveStreamSelector.kt`（+14 单测）与 `LiveInfoActivity.kt` 接线、`PlayerData.liveUrlCandidates`；删 `max_cached_duration` | 部分遗留（真机只跑到「位置未复现回跳」；看门狗未真机触发；P0-2 重取 URL、P1-3 后台保活未做） |
 | 四十五 | 26.10.11：共存版 product flavor（普通版 + 共存版双包） | `standard` / `coexist` flavor、FileProvider authority 去硬编码、`app/src/coexist/res/mipmap-nodpi/icon.png` 图标覆盖（两版同名 RE:哔哩终端，靠图标区分）、`UpdateRelease.pickApkUrl(namePrefix)`（+4 单测）、`build-release.yml` 整理发行 APK 步骤 | 已闭环（真机双包共存 + 数据隔离 + 同名 + 图标已验；共存版自更新待下次发版） |
 | 四十六 | 26.10.11：弹幕「一抖一抖」——时钟基准错位 | `player/DanmakuManager.kt` 的 `updateTimer` 不再 `timer.update(pos)`（删掉位置回调参数）；对齐改到主线程 `PlayerActivity.progressChange()` + `DanmakuSync` 判定 + `mDanmakuView.seekTo(video_now)`（`SEEK_POS` 会重设 `mTimeBase`）；`onPrepared` 起播锚定；短视频播放器同样处理 | 真机取证已完成（42 次/秒硬校正、偏差最大 199s）；修复后待用户实机确认 |
