@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.21 合并上游后实测）**：**72 个测试类 / 769 个用例**，两个 flavor 完全相同（同源码），0 失败。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.22 实测）**：**76 个测试类 / 804 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **本轮紧急撤回**：「自动跳过片头片尾」处于**撤回状态**（26.10.10 用户明确要求，非缺陷）——设置入口已隐藏、运行期恒不生效，代码与存档保留。恢复清单 6 步见 §2.2 第一条与 §3.3 末尾。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -104,6 +104,8 @@
 - [ ] **长按顶栏三模式（§3.33）待真机确认**：①「不响应」下普通页面与视频详情页长按都无动作（OPPO 系手表长按顶部本意是系统控制中心，应用侧至少不能自己再动）；②「仅视频详情页」下普通页面无动作、视频详情页仍关闭所有详情页；③「全部页面」= 旧行为；④ 切档后不用退出页面即时生效；⑤ 26.10.19 显式关过旧开关的老用户，升级后设置页显示「仅视频详情页」（不是「不响应」）。
 
 - [ ] **短视频取流协议修订（§3.41）待真机**：本会话无可用设备，只过了两 flavor 构建 + JVM 单测。真机用例：①进入短视频页首屏能出内容、连续上下滑不出现相邻重复视频；②反复退出再进短视频页，首屏正常（旧实现的静态页码已删）；③飞行模式进入 → 出现「获取视频列表失败」，恢复网络后从页面既有入口重试成功；④观察是否还有明显横屏内容（解析层已丢弃 `dimension` 明确宽>高且 `rotate==0` 的卡片）。
+
+- [ ] **缓存视频断点续播（§3.53）待真机**：本机只过了 `:app:assembleDebug` + 两 flavor 单测，位置读写纯函数有 JVM 覆盖，但「退出再进真的接着播」必须真机。用例：① 缓存视频播到约 01:30 退出再进 → 从约 01:30 起播且提示「已从上次的位置播放」（±2s）；② 关掉「从历史位置播放」→ 从头且不提示；③ 看到距结尾 5 秒内 / 播完 → 下次从头；④ 多 P 视频 A 播一半、B 从头 → 各自记住不串；⑤ 单文件、DASH 双文件、听视频（`audio_only`）、虚拟合集连播、多 P 选择页五个入口都验；⑥ 缓存文件夹改名/移动后仍能续播；⑦ 播放中直接杀进程（后台划掉）→ 最多丢 15 秒；⑧ 文件被删/损坏/换成更短的版本 → 静默从头不崩。
 
 ### 2.2 功能与工程待办
 
@@ -1132,6 +1134,21 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **单测**：新增 `StoragePathPolicyTest` 12 例（API 分档、配置优先、老目录保留、隐藏文件不算内容）、`FileUtilMergeMoveTest` 5 例（搬移、同名不覆盖、递归合并、跳过 `.nomedia`、空输入安全）。判据与理由已同步 `docs/architecture-map.md` §7.41 ④。
 - **验证（本机，已跑）**：`$env:JAVA_HOME='C:\Program Files\Java\jdk-17'; ./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest --offline --no-configuration-cache` → `BUILD SUCCESSFUL in 1m 49s`；两 flavor 各 **75 个测试类 / 800 例 / 0 失败 0 错误 0 跳过**。
 - **真机待验（全部未验证）**：① 手表 Android 7/8/9/11 首次进缓存页 / 点下载直接成功，不弹系统设置页；② 把缓存路径改成公共 `/sdcard/Download/xxx`（无权限）后下载**自动降级**并提示实际位置，文件落在应用专属目录、缓存页能列出；③ PC 的 MTP / 文件管理器能看到该目录（`Android/media` 比 `Android/data` 可见性略好，但都比公共目录差，需在文档/教程里说清）；④ 图片降级保存提示「不在相册中」；⑤ 手机上授权后回到缓存页自动切回正式目录，降级期间下的缓存被搬回。
+
+### 3.53 缓存视频断点续播：内置播放器播本地/缓存视频也从上次位置起（26.10.22，待真机）
+
+- **需求**：内置播放器播放**下载的缓存视频**时也要「从历史位置播放」。此前只有在线视频（含番剧）能续播——位置来自服务端观看历史；本地视频入口构造 `PlayerData(TYPE_LOCAL)` 时从不填 `progress`，`onPrepared` 的 `resumeTarget` 恒为 0，所以永远从头。用户确认口径：进度存 `.video_meta.json`、复用现有「从历史位置播放」开关（不新增）、多 P 按分 P 分别记、纯本地记录、四个入口全要（缓存列表单文件/DASH、多P 选择页、虚拟合集连播、听视频/纯音频）。
+- **为什么入口一行都不用改**：四个入口传的 `video_url` 都指向该视频（或该分 P）自己的缓存目录，`File(video_url).absoluteFile.parentFile` 就是 `.video_meta.json` 所在目录。播放器在 `getExtras()` 里反推目录、在 `doSwitchPage()` 里跟着切 P 换目录，入口侧无需传新 extra。
+- **数据层**：
+  - `model/VideoMeta.java` 新增 `progressMs`（0=从头/已看完）与 `durationMs`（0=未知；存它是为了判断"停在距结尾几秒"），`toJson`/`fromJson` 读写，老 meta 缺键时 `optLong` 兜 0。
+  - 新增 `util/LocalVideoProgress.kt`（纯函数、无 Context/文件，可 JVM 单测）：读与写用**同一条判定**，避免"存得进去读不出来"——`<=5s` 无意义、`时长-位置<=5s` 视为看完、位置超过时长视为看完；时长未知（<=0）只按位置判断。
+  - `util/VideoMetaManager.kt`：新增 `readResumeMs(folder)` 与 `@Synchronized saveProgress(folder, positionMs, durationMs)`；`saveMeta` 也加 `@Synchronized`。`saveProgress` **先读旧 meta 再合并**（直接 new 一份会冲掉 title/画质列表）。
+  - `service/download/DownloadRepository.kt:saveVideoMeta` 原来是 new 一份 `VideoMeta()` 整份覆盖 —— 这正是重下载/换清晰度会冲掉进度的坑，改成先 `readMeta` 合并。
+- **播放器侧（`activity/player/PlayerActivity.kt`）**：`getExtras` 里对非 http 的 url 设 `localMediaDir` 并用 `readResumeMs` 补 `progress_history`（单位毫秒，与在线一致）；`doSwitchPage` 切 P 时重算目录并清去重标记；新增 `maybeSaveLocalProgress()`（挂在既有 250ms 定时器上，墙钟 15s 节流）+ `saveLocalProgressNow(reason)`（**主线程同步写**：异步会让"退出补写"被队列里的周期写覆盖）；落盘点＝周期/`onPause`/`onStop`/`onDestroy`/`finish`/`onCompletion`（看完清零）；`onCompletion` 后单曲循环重新开始时清 `finishWatching`，否则第二轮会一直按"看完"写 0。续播本身复用 `onPrepared` 既有那段（`restoredFromSaveState` → `player_from_last` 开关 → 0），未新增开关。
+- **已知取舍**：播放器内手动/自动切 P 从 0 起播（沿用 `progress_history = 0` 的既有行为）；位置在首次 prepare 之前不会落盘（防"刚进页面就退出"把旧进度清掉）。
+- **单测**：新增 `LocalVideoProgressTest`（14 例：阈值边界、结尾容差、超时长、时长未知、读写一致性循环）与 `VideoMetaProgressTest`（6 例：老格式 meta 读回 0、位置往返、落盘不冲掉 title/aid/cid/画质列表、看完清零、时长未知可续播、目录不存在不抛）。`org.json` 在单测里是真实现（`app/build.gradle` 有 `testImplementation 'org.json:json'`），所以 `VideoMeta` JSON 与文件读写都能在纯 JVM 里测。
+- **验证（本机，已跑）**：`.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（121 tasks，1 分内）；`.\gradlew.bat :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest --offline` → `BUILD SUCCESSFUL`，两 flavor 各 **76 类 / 804 例 / 0 失败 0 错误**（其中新增 `LocalVideoProgressTest` 12 例、`VideoMetaProgressTest` 6 例）。
+- **真机待验**：播到 01:30 退出再进应从约 01:30 起播且提示「已从上次的位置播放」（±2s）；关掉「从历史位置播放」则从头且不提示；看到距结尾 5 秒内/播完 → 下次从头；多 P 不串位置（A 看到一半、B 从头）；单文件 / DASH / 听视频 / 虚拟合集 / 多 P 选择页均生效；缓存文件夹改名或移动后仍有效；视频被删/文件损坏/时长变短时静默从头不崩。
 
 ## 4. 历史章节索引
 
