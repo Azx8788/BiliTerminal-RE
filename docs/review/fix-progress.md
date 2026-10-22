@@ -1157,6 +1157,14 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **改法（一处）**：`activity/player/PlayerActivity.kt` `onCreate` 删掉那个复合判断，改为无条件 `setTheme(ColorScheme.themeResId(theme, noSwipe = true))`；`swipeSeekEnabled` 的赋值保留（`onBackPressed` 仍用它判断手势型返回键）。不新增设置项、不改基类、不动 `res/`。
 - **为何不碰其他手势**：`*.NoSwipe.AppCompat` 相对主主题**只多一条 `windowSwipeToDismiss=false`**（`ColorScheme.kt:526-557` 的 7 套映射 + `res/values/themes.xml`），配色 / 圆角 / 字体全同；它只改窗口属性，**不参与触摸分发**，滑动调进度、双击、长按倍速、捏合缩放与拖动画面仍由本类自己的手势逻辑处理。
 - **行为边界**：左滑 / 右滑调进度（`PLAYER_SWIPE_SEEK`）开启时 `onBackPressed` 里 `if (swipeSeekEnabled) return` 的既有兜底**保留未改**（issue #1 对「把右滑模拟成返回键」的手表）；未开启时返回键照常退出播放页。退出路径仍是顶栏返回按钮 + 返回键。
+- **手表端复核（26.10.22 二次审查；用户提示「这个主要是针对手表端的右滑返回设计的」）**：
+  - **覆盖的正是手表那条链路**：关闭的就是手表系统「窗口层 swipe-to-dismiss」(`android:windowSwipeToDismiss`)，即 issue #1 实测机型的机制（窗口层直接 `finish()`、应用收不到）。这同时兑现了 `docs/superpowers/specs/2026-10-20-player-touch-lock.md` §4.4 留的预案——「若右滑拦截有副作用，退路是播放页无条件 `noSwipe = true`」。
+  - **映射无遗漏**：`ColorScheme.noSwipeThemeResId`（`ui/appearance/ColorScheme.kt:550-558`）对 6 套具名主题 + 默认主题都有 `*.NoSwipe.AppCompat`，没有回落到主主题的分支；`res/values/themes.xml` 里每套 `NoSwipe` 相对主主题只多 `windowSwipeToDismiss=false`，配色 / 圆角 / 字体一致。
+  - **无子窗口干扰**：`PlayerActivity` 全文件没有 `Dialog` / `PopupWindow` / `WindowManager.addView`（弹幕、控制栏、互动选项都是 Activity 内的普通 View），不存在「某个弹窗窗口自己还开着右滑」的情况；视频画面是 `layout_video.addView(surfaceView/textureView)`，不是独立 Window。
+  - **手机端无副作用**：该窗口属性只有手表系统消费，手机上换 `NoSwipe` 主题的效果与主主题完全相同。
+  - **已知不覆盖的两类（用户 26.10.22 拍板：保持现状）**：① 用「模拟按下返回键」实现右滑的手表（应用自己的设置文案点名米兔等，见 `docs/copy-inventory/04-settings.md` 的「禁用返回键」说明）——到应用侧就是一个 `KEYCODE_BACK`，与物理返回键不可区分，窗口属性对它无效，播放页在此类手表上右滑仍会退出（要拦只能连返回键一起拦，违背「只禁右滑手势」的口径）；② 手机 / 平板的系统返回手势不读该窗口属性，仍可退出播放页（要拦需 API 29+ 的 `setSystemGestureExclusionRects`，仓库未用、无真机可验）。
+  - **锁定态反馈变化（轻微）**：触摸锁定期间右滑不再触发「开锁图标浮现」——事件在窗口层就被丢掉了，到不了 `finish()` / `onBackPressed`。锁定的语义不变（仍出不去），只是少了一次视觉反馈。
+  - **真机判断方法**：若用户那台表实测「右滑仍退出」，就说明它属于上面第 ① 类（模拟返回键），此时开「左右滑动控制进度」或「禁用返回键」都能拦住，但这属于既有开关，不是本功能的缺陷。
 - **验证（本机，26.10.22 已跑）**：`.\gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest --offline` → `BUILD SUCCESSFUL in 56s`（两 flavor 都出 Debug 包，128 tasks）；单测按 `app/build/test-results/testStandardDebugUnitTest/*.xml` 实测 **76 类 / 804 例 / 0 失败 0 错误 0 跳过**，与改动前基线一致——本次只换窗口主题属性，没有可 JVM 单测的纯逻辑，故未新增用例（`noSwipe` 是 `ColorScheme.themeResId` 的既有参数，已被既有主题映射覆盖）。
 - **真机待验**：① 手表上「左右滑动控制进度」与「禁用返回键」都关着时，播放页右滑不再退出；② 开启「左右滑动控制进度」后右滑仍是调进度、不退出；③ 双击 / 长按倍速 / 捏合缩放 / 拖动画面全部照常；④ 顶栏返回按钮与返回键仍能退出；⑤ 主题配色与改动前一致；⑥ 短视频页右滑退出行为不变（本次未改，回归确认）。
 
