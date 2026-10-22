@@ -21,6 +21,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
@@ -850,6 +851,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         text_audio_subtitle = findViewById(R.id.audio_subtitle)
 
         btn_video_info = findViewById(R.id.video_info_btn)
+
+        // 字幕字号来自设置页，这里先按存档刷一次；之后每次 onResume 再刷（改完设置返回即生效）
+        applySubtitleTextSize()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -2043,6 +2047,23 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     /**
+     * 按设置刷新字幕字号。
+     *
+     * 钳制放在读取侧：设置页的 `input_int` 只校验「能解析成整数」，0、负数、999 都会原样落盘，
+     * 直接交给 `setTextSize` 会让字幕消失或把布局撑爆。未设置时读 [SettingsKeys.PLAYER_SUBTITLE_SIZE_DEFAULT]，
+     * 与 `activity_player.xml` 里的 11sp 一致。
+     */
+    private fun applySubtitleTextSize() {
+        val size = PlayerDefaults.clampSubtitleSize(
+            SharedPreferencesUtil.getInt(
+                SettingsKeys.PLAYER_SUBTITLE_SIZE,
+                SettingsKeys.PLAYER_SUBTITLE_SIZE_DEFAULT
+            )
+        )
+        text_subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, size.toFloat())
+    }
+
+    /**
      * 「播放默认值 → 字幕」的入口：决定开播时怎么处理字幕。
      *
      * - 中文：自动选中文字幕（优先人工，其次 AI），**不弹**选择框；
@@ -2507,6 +2528,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         Logu.v("onResume")
         // 回到前台后通知栏遥控没有存在意义，服务持有的弱引用也不再需要
         PlaybackService.stop(this)
+        // 设置页里改完「字幕字号大小」返回播放页立即生效。
+        // findview() 在异步 inflate 回调里才跑，onResume 可能先到，必须判初始化。
+        if (::text_subtitle.isInitialized) applySubtitleTextSize()
     }
 
     override fun onStop() {

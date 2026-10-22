@@ -165,6 +165,7 @@
     <string name="desc_player_skip_op_ed">播放番剧/影视时，进度走到片头或片尾会自动跳过去，并在屏幕下方留一个「撤回」按钮，点一下就能回到被跳过的地方。\n跳过只对 B 站标注了片头片尾的视频生效。</string>
     <string name="desc_subtitle_autoshow">开启后，播放存在字幕的视频时，将会自动弹出字幕选择对话框。</string>
     <string name="desc_subtitle_ai_allowed">打开此选项，如果视频只有一个中文AI字幕，播放时仍然会让你选择。\n可能比较烦人，谨慎开启。</string>
+    <string name="desc_player_subtitle_size">播放页字幕文字的大小，单位 sp，可填 6~40；超出范围会按边界显示，未设置时用默认值 11</string>
     <string name="desc_no_vip_color">开启此选项后，将不会在评论区为大会员用户显示专属的红色名称</string>
     <string name="desc_no_medal">开启此选项后，将不会在评论区显示用户的粉丝铭牌</string>
     <string name="desc_reply_marquee_name">开启此选项后，评论区的用户名称将会以跑马灯的形式展现，而不是换行</string>
@@ -1117,6 +1118,7 @@
     <string name="settingtext_settingsindex_078">显示清晰度按钮</string>
     <string name="settingtext_settingsindex_079">显示分P按钮</string>
     <string name="settingtext_settingsindex_080">互动选项字体大小</string>
+    <string name="settingtext_settingsindex_081">字幕字号大小</string>
     <string name="settingtext_settingterminalplayeractivity_001">开</string>
     <string name="settingtext_settingterminalplayeractivity_002">关</string>
     <string name="settingtext_settingterminalplayeractivity_003">沿用上次</string>
