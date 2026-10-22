@@ -1168,6 +1168,24 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证（本机，26.10.22 已跑）**：`.\gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest --offline` → `BUILD SUCCESSFUL in 56s`（两 flavor 都出 Debug 包，128 tasks）；单测按 `app/build/test-results/testStandardDebugUnitTest/*.xml` 实测 **76 类 / 804 例 / 0 失败 0 错误 0 跳过**，与改动前基线一致——本次只换窗口主题属性，没有可 JVM 单测的纯逻辑，故未新增用例（`noSwipe` 是 `ColorScheme.themeResId` 的既有参数，已被既有主题映射覆盖）。
 - **真机待验**：① 手表上「左右滑动控制进度」与「禁用返回键」都关着时，播放页右滑不再退出；② 开启「左右滑动控制进度」后右滑仍是调进度、不退出；③ 双击 / 长按倍速 / 捏合缩放 / 拖动画面全部照常；④ 顶栏返回按钮与返回键仍能退出；⑤ 主题配色与改动前一致；⑥ 短视频页右滑退出行为不变（本次未改，回归确认）。
 
+### 3.55 自动跳过片头片尾「乱跳」：三处判定互相污染（26.10.22，待真机）
+
+- **现象**（用户报告）：「有乱跳的问题 / 问题好像是判断循环没有及时退出导致的」。实际表现是开播后进度自己往前跳、跳过的位置不对、偶尔跳完又弹回原处。
+- **澄清**：`maybeAutoSkipOpEd()` 里**没有任何循环**，不存在「判断循环没及时退出」。真正的驱动是既有 250ms 主线程定时器（`progressChange` → `maybeAutoSkipOpEd`），它每拍都会重新判定一次，所以任何「已被处理」的标记只要丢了，就会在下一拍立刻重跳。
+- **根因三条（互相独立，都会造成乱跳）**：
+  1. **跳转入口分不清调用者**：`seekToVideo()` 是拖进度条、按键、滑动、点看点、自动跳过**共用的唯一入口**，原先它无条件调 `onUserSeekTo(position)` 把落点所在片段记为已处理。自动跳过自己跳到区间右端点本来在区间外，但只要与用户操作撞在同一帧/相邻帧，就会被当成「用户想看这段」而把真正该跳的片段吃掉；反过来用户拖动途中的中间帧也可能误标片段。
+  2. **重复拉取清空已处理集合**：`loadViewPoints()` 在一次播放里会被调用多次（启动、投屏恢复等），原先**无条件** `skipHandled.clear()`。只要某次响应在用户已越过片头之后才到达，就把「片头已处理」抹掉 → 下一拍定时器重新命中 → 再跳一次，**每多拉一次就多跳一次**。
+  3. **异步 seek 回弹**：`seekToVideo()` 先写 `video_now` 再调 `ijkPlayer.seekTo()`，而 IJK 的 seek 是异步的——落地前 `progressChange` 会把 `video_now` 拉回**旧位置**，旧位置若仍在片段内就触发下一轮判定，表现为「跳完又跳回去」。原先这条不变式只靠 `skipHandled` 一条防线，而它恰好会被第 2 条清掉。
+- **改法（不改 `ViewPointSkip` 的纯判定，只修接线）**：
+  - 新增 `player/SkipCancelPolicy.kt`（纯函数，无 Android 依赖，可 JVM 单测）两个判据：`cancelKeyFor(userInitiated, segmentKey, handled)` 与 `segmentsChanged(old, new)`。
+  - `seekToPosition` / `seekToVideo` 新增 `userInitiated: Boolean = true`，由调用点**如实声明**；`maybeAutoSkipOpEd` 传 `false`，其余用户手势/按键/看点列表/撤回按钮都走默认 `true`。`onUserSeekTo` 改走 `SkipCancelPolicy.cancelKeyFor`：非用户发起一律不标记。
+  - `loadViewPoints()` 改为只在 `SkipCancelPolicy.segmentsChanged(...)` 为真（片段表真的变了＝换集/换 P）时才清 `skipHandled`；同一批片段（迟到的重复响应、投屏恢复重拉）保留已处理状态。
+  - 新增 `SKIP_QUIET_AFTER_SEEK_MS = 600L` 与 `skipQuietUntilMs`：自动跳过跳完起一段静默期（`markSeekTarget` 经 `pendingSeekIsAutoSkip` 触发），盖住「新位置已写、IJK seek 未落地」的窗口。**只由自动跳过起**——用户主动拖动的落点已被正式记为已处理，不需要时间兜底，也不该因为拖一下就压掉 600ms 的自动跳过。
+- **为什么不给自动跳过用更短的静默期**：定时器周期本身就是 250ms，静默期短于它拦不住回弹；而片头后紧跟片尾时，任何长于两段间隔的静默期都会把片尾吃掉。600ms（约 2 拍）是「拦得住一次 seek 往返」与「不越过相邻片段」之间的取值。
+- **单测**：新增 `SkipCancelPolicyTest`（11 例：用户主动跳进片段算反悔 / 自动跳过自己不算 / 落点不在片段内不标记 / 已处理不重复标记 / 首次加载算变化 / 重复拉到相同片段不算变化 / 内容变了算变化 / 数量相同区间不同算变化 / 换集算变化 / 两批都空不算变化 / 有内容变空算变化）。
+- **验证（本机，26.10.22 已跑）**：`.\gradlew.bat :app:assembleDebug --offline --no-configuration-cache` → `BUILD SUCCESSFUL`（两 flavor 都出包）；`testStandardDebugUnitTest` 与 `testCoexistDebugUnitTest` → 各 **817 例 / 0 失败 0 错误**（改动前基线 806 例，新增 11 例）。改动只涉及播放器接线与纯判定，无新增用户可见文案。
+- **真机待验**：① 有片头片尾的视频开播后只跳一次，不再出现「十几秒后又跳」；② 番剧切集/切 P 后新一集仍能正常跳（不应因保留 handled 而漏跳）；③ 用户主动拖进片头后不被弹走；④ 连续两段（片头紧邻片尾）时片尾仍跳得到；⑤ 投屏/后台恢复后不重复跳。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
