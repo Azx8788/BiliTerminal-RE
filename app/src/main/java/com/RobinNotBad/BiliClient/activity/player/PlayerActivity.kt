@@ -626,13 +626,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val theme = SharedPreferencesUtil.getString(ColorScheme.PREF_KEY_THEME, ColorScheme.THEME_DEFAULT)
         // 主题映射统一在 ColorScheme.themeResId（此前这里复制了一份与 BaseActivity 相同的 when）
         //
-        // 「左右滑动控制进度」开启时必须同时关掉系统右滑返回（windowSwipeToDismiss）：
-        // 手表自带的右滑返回是在窗口层直接 finish 的，不走 onBackPressed，只靠 onBackPressed 拦不住，
-        // 会把手势抢走、表现为「滑动调进度变成退出播放器」（issue #1）。
-        // 「禁用返回键」开关同理（那正是它对手表右滑返回失效的原因）。
+        // 播放页**无条件**关掉系统窗口层的右滑返回（android:windowSwipeToDismiss）：
+        // 手表自带的右滑返回在窗口层直接 finish()，不走 onBackPressed，应用根本收不到，
+        // 表现为「看视频时手指一划就退出播放器」，且会顺手把「左右滑动控制进度」的手势抢走（issue #1）。
+        // 此前只在「左右滑动控制进度」或全局「禁用返回键」开启时才换 noSwipe 主题，
+        // 于是两个开关都关着时右滑返回照常生效——26.10.22 起改为无条件。
+        //
+        // 这里只换窗口属性（*.NoSwipe.AppCompat 相对主主题只多 windowSwipeToDismiss=false，
+        // 配色/圆角/字体完全一致），**不碰任何触摸分发**：滑动调进度、双击、长按倍速、
+        // 捏合缩放与拖动画面仍由本类自己的手势逻辑处理，语义不变。
+        // 退出播放页仍有顶栏返回按钮与返回键（onBackPressed），右滑只是不再生效。
         swipeSeekEnabled = SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SWIPE_SEEK, false)
-        val noSwipe = swipeSeekEnabled || SharedPreferencesUtil.getBoolean(SettingsKeys.BACK_DISABLE, false)
-        setTheme(ColorScheme.themeResId(theme, noSwipe))
+        setTheme(ColorScheme.themeResId(theme, noSwipe = true))
         super.onCreate(savedInstanceState)
 
         // 「播放默认值 → 屏幕方向」：横屏/竖屏立即生效；「按视频分辨率选择」要先拿到视频宽高

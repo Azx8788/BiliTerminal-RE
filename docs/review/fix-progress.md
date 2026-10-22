@@ -1150,6 +1150,16 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证（本机，已跑）**：`.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（121 tasks，1 分内）；`.\gradlew.bat :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest --offline` → `BUILD SUCCESSFUL`，两 flavor 各 **76 类 / 804 例 / 0 失败 0 错误**（其中新增 `LocalVideoProgressTest` 12 例、`VideoMetaProgressTest` 6 例）。
 - **真机待验**：播到 01:30 退出再进应从约 01:30 起播且提示「已从上次的位置播放」（±2s）；关掉「从历史位置播放」则从头且不提示；看到距结尾 5 秒内/播完 → 下次从头；多 P 不串位置（A 看到一半、B 从头）；单文件 / DASH / 听视频 / 虚拟合集 / 多 P 选择页均生效；缓存文件夹改名或移动后仍有效；视频被删/文件损坏/时长变短时静默从头不崩。
 
+### 3.54 播放页禁止系统右滑返回（无条件，26.10.22，待真机）
+
+- **需求**（用户确认口径）：长视频播放页**禁止通过右滑手势退出应用**，且**不设开关**、页内处处生效；用户明确补充「不要屏蔽其他手势（如滑动调节进度和移动画面等）」。范围只到 `PlayerActivity`（投稿 / 番剧 / 直播 / 缓存视频都走它）；短视频页 `ShortVideoPlayerActivity` 的「右滑退出」是产品定义的另一种语义，不动。反馈方式为静默忽略（不弹提示）。
+- **根因（与 issue #1 同源）**：手表右滑返回由窗口属性 `android:windowSwipeToDismiss` 实现，**窗口层直接 `finish()`，不走 `onBackPressed`**，应用收不到。改前 `PlayerActivity.onCreate` 是 `val noSwipe = swipeSeekEnabled || SharedPreferencesUtil.getBoolean(SettingsKeys.BACK_DISABLE, false)`，即**两个开关都关着时右滑照常退出**——这正是用户看到的现象。
+- **改法（一处）**：`activity/player/PlayerActivity.kt` `onCreate` 删掉那个复合判断，改为无条件 `setTheme(ColorScheme.themeResId(theme, noSwipe = true))`；`swipeSeekEnabled` 的赋值保留（`onBackPressed` 仍用它判断手势型返回键）。不新增设置项、不改基类、不动 `res/`。
+- **为何不碰其他手势**：`*.NoSwipe.AppCompat` 相对主主题**只多一条 `windowSwipeToDismiss=false`**（`ColorScheme.kt:526-557` 的 7 套映射 + `res/values/themes.xml`），配色 / 圆角 / 字体全同；它只改窗口属性，**不参与触摸分发**，滑动调进度、双击、长按倍速、捏合缩放与拖动画面仍由本类自己的手势逻辑处理。
+- **行为边界**：左滑 / 右滑调进度（`PLAYER_SWIPE_SEEK`）开启时 `onBackPressed` 里 `if (swipeSeekEnabled) return` 的既有兜底**保留未改**（issue #1 对「把右滑模拟成返回键」的手表）；未开启时返回键照常退出播放页。退出路径仍是顶栏返回按钮 + 返回键。
+- **验证（本机，26.10.22 已跑）**：`.\gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest --offline` → `BUILD SUCCESSFUL in 56s`（两 flavor 都出 Debug 包，128 tasks）；单测按 `app/build/test-results/testStandardDebugUnitTest/*.xml` 实测 **76 类 / 804 例 / 0 失败 0 错误 0 跳过**，与改动前基线一致——本次只换窗口主题属性，没有可 JVM 单测的纯逻辑，故未新增用例（`noSwipe` 是 `ColorScheme.themeResId` 的既有参数，已被既有主题映射覆盖）。
+- **真机待验**：① 手表上「左右滑动控制进度」与「禁用返回键」都关着时，播放页右滑不再退出；② 开启「左右滑动控制进度」后右滑仍是调进度、不退出；③ 双击 / 长按倍速 / 捏合缩放 / 拖动画面全部照常；④ 顶栏返回按钮与返回键仍能退出；⑤ 主题配色与改动前一致；⑥ 短视频页右滑退出行为不变（本次未改，回归确认）。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
