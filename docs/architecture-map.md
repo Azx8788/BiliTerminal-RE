@@ -1144,6 +1144,17 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 `Environment.isExternalStorageManager()` 只回答「有没有全盘权限」；而默认视频目录 `Android/media/<包名>/` 是**应用专属外部存储**，API 29+ 写它**根本不需要权限**——按授权判会把默认路径下的下载判成「没权限」，手表 ROM 又没有那个设置页，于是**下载被永久挡死**。
 **正确姿势**（`util/FileUtil.canWriteDirectory` / `ensureDirectoryWritable`）：先 `mkdirs` 再 `createTempFile(".write_probe")` 试写并删除，写不进去才去申请权限。调用点必须传**真实目标目录**：`activity/video/info/VideoInfoFragment.kt` 的 `downloadClick()`、`activity/video/local/LocalListActivity.kt` 传视频目录，`activity/DownloadActivity.kt` 的图片下载（`type == 0`）传 Intent 里的 `path`（公共 `Pictures/`）。新增任何「写文件前先要权限」的路径都按这套来，**别再加 `checkStoragePermission()` 式的授权判据**。
 
+**④ 默认目录必须「全版本免权限」，全盘权限只是可选项（26.10.22 改）。**
+③ 只解决了「怎么判可写」，没解决「判成不可写之后怎么办」：用户一旦把路径改到公共目录、或图片要写公共 `Pictures/`，Android 11+ 就需要「所有文件访问」，而手表 ROM 没有那个设置页 → 试写永远失败 → 下载仍被永久挡死（issue #42 的延伸）。现在整条链路按下面的语义走：
+
+- **默认目录按 API 分档**（`util/StoragePathPolicy.defaultVideoDir`，纯函数、有 JVM 单测）：API ≥ 21 用 `Android/media/<包名>/`（应用专属媒体目录，等价 `getExternalMediaDirs()`，免权限且是老默认值）；API 19/20 用 `getExternalFilesDir("video")`（旧系统上 `Android/media` 仍是公共存储语义），取不到再退内部 `filesDir/video`。
+- **老用户不迁移**（`StoragePathPolicy.chooseVideoDir`）：`save_path_video` 没配置过、但老默认目录里还有**非隐藏**文件 → 继续用老目录。判据 `hasRealContent` 把 `.nomedia` / `.DOWNLOADING` / `.write_probe` 这类隐藏标记排除在外，否则一个空标记就能把老用户永远钉在旧目录。
+- **写不进去就降级，不挡下载**：`FileUtil.resolveVideoDownloadDir(Context)` / `resolvePictureDownloadDir(Context, File)` 先试写正式目录；失败则改用应用专属目录（`externalFilesDir/video`、`externalFilesDir/Pictures`）继续，首次降级 toast 一次实际保存路径；只有连它都写不了（存储满/只读）才返回 `null`，由调用方停下。
+- **降级状态是进程级标记**（`videoFallbackActive` / `pictureFallbackActive`）：`getVideoDownloadPath()` 直接返回降级目录，于是下载服务、缓存列表、元数据读写看到的是**同一个根目录**（各自现算会出现文件一半在正式目录、一半在降级目录，列表/删除逻辑全对不上）。正式目录恢复可写时，下一次 `resolve*` 自动清标记并把降级期间的缓存 `mergeMoveDirectoryContents` 搬回正式目录（只增不覆盖，同名改成 `name (1).ext`，跳过 `.nomedia`）。
+- **下载链路不再跳系统设置页**：`requestStoragePermission` 只留给设置页「去系统设置授予「所有文件访问」」这个手动入口（`activity/settings/SettingGroupActivity.kt` 的 `buildDownloadGroup`）；下载/缓存的入口是 `LocalListActivity`（`onCreate` + `onResume` 复检，降级状态变了就重扫列表）、`VideoInfoFragment.downloadClick()`、`DownloadActivity.onCreate`（按 `type` 分图片/视频目标）、`VideoQuickCache.handle`、`DownloadService.startSingle` / `startDownload` / `onStartCommand`（服务可能在新进程里被恢复，标记是空的，必须重新 resolve）。
+- **设置页「缓存路径」预填的是 `getConfiguredVideoDownloadPath()`**，不是运行时降级目录：降级时不能让用户以为自己配置的路径被覆盖了。
+- **别把降级做成「回退 targetSdk 29 用 requestLegacyExternalStorage」**：targetSdk 34 下它已不生效，且属能力倒退。要「让用户在相册/文件管理器里看到文件」应走 MediaStore 写入（API 29+ 免权限，但只适合媒体单文件，不适合缓存目录）或 SAF 选目录（有 DocumentsUI 时），细节见 `docs/review/fix-progress.md` §3.52。
+
 ---
 
 ### 7.42 播放列表（pagenames/cids）的两种语义与切页契约（26.10.15）

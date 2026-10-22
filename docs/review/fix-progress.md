@@ -1117,6 +1117,22 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **真机待验**：本机 `adb devices` 为空，上面三条根因全部来自 vendored DFM 源码与调用链，**必须真机复测**：① 正常播放中人为卡顿/切后台再回来，`adb logcat -s "弹幕纠偏"` 只应在 >1.5s 大跳时打一条，**不应每秒一条**；② 反复拖进度条/快进后退，弹幕应立即恢复且不闪；③ 长视频后半段不应出现整段无弹幕，`adb logcat -s "新版弹幕API"` 里"弹幕缺口"应为零。
 - **仍未做（另立项）**：`duration` 未就绪时按 3600 秒硬算 11 段——正确做法是先只取第 1 段、`onPrepared` 拿到真实时长后再补拉剩余分段（涉及二次加载时序，风险比本批大）。
 
+### 3.52 存储兼容：默认目录按 API 分档 + 无全盘权限时自动降级（Wear OS，26.10.22，待真机）
+
+- **背景**：§3.28 只把「判据」从权限查询改成试写，试写失败之后仍然是 `finish()` / `return` —— 手表（Wear OS）上「所有文件访问」的接口存在，但系统 UI 不提供这个开关，用户授不了权，于是缓存/下载整条链路走不通。用户要求同时适配高低版本 Android 与这类无法授权的设备。
+- **根因（能力假设错）**：默认目录 `Android/media/<包名>/` 在 API 29+ 属公共媒体目录，写它需要 `MANAGE_EXTERNAL_STORAGE`；API 30+ 上只有用户在系统 UI 里勾选才生效，`isExternalStorageManager()` 查得再准、权限在清单里声明得再全都救不了。而下载链路把「能写这个目录」当成了功能前提。
+- **改法（`util/FileUtil.java` + 新增 `util/StoragePathPolicy.kt`）**：
+  - `util/StoragePathPolicy.kt`（纯逻辑、无 Android API，可 JVM 单测）：`defaultVideoDir(apiLevel, mediaDir, appExternalDir, internalDir)` —— API≥21 用 `Android/media/<包名>/`，API 19/20 用 `getExternalFilesDir("video")`（应用专属、免权限），都拿不到再退 `filesDir/video`；`chooseVideoDir(...)` 保留老用户目录；`hasRealContent(names)` 把 `.nomedia` 这类隐藏标记排除在「有内容」之外。
+  - `FileUtil.getVideoDownloadPath()` 拆成「正式目录 `getConfiguredVideoDownloadPath()`」与「降级目录 `getFallbackVideoDownloadPath()`（`getExternalFilesDir("video")` → `filesDir/video`）」，进程级 `videoFallbackActive` 决定返回哪个 —— 下载服务、缓存列表、元数据必须看到同一个根目录，不能各算各的。
+  - `resolveVideoDownloadDir(Context)` / `resolvePictureDownloadDir(Context, File)`：正式目录可写就用正式目录（若此前降级过，`mergeMoveDirectoryContents` 把降级目录里的东西搬回，只增不覆盖、同名改成 `name (1).ext`、跳过 `.nomedia`、绝不删目标已有内容）；正式目录不可写但降级目录可写就降级并 toast 实际位置（每个进程只提示一次）；两个都写不了才返回 null。
+  - **下载链路不再主动跳系统设置页**（手表上那是死路），`requestStoragePermission` 只保留给设置页里的手动入口。所有入口统一先 resolve：`LocalListActivity`（含 `onResume` 复检，降级状态变过就刷新列表）、`VideoInfoFragment.downloadClick`、`DownloadActivity.onCreate`（图片走 `resolvePictureDownloadDir`）、`VideoQuickCache.handle`（列表长按缓存，以前完全不判可写）、`DownloadService.startSingle` / `startDownload` / `onStartCommand`（服务可能在新进程恢复，标记为空，必须再 resolve 一次）。
+  - 设置页「缓存路径」预填 `getConfiguredVideoDownloadPath()`（降级时不会把降级目录写进设置项），新增「去系统设置授予所有文件访问」入口与说明（手表会提示打不开，下载自动降级）。
+  - 图片降级保存到应用专属目录时，完成提示改用 `msg_picture_saved_fallback` 明说「不在系统相册中」，且不再调 `PictureMediaStore.scan`（降级目录扫了也不会有 MediaStore 记录，白扫）。
+- **为什么不用其它方案**：SAF `ACTION_OPEN_DOCUMENT_TREE` 在手表上通常没有 `DocumentsUI`；`MediaStore` 插入只能管媒体单文件，而缓存目录还要放 `.quality` / `.DOWNLOADING` / 弹幕等附属文件；回退 `targetSdk 29` + `requestLegacyExternalStorage` 是能力倒退，且本仓 `targetSdk 34` 下已失效。结论：把「全盘权限」从**必需**变成**可选**。
+- **单测**：新增 `StoragePathPolicyTest` 12 例（API 分档、配置优先、老目录保留、隐藏文件不算内容）、`FileUtilMergeMoveTest` 5 例（搬移、同名不覆盖、递归合并、跳过 `.nomedia`、空输入安全）。判据与理由已同步 `docs/architecture-map.md` §7.41 ④。
+- **验证（本机，已跑）**：`$env:JAVA_HOME='C:\Program Files\Java\jdk-17'; ./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest --offline --no-configuration-cache` → `BUILD SUCCESSFUL in 1m 49s`；两 flavor 各 **75 个测试类 / 800 例 / 0 失败 0 错误 0 跳过**。
+- **真机待验（全部未验证）**：① 手表 Android 7/8/9/11 首次进缓存页 / 点下载直接成功，不弹系统设置页；② 把缓存路径改成公共 `/sdcard/Download/xxx`（无权限）后下载**自动降级**并提示实际位置，文件落在应用专属目录、缓存页能列出；③ PC 的 MTP / 文件管理器能看到该目录（`Android/media` 比 `Android/data` 可见性略好，但都比公共目录差，需在文档/教程里说清）；④ 图片降级保存提示「不在相册中」；⑤ 手机上授权后回到缓存页自动切回正式目录，降级期间下的缓存被搬回。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
