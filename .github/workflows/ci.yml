@@ -73,6 +73,30 @@ jobs:
           fi
           echo "gradle.properties 已清理"
 
+      # 固定签名：GitHub runner 的 debug.keystore 每次都是新生成的，指纹每次都不同，
+      # 手机装新版必须先卸载旧版。这里用仓库 Secrets 写入 local.properties，
+      # app/build.gradle 检测到签名可用后，CI 下连 debug 包也复用发布签名。
+      # 未配置 Secrets 时不报错，回退默认 debug 签名（fork 自己跑 CI 也能过）。
+      - name: 写入签名配置（可选）
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
+          ALIAS_PASSWORD: ${{ secrets.ALIAS_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "未配置 KEYSTORE_BASE64，使用默认 debug 签名"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > key.jks
+          {
+            echo "KEY_PATH=$GITHUB_WORKSPACE/key.jks"
+            echo "KEY_PASSWORD=$KEY_PASSWORD"
+            echo "ALIAS_NAME=$ALIAS_NAME"
+            echo "ALIAS_PASSWORD=$ALIAS_PASSWORD"
+          } > local.properties
+          ls -l key.jks
+
       # 版本号分散在 build.gradle / strings.xml 两处靠人工同步，
       # 历史上已实际漂移过（readme badge、docs/FEATURES.md）。见审计 §五 E1。
       # （原先第三处 config.json 已随「更新检查改读发行版」一并取消，见 build-release.yml）

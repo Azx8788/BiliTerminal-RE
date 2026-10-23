@@ -5,6 +5,11 @@ plugins {
 
 int betaVer = 0
 
+// 签名是否可用：只有 local.properties 里配了 KEY_PATH、且对应 keystore 文件真实存在时才置真。
+// CI 由 workflow 写入 local.properties（见 .github/workflows/ci.yml 的「写入签名配置」步骤），
+// 本地开发不配就一直是 false，走默认 debug 签名，互不影响。
+ext.signingReady = false
+
 android {
 
     namespace 'com.RobinNotBad.BiliClient'
@@ -42,11 +47,18 @@ android {
             if (localProps.exists()) {
                 Properties pro = new Properties()
                 pro.load(localProps.newDataInputStream())
-                if (pro.containsKey("KEY_PATH")) {
-                    storeFile project.rootProject.file(pro.getProperty("KEY_PATH", "key.jks"))
-                    storePassword pro.getProperty("KEY_PASSWORD")
-                    keyAlias pro.getProperty("ALIAS_NAME")
-                    keyPassword pro.getProperty("ALIAS_PASSWORD")
+                def keyPath = pro.getProperty("KEY_PATH")
+                if (keyPath) {
+                    def store = project.rootProject.file(keyPath)
+                    // 文件不存在时不能只靠 properties 就判定可用：
+                    // 那样 AGP 会在打包阶段报找不到 keystore，错误点离配置太远。
+                    if (store.exists()) {
+                        storeFile store
+                        storePassword pro.getProperty("KEY_PASSWORD")
+                        keyAlias pro.getProperty("ALIAS_NAME")
+                        keyPassword pro.getProperty("ALIAS_PASSWORD")
+                        project.ext.signingReady = true
+                    }
                 }
             }
         }
@@ -81,13 +93,8 @@ android {
             shrinkResources true
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            def localProps = project.rootProject.file("local.properties")
-            if (localProps.exists()) {
-                Properties pro = new Properties()
-                pro.load(localProps.newDataInputStream())
-                if (pro.containsKey("KEY_PATH")) {
-                    signingConfig signingConfigs.release
-                }
+            if (project.ext.signingReady) {
+                signingConfig signingConfigs.release
             }
 
             zipAlignEnabled true
@@ -95,7 +102,14 @@ android {
         }
         debug {
             buildConfigField "boolean", "BETA", String.valueOf(betaVer > 0)
-            signingConfig signingConfigs.debug
+            // CI 出包固定签名：GitHub runner 的 debug.keystore 每次都是新生成的，
+            // 指纹每次不同，手机装新版必须先卸载旧版。只在 CI（GITHUB_ACTIONS）下复用发布签名，
+            // 本地开发仍用默认 debug 签名，避免把发布密钥带到开发机以外的场景。
+            if (project.ext.signingReady && System.getenv("GITHUB_ACTIONS") == "true") {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
             minifyEnabled false
             shrinkResources false
 
