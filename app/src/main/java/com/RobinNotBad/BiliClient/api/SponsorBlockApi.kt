@@ -43,7 +43,7 @@ object SponsorBlockApi {
                 "&categories=" + URLEncoder.encode(categoriesJson, "UTF-8")
             NetWorkUtil.get(url, headers()).use { response ->
                 if (response.isSuccessful) {
-                    response.body()?.string() ?: ""
+                    response.body?.string() ?: ""
                 } else {
                     Logu.w("跳过赞助", "HTTP " + response.code)
                     ""
